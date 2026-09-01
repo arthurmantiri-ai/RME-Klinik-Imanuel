@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Demo RME Klinik Imanuel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="shell">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="mark" id="brandMark">KI</div>
+      <div class="txt" id="brandTeks">Klinik Imanuel<small>Rekam Medis</small></div>
+    </div>
+    <nav class="nav" id="nav"></nav>
+    <div class="sidebar-foot">
+      <div class="sidebar-user">
+        <div class="avatar" id="userAvatar">?</div>
+        <div class="who flex-1">
+          <b id="userNama">Memuat…</b>
+          <span id="userPeran"></span>
+        </div>
+        <button class="btn-icon" id="btnKeluar" title="Keluar"
+                style="background:transparent;border-color:rgba(255,255,255,.18);color:#C6E6E1"></button>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="btn-icon menu-toggle" id="btnMenu" aria-label="Menu"></button>
+      <div class="page-title" id="judulHalaman">Beranda</div>
+      <div class="spacer"></div>
+      <div class="today" id="tanggalHariIni"></div>
+    </header>
+    <div style="background:#FEF3C7;color:#78350F;padding:9px 22px;font-size:12.5px;
+       border-bottom:1px solid #FCD34D">
+      <b>Mode demo</b> — data di halaman ini hanya contoh dan tidak tersimpan.
+      Semua nama pasien fiktif.
+      <label style="margin-left:14px;font-weight:600">Lihat sebagai:
+        <select id="peranDemo" style="width:auto;display:inline-block;padding:3px 26px 3px 8px;
+                font-size:12.5px;margin-left:5px"></select></label>
+    </div>
+    <main class="content" id="view"></main>
+  </div>
+</div>
+
+<script src="js/config.js"></script>
+<script>/* Mode demo: lewati pemeriksaan konfigurasi Supabase */
+  CONFIG.SUPABASE_URL = 'demo://lokal'; CONFIG.SUPABASE_ANON_KEY = 'demo';</script>
+<script src="js/ui.js"></script>
+<script src="js/apotek_core.js"></script>
+<script src="js/struk_core.js"></script>
+<script src="js/struk_printer.js"></script>
+<script src="js/invoice_template.js"></script>
+<script src="js/demo-data.js"></script>
+<script src="js/komponen.js"></script>
+<script src="js/odontogram.js"></script>
+<script src="js/pages/beranda.js"></script>
+<script src="js/pages/pendaftaran.js"></script>
+<script src="js/pages/antrian.js"></script>
+<script src="js/pages/pasien.js"></script>
+<script src="js/pages/kajian.js"></script>
+<script src="js/pages/periksa.js"></script>
+<script src="js/pages/rekam.js"></script>
+<script src="js/pages/laporan.js"></script>
+<script src="js/pages/apotek.js"></script>
+<script src="js/pages/kasir.js"></script>
+<script src="js/pages/tarif.js"></script>
+<script src="js/pages/master.js"></script>
+<script src="js/pages/pengaturan.js"></script>
+<script src="js/app.js"></script>
+<script>
+/* Pemilih peran khusus halaman demo */
+document.addEventListener('DOMContentLoaded', () => {
+  const sel = document.getElementById('peranDemo');
+  if (!sel || !DB.PERAN_DEMO) return;
+  const kini = DB.peranDemoSekarang();
+  sel.innerHTML = Object.keys(DB.PERAN_DEMO)
+    .map(k => `<option value="${k}" ${k === kini ? 'selected' : ''}>${k}</option>`).join('');
+  sel.addEventListener('change', () => DB.gantiPeranDemo(sel.value));
+});
+</script>
+</body>
+</html>

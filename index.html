@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Masuk — RME Klinik Imanuel</title>
+<meta name="description" content="Rekam Medis Elektronik Klinik Pratama Imanuel">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="login-logo" id="logo">KI</div>
+    <h1>Rekam Medis Elektronik</h1>
+    <p class="login-sub" id="namaKlinik">Klinik Pratama Imanuel</p>
+
+    <div id="pesan"></div>
+
+    <form id="formMasuk" novalidate>
+      <div class="field">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" autocomplete="username"
+               placeholder="nama@klinik.id" required>
+      </div>
+      <div class="field">
+        <label for="sandi">Kata sandi</label>
+        <input type="password" id="sandi" name="sandi" autocomplete="current-password"
+               placeholder="••••••••" required>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block btn-lg" id="btnMasuk">Masuk</button>
+    </form>
+
+    <div class="login-foot">
+      Data rekam medis dilindungi dan setiap akses tercatat.<br>
+      Jangan bagikan akun Anda kepada siapa pun.
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/db.js"></script>
+<script>
+(async function () {
+  document.getElementById('namaKlinik').textContent = CONFIG.NAMA_KLINIK;
+  document.getElementById('logo').textContent = CONFIG.SINGKATAN;
+  document.title = 'Masuk — ' + CONFIG.NAMA_KLINIK;
+
+  const pesan  = document.getElementById('pesan');
+  const btn    = document.getElementById('btnMasuk');
+
+  const tampilkanPesan = (teks, tipe = 'err') => {
+    pesan.innerHTML = `<div class="banner ${tipe}">${UI.esc(teks)}</div>`;
+  };
+
+  // Belum dikonfigurasi
+  if (CONFIG.SUPABASE_URL.includes('GANTI-DENGAN')) {
+    tampilkanPesan('Aplikasi belum dihubungkan ke database. Buka file js/config.js '
+      + 'lalu isi SUPABASE_URL dan SUPABASE_ANON_KEY sesuai project Supabase Anda.', 'warn');
+    btn.disabled = true;
+    return;
+  }
+
+  // Sudah login? langsung masuk
+  try {
+    if (await DB.sesi()) { location.replace('app.html'); return; }
+  } catch (e) { /* biarkan tampil form */ }
+
+  document.getElementById('formMasuk').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('email').value.trim();
+    const sandi = document.getElementById('sandi').value;
+    if (!email || !sandi) { tampilkanPesan('Email dan kata sandi wajib diisi.'); return; }
+
+    btn.disabled = true; btn.textContent = 'Memeriksa…'; pesan.innerHTML = '';
+    try {
+      await DB.masuk(email, sandi);
+      const profil = await DB.saya(true);
+      if (!profil) throw new Error('Akun Anda belum terdaftar sebagai pegawai klinik. Hubungi admin.');
+      if (!profil.aktif) throw new Error('Akun Anda dinonaktifkan. Hubungi admin klinik.');
+      location.replace('app.html');
+    } catch (err) {
+      const m = (err.message || '').toLowerCase();
+      tampilkanPesan(
+        m.includes('invalid login') ? 'Email atau kata sandi salah.' :
+        m.includes('email not confirmed') ? 'Email belum dikonfirmasi. Cek kotak masuk Anda.' :
+        (err.message || 'Gagal masuk. Coba lagi.')
+      );
+      btn.disabled = false; btn.textContent = 'Masuk';
+    }
+  });
+})();
+</script>
+</body>
+</html>
