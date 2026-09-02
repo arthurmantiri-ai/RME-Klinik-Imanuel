@@ -34,7 +34,7 @@ Biaya: **Rp 0** (Supabase free tier + Netlify free tier).
 | **Aplikasi** | Login, beranda, pendaftaran, antrian, kajian awal perawat, SOAP dokter, diagnosa ICD-10, tindakan ICD-9-CM, resep, rekam medis, riwayat, laporan, pengaturan |
 | **Poli gigi** | Odontogram per bidang gigi (gigi tetap dan sulung), pemeriksaan ekstra/intra oral, indeks DMF-T dan def-t, tindakan gigi ICD-9-CM |
 | **Master data** | Kelola sendiri daftar obat (termasuk impor/ekspor CSV), diagnosa ICD-10, dan tindakan ICD-9-CM tanpa membuka dasbor Supabase |
-| **Apotek** | Stok per batch dengan urutan keluar FEFO, antrean resep dari dokter, kartu stok harian, laporan bulanan |
+| **Apotek** | Stok per batch dengan urutan keluar FEFO, antrean resep dari dokter, kartu stok harian, laporan bulanan, impor & ekspor Excel |
 | **Kasir** | Tagihan disusun otomatis dari tindakan dokter dan obat yang diserahkan apotek, pembayaran, kwitansi PDF, struk thermal 58/80 mm |
 | **Kesiapan bridging** | Penanda otomatis untuk data yang nanti dibutuhkan PCare dan SatuSehat tapi belum terisi |
 | **Master data** | 178 kode ICD-10, 43 kode tindakan ICD-9-CM, 52 gigi FDI, 27 kondisi odontogram, 70 obat generik Fornas, 3 poli |
@@ -58,6 +58,7 @@ rme-imanuel/
 │   ├── app.js              Menu & navigasi
 │   ├── odontogram.js       Bagan gigi yang bisa diklik
 │   ├── apotek_core.js      Mesin kartu stok & pratinjau FEFO (fungsi murni)
+│   ├── apotek_excel.js     Pembacaan berkas impor & penyusunan lembar ekspor
 │   ├── struk_core.js       Mesin struk thermal (fungsi murni)
 │   ├── struk_printer.js    Bluetooth / USB / dialog cetak
 │   ├── invoice_template.js Pengaturan tampilan invoice
@@ -72,7 +73,8 @@ rme-imanuel/
 │   ├── 06_master.sql       Nilai berkode & kesiapan bridging
 │   ├── 07_peran_kasir.sql  Menambah peran 'kasir' (satu baris, jalankan sendiri)
 │   ├── 08_apotek.sql       Stok obat batch FEFO, penyerahan resep
-│   └── 09_kasir.sql        Tarif, tagihan, pembayaran, template invoice
+│   ├── 09_kasir.sql        Tarif, tagihan, pembayaran, template invoice
+│   └── 10_apotek_impor.sql Impor stok dari Excel (saldo awal & pembelian)
 └── supabase/functions/
     ├── pcare-proxy/        Jembatan ke PCare BPJS
     └── satusehat-proxy/    Jembatan ke SatuSehat (FHIR R4)
@@ -103,7 +105,7 @@ Tidak perlu memasang apa pun di komputer. Tidak perlu kartu kredit.
 
 ---
 
-## Langkah 2 — Jalankan sembilan berkas SQL
+## Langkah 2 — Jalankan sepuluh berkas SQL
 
 Di dasbor Supabase, buka **SQL Editor** (ikon terminal di bilah kiri).
 
@@ -120,6 +122,7 @@ Jalankan **berurutan**, satu per satu. Untuk tiap berkas: buka isinya, salin sel
 | 7 | `sql/07_peran_kasir.sql` | Menambah peran `kasir` — **jalankan sendirian** (lihat catatan di bawah) |
 | 8 | `sql/08_apotek.sql` | Stok obat per batch, mesin FEFO, penyerahan resep |
 | 9 | `sql/09_kasir.sql` | Tarif, tagihan, pembayaran, template invoice |
+| 10 | `sql/10_apotek_impor.sql` | Impor stok dari Excel |
 
 > **Berkas 7 harus dijalankan sendirian.** Isinya hanya satu baris, tetapi
 > PostgreSQL melarang nilai enum yang baru ditambahkan dipakai di dalam
@@ -305,6 +308,83 @@ Batas 7 hari ditegakkan di dalam database, bukan cuma di tombol.
 sisa berapa — per obat per hari, atau per tanggal untuk semua obat. Saldonya
 ditarik mundur dari stok yang ada sekarang, jadi baris terakhir bulan berjalan
 selalu cocok dengan tab Stok saat ini.
+
+---
+
+## Memuat stok pertama kali (impor Excel)
+
+Ini yang Anda pakai saat sistem baru dinyalakan: memasukkan seluruh isi rak
+tanpa mengetik satu per satu.
+
+**Langkahnya.** Apotek → **Impor Excel** → pilih **Saldo awal (opname)** →
+Unduh template → isi di Excel → unggah → periksa pratinjau → Proses.
+
+**Pilih jenis impornya dengan benar.** Ada dua:
+
+| Jenis | Untuk apa | Bedanya |
+|---|---|---|
+| **Saldo awal (opname)** | Stok yang sudah ada di rak saat sistem mulai dipakai | Tidak dihitung sebagai pembelian |
+| **Pembelian / obat masuk** | Kiriman PBF, satu faktur berisi banyak item | Masuk laporan pembelian bulan berjalan |
+
+Perbedaannya bukan sekadar label. Kalau memuat persediaan lama ditandai sebagai
+pembelian, laporan bulan pertama akan menunjukkan belanja ratusan juta rupiah
+yang tidak pernah terjadi — dan bulan itu tidak akan pernah bisa dibandingkan
+dengan bulan-bulan berikutnya. Yang bertanda Saldo Awal diberi kolom tersendiri
+di rekap dan diberi keterangan di layar laporan.
+
+**Satu baris = satu batch.** Obat yang sama dengan tanggal kadaluwarsa, faktur,
+PBF, atau harga beli berbeda ditulis di baris terpisah. Baris yang gabungannya
+persis sama akan menambah stok batch yang ada, bukan membuat baris baru.
+
+**Tanggal.** Tulis `2028-06-30` — tahun, bulan, tanggal. Bentuk `30/06/2028`
+juga diterima, tapi `03/04/2028` bisa dibaca dua cara. Sistem membacanya
+hari-dulu dan **menampilkan hasil bacaannya** di kolom Kadaluwarsa ("3 April
+2028"), jadi salah baca langsung terlihat sebelum apa pun tersimpan.
+
+**Obat yang belum ada di Master Data tidak langsung ditolak.** Barisnya
+ditandai, dan Anda punya dua pilihan:
+
+- Centang kolom **Buat** — obatnya ditambahkan ke Master Data saat impor,
+  dengan nama, satuan, dan harga jual dari berkas. Penambahan itu tercatat di
+  audit log atas nama Anda.
+- Kalau ada nama yang mirip, sistem menyebutkannya lebih dulu — tekan namanya
+  untuk memakai obat yang sudah ada. Ini yang mencegah "Amoxicilin 500mg" dan
+  "Amoxicillin 500 mg" hidup sebagai dua kartu stok yang tidak pernah
+  dijumlahkan.
+
+Beda spasi saja bukan masalah: "Amoxicillin 500mg" otomatis bertemu
+"Amoxicillin 500 mg" di Master Data.
+
+**Semua atau tidak sama sekali.** Berkas 80 baris yang ditolak di baris ke-63
+tidak menyisakan 62 batch yang terlanjur masuk. Kalau ada satu baris yang
+ditolak database, tidak ada satu pun yang tersimpan — pesannya menyebut nomor
+barisnya, Anda perbaiki di Excel, lalu unggah ulang berkas yang sama tanpa
+khawatir stok tercatat dua kali.
+
+**Batasnya 2.000 baris sekali impor.** Berkas yang lebih besar dipecah dulu.
+
+---
+
+## Ekspor Excel
+
+Apotek → **Ekspor Excel**. Satu berkas berisi lembar yang Anda pilih:
+
+| Lembar | Isi |
+|---|---|
+| **Ringkasan** | Nilai aset, 10 obat bernilai terbesar, yang menipis, yang kadaluwarsa atau hampir |
+| **Stok per Obat** | Satu baris per obat: total, nilai, jumlah batch, kadaluwarsa terdekat |
+| **Stok per Batch** | Rincian tiap batch |
+| **Riwayat Transaksi** | Semua pergerakan pada rentang tanggal yang dipilih |
+| **Rekap 12 Bulan** | Pembelian, saldo awal, dan keluar per kategori |
+| **Kartu Stok** | Kartu harian satu obat pada satu bulan |
+
+Angkanya ditulis sebagai **angka**, bukan teks berformat "Rp 1.500", jadi masih
+bisa dijumlahkan dan disaring di Excel.
+
+Lembar **Stok per Batch** memakai judul kolom yang sama persis dengan template
+impor. Artinya hasil ekspor bisa langsung diunggah kembali — berguna untuk
+memindahkan stok ke database lain, atau memulihkan keadaan setelah kesalahan
+besar.
 
 ---
 

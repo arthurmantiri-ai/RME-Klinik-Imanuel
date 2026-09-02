@@ -142,3 +142,36 @@ cek('daftarObat menyertakan obat yang batch-nya sudah habis',
     daftar.length === 1 && daftar[0].obat_id === 'o1');
 
 console.log(`\n${lulus} pemeriksaan lulus.`);
+
+/* ------------------------------------ Saldo awal terpisah dari pembelian */
+
+const trxSaldo = [
+  { obat_id: 'o1', nama_obat: 'Amoxicillin', satuan: 'Tablet', jenis: 'MASUK',
+    kategori: 'Saldo Awal', jumlah: 500, total_nilai: 300000, tanggal: '2026-08-01' },
+  { obat_id: 'o1', nama_obat: 'Amoxicillin', satuan: 'Tablet', jenis: 'MASUK',
+    kategori: 'Pembelian', jumlah: 100, total_nilai: 60000, tanggal: '2026-08-05' },
+  { obat_id: 'o1', nama_obat: 'Amoxicillin', satuan: 'Tablet', jenis: 'KELUAR',
+    kategori: 'Resep Pasien', jumlah: 40, total_nilai: 24000, tanggal: '2026-08-20' }
+];
+const lapS = A.laporanBulan(trxSaldo, '2026-08');
+cek('pemuatan stok awal tidak dihitung sebagai pembelian',
+    lapS.pembelianRp === 60000, 'dapat ' + lapS.pembelianRp);
+cek('pemuatan stok awal dilaporkan tersendiri',
+    lapS.saldoAwalRp === 300000 && lapS.saldoAwalQty === 500,
+    `dapat ${lapS.saldoAwalRp} / ${lapS.saldoAwalQty}`);
+cek('selisih bulan dihitung tanpa saldo awal',
+    lapS.selisihRp === 60000 - 24000, 'dapat ' + lapS.selisihRp);
+
+/* Saldo awal tetap menggerakkan stok, jadi kartu stok WAJIB ikut
+   menghitungnya — hanya laporan pembelian yang memisahkannya. */
+const kartuS = A.kartuObat({
+  transaksi: trxSaldo,
+  batch: [{ id: 'x', obat_id: 'o1', nama_obat: 'Amoxicillin', satuan: 'Tablet',
+            stok_sisa: 560, harga_beli: 600, tgl_expired: '2028-01-01', tgl_masuk: '2026-08-01' }],
+  obatId: 'o1', bulan: '2026-08'
+});
+cek('kartu stok tetap menghitung saldo awal sebagai pemasukan',
+    kartuS.total.masukQty === 600 && kartuS.saldoAwal === 0,
+    `masuk ${kartuS.total.masukQty}, saldo awal ${kartuS.saldoAwal}`);
+
+console.log(`\n${lulus} pemeriksaan lulus (termasuk saldo awal).`);

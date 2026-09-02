@@ -71,10 +71,13 @@ const Apotek = (() => {
           <h1>Apotek</h1>
           <p class="text-muted mb-0">Antrean resep, stok batch, dan laporan pemakaian obat.</p>
         </div>
-        ${bolehTulis() ? `<div class="btn-group">
+        <div class="btn-group">
+          <button class="btn btn-secondary" id="btnEkspor">${UI.ikon('unduh',16)} Ekspor Excel</button>
+          ${bolehTulis() ? `
+          <button class="btn btn-secondary" id="btnImpor">${UI.ikon('rekam',16)} Impor Excel</button>
           <button class="btn btn-secondary" id="btnKeluar">${UI.ikon('pil',16)} Obat keluar</button>
-          <button class="btn btn-primary" id="btnMasuk">${UI.ikon('plus',16)} Obat masuk</button>
-        </div>` : ''}
+          <button class="btn btn-primary" id="btnMasuk">${UI.ikon('plus',16)} Obat masuk</button>` : ''}
+        </div>
       </div>
 
       <div class="grid grid-4 mb-16" id="ringkasan"></div>
@@ -94,9 +97,11 @@ const Apotek = (() => {
       tab = b.dataset.t;
       gambarIsi();
     });
+    el.querySelector('#btnEkspor').addEventListener('click', dialogEkspor);
     if (bolehTulis()) {
       el.querySelector('#btnMasuk').addEventListener('click', dialogObatMasuk);
       el.querySelector('#btnKeluar').addEventListener('click', () => dialogObatKeluar());
+      el.querySelector('#btnImpor').addEventListener('click', dialogImpor);
     }
 
     gambarRingkasan();
@@ -578,6 +583,13 @@ const Apotek = (() => {
               <div class="hint">masuk − keluar</div></div>
           </div>
 
+          ${lap.saldoAwalRp > 0 ? `<div class="banner info mb-16"><div>
+            Bulan ini ada <b>${rp(lap.saldoAwalRp)}</b> stok yang dimuat sebagai
+            <b>saldo awal</b> (${lap.saldoAwalQty} satuan). Nilai itu sengaja
+            <b>tidak</b> dihitung sebagai pembelian — barangnya sudah ada di rak
+            sebelum sistem dipakai, jadi memasukkannya ke angka belanja akan membuat
+            bulan ini mustahil dibandingkan dengan bulan berikutnya.</div></div>` : ''}
+
           <h3 style="font-size:14px;margin-bottom:8px">Obat keluar per kategori</h3>
           <div class="table-wrap mb-16"><table class="tbl"><tbody>
             ${Object.entries(lap.perKategori).filter(([, v]) => v.qty > 0).map(([k, v]) =>
@@ -1053,6 +1065,445 @@ const Apotek = (() => {
       ]
     });
     return ok;
+  }
+
+  /* ==================================================================
+     EXCEL — pemuatan pustaka
+     ==================================================================
+     SheetJS hampir 900 KB. Memuatnya di app.html berarti setiap orang
+     yang membuka Beranda menunggu berkas yang hanya dipakai apoteker
+     sesekali; di jaringan klinik itu terasa. Diambil saat dibutuhkan,
+     lalu tinggal di memori sampai halaman ditutup. */
+  let sheetSiap = null;
+  function muatSheetJS() {
+    if (typeof XLSX !== 'undefined') return Promise.resolve();
+    if (sheetSiap) return sheetSiap;
+    sheetSiap = new Promise((ok, gagal) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      s.onload = ok;
+      s.onerror = () => gagal(new Error('gagal memuat'));
+      document.head.appendChild(s);
+    }).catch(e => { sheetSiap = null; throw e; });
+    return sheetSiap;
+  }
+
+  async function siapkanExcel() {
+    try {
+      await muatSheetJS();
+      return true;
+    } catch (e) {
+      UI.toast('Pustaka Excel gagal dimuat. Periksa koneksi internet, lalu coba lagi.', 'err');
+      return false;
+    }
+  }
+
+  /* Menyusun satu berkas .xlsx dari beberapa lembar dan mengunduhnya.
+     `lembar` berbentuk [{ nama, aoa }]. */
+  function unduhExcel(namaBerkas, lembar) {
+    const wb = XLSX.utils.book_new();
+    lembar.forEach(l => {
+      const ws = XLSX.utils.aoa_to_sheet(l.aoa);
+      ws['!cols'] = ApotekExcel.lebarKolom(l.aoa);
+      /* Nama lembar Excel dibatasi 31 karakter dan tidak boleh memuat
+         : \ / ? * [ ] — melanggarnya membuat berkas gagal dibuka, bukan
+         sekadar tampil aneh. */
+      XLSX.utils.book_append_sheet(wb, ws,
+        String(l.nama).replace(/[:\\/?*[\]]/g, ' ').slice(0, 31));
+    });
+    XLSX.writeFile(wb, namaBerkas);
+  }
+
+  /* ==================================================================
+     DIALOG — EKSPOR
+     ================================================================== */
+  async function dialogEkspor() {
+    const awalBulan = UI.bulanIni() + '-01';
+    const daftar = K.daftarObat(batch, transaksi);
+
+    await UI.modal({
+      judul: 'Ekspor stok apotek ke Excel',
+      lebar: true,
+      isi: `
+        <div class="banner info mb-16"><div>Satu berkas .xlsx berisi lembar yang Anda
+          pilih di bawah. Angkanya ditulis sebagai <b>angka</b>, bukan teks berformat
+          rupiah, jadi masih bisa dijumlahkan dan disaring di Excel.</div></div>
+
+        <div class="field"><label>Lembar yang disertakan</label>
+          <div class="form-row c2">
+            <label class="check" style="margin-bottom:8px"><input type="checkbox" name="l_obat" checked>
+              <span>Stok per obat</span></label>
+            <label class="check" style="margin-bottom:8px"><input type="checkbox" name="l_batch" checked>
+              <span>Stok per batch</span></label>
+            <label class="check" style="margin-bottom:8px"><input type="checkbox" name="l_ringkas" checked>
+              <span>Ringkasan &amp; perhatian</span></label>
+            <label class="check" style="margin-bottom:8px"><input type="checkbox" name="l_riwayat" checked>
+              <span>Riwayat transaksi</span></label>
+            <label class="check" style="margin-bottom:8px"><input type="checkbox" name="l_rekap" checked>
+              <span>Rekap 12 bulan</span></label>
+            <label class="check" style="margin-bottom:8px"><input type="checkbox" name="l_kartu">
+              <span>Kartu stok satu obat</span></label>
+          </div>
+          <div class="hint">Lembar <b>Stok per batch</b> memakai judul kolom yang sama
+            dengan template impor, jadi hasil ekspornya bisa langsung dipakai untuk
+            memuat ulang stok di tempat lain.</div></div>
+
+        <div class="form-row c2">
+          <div class="field"><label>Riwayat dari tanggal</label>
+            <input type="date" name="dari" value="${awalBulan}"></div>
+          <div class="field"><label>Sampai tanggal</label>
+            <input type="date" name="sampai" value="${UI.hariIni()}"></div>
+        </div>
+
+        <div class="form-row c2" id="barisKartu" style="display:none">
+          <div class="field"><label>Kartu stok untuk obat</label>
+            <select name="kartu_obat">${daftar.map(o =>
+              `<option value="${UI.esc(o.obat_id)}">${UI.esc(o.nama)}</option>`).join('')}</select></div>
+          <div class="field"><label>Bulan</label>
+            <input type="month" name="kartu_bulan" value="${UI.bulanIni()}"></div>
+        </div>`,
+      siap: (badan) => {
+        const c = badan.querySelector('[name=l_kartu]');
+        const baris = badan.querySelector('#barisKartu');
+        c.addEventListener('change', () => { baris.style.display = c.checked ? '' : 'none'; });
+      },
+      tombol: [
+        { teks: 'Batal', nilai: null },
+        { teks: 'Unduh berkas', kelas: 'btn-primary', aksi: async (badan) => {
+            const f = UI.nilaiForm(badan);
+            if (!['l_obat','l_batch','l_ringkas','l_riwayat','l_rekap','l_kartu'].some(k => f[k])) {
+              UI.toast('Pilih minimal satu lembar.', 'err'); return false;
+            }
+            if (!await siapkanExcel()) return false;
+
+            const lembar = [];
+            if (f.l_ringkas) lembar.push({ nama: 'Ringkasan',
+              aoa: ApotekExcel.lembarRingkasan({
+                stok, batch, ringkasStok: K.ringkasStok(batch),
+                namaKlinik: CONFIG.NAMA_KLINIK,
+                tanggal: UI.tglIndo(new Date(), true) }) });
+            if (f.l_obat)  lembar.push({ nama: 'Stok per Obat',  aoa: ApotekExcel.lembarStokPerObat(stok) });
+            if (f.l_batch) lembar.push({ nama: 'Stok per Batch', aoa: ApotekExcel.lembarStokPerBatch(batch) });
+
+            if (f.l_riwayat) {
+              /* Rentang yang diminta bisa lebih panjang dari riwayat yang
+                 sudah ada di memori (halaman hanya memuat 120 hari), jadi
+                 diambil ulang sesuai rentangnya. */
+              const trx = await DB.apotekTransaksi({ dari: f.dari, sampai: f.sampai });
+              lembar.push({ nama: 'Riwayat Transaksi', aoa: ApotekExcel.lembarRiwayat(trx) });
+            }
+            if (f.l_rekap) {
+              const setahun = await DB.apotekTransaksi({
+                dari: UI.geserBulan(UI.bulanIni(), -12) + '-01' });
+              lembar.push({ nama: 'Rekap 12 Bulan',
+                aoa: ApotekExcel.lembarRekapBulanan(setahun, UI.bulanIni(), 12) });
+            }
+            if (f.l_kartu && f.kartu_obat) {
+              const kartuData = K.kartuObat({
+                transaksi, batch, obatId: f.kartu_obat, bulan: f.kartu_bulan || UI.bulanIni() });
+              lembar.push({ nama: 'Kartu Stok', aoa: ApotekExcel.lembarKartuStok(kartuData) });
+            }
+
+            unduhExcel(`stok-apotek-${UI.hariIni()}.xlsx`, lembar);
+            UI.toast('Berkas Excel diunduh.');
+          } }
+      ]
+    });
+  }
+
+  /* ==================================================================
+     DIALOG — IMPOR
+     ================================================================== */
+  let imp = null;   // { jenis, hasil, master }
+
+  async function dialogImpor() {
+    imp = { jenis: 'Pembelian', hasil: null, master: null };
+
+    await UI.modal({
+      judul: 'Impor stok dari Excel',
+      lebar: true,
+      isi: `
+        <div class="field"><label>Jenis impor</label>
+          <div class="radio-row" id="jenisImpor">${ApotekExcel.JENIS_IMPOR.map(j =>
+            `<button type="button" class="radio-chip" data-jenis="${UI.esc(j.kunci)}">${UI.esc(j.judul)}</button>`).join('')}</div>
+          <div class="hint" id="bantuJenis"></div></div>
+
+        <!-- Dua langkah pertama menyusut jadi satu baris begitu berkasnya
+             terbaca. Penjelasannya berguna sekali, lalu hanya jadi penghalang
+             antara apoteker dan tabel yang justru harus ia periksa. -->
+        <div id="langkahAwal"></div>
+
+        <div id="hasilImpor"></div>`,
+      siap: (badan) => {
+        const pilihJenis = (j) => {
+          imp.jenis = j;
+          badan.querySelectorAll('[data-jenis]').forEach(b =>
+            b.classList.toggle('on', b.dataset.jenis === j));
+          badan.querySelector('#bantuJenis').textContent =
+            (ApotekExcel.JENIS_IMPOR.find(x => x.kunci === j) || {}).bantu || '';
+          if (imp.hasil) gambarPratinjauImpor(badan);
+        };
+        badan.querySelectorAll('[data-jenis]').forEach(b =>
+          b.addEventListener('click', () => pilihJenis(b.dataset.jenis)));
+        pilihJenis('Pembelian');
+        pasangLangkahAwal(badan);
+      },
+      tombol: [{ teks: 'Tutup', nilai: null }]
+    });
+    imp = null;
+  }
+
+  /* Dua langkah pertama, dipasang ulang saat pengguna menekan
+     "Ganti berkas". Isinya dan pemasangan pendengarnya disatukan di sini
+     supaya tidak ada dua salinan HTML yang bisa berbeda diam-diam. */
+  function pasangLangkahAwal(badan) {
+    const awal = badan.querySelector('#langkahAwal');
+    awal.innerHTML = `
+      <div class="card" style="margin-bottom:14px"><div class="card-body">
+        <b style="font-size:13px">Langkah 1 — unduh template</b>
+        <p class="text-xs text-muted" style="margin:4px 0 10px">Berisi lembar Data
+          dengan judul kolom yang benar, satu baris contoh, dan lembar Petunjuk.</p>
+        <button class="btn btn-secondary btn-sm" id="btnTemplate">
+          ${UI.ikon('unduh',15)} Unduh template Excel</button>
+      </div></div>
+
+      <div class="card" style="margin-bottom:14px"><div class="card-body">
+        <b style="font-size:13px">Langkah 2 — unggah berkas yang sudah diisi</b>
+        <p class="text-xs text-muted" style="margin:4px 0 10px">Semua baris diperiksa
+          dulu dan ditampilkan. <b>Tidak ada yang tersimpan</b> sebelum Anda menekan
+          Proses di bawah.</p>
+        <input type="file" id="berkasImpor" accept=".xlsx,.xls,.csv">
+      </div></div>`;
+
+    awal.querySelector('#btnTemplate').addEventListener('click', async () => {
+      if (!await siapkanExcel()) return;
+      unduhExcel(`template-impor-stok-${UI.hariIni()}.xlsx`, [
+        { nama: 'Data',     aoa: ApotekExcel.lembarTemplate() },
+        { nama: 'Petunjuk', aoa: ApotekExcel.lembarPetunjuk(imp.jenis) }
+      ]);
+    });
+
+    awal.querySelector('#berkasImpor').addEventListener('change', async (e) => {
+      const berkas = e.target.files && e.target.files[0];
+      if (!berkas) return;
+      const kotak = badan.querySelector('#hasilImpor');
+      kotak.innerHTML = UI.memuat(2);
+      try {
+        if (!await siapkanExcel()) { kotak.innerHTML = ''; return; }
+        if (!imp.master) imp.master = await DB.obatUntukPencocokan();
+
+        const buf = await berkas.arrayBuffer();
+        /* raw: true — angka dan tanggal dibaca apa adanya, lalu
+           ditafsirkan sendiri oleh apotek_excel.js. Membiarkan SheetJS
+           mengubah serial jadi objek Date memindahkan penafsiran zona
+           waktu ke tempat yang tidak bisa diuji. */
+        const wb = XLSX.read(buf, { type: 'array', raw: true });
+        const nama = wb.SheetNames.find(n => /data/i.test(n)) || wb.SheetNames[0];
+        const aoa = XLSX.utils.sheet_to_json(wb.Sheets[nama],
+          { header: 1, raw: true, defval: null, blankrows: false });
+
+        imp.hasil = ApotekExcel.bacaLembar(aoa, imp.master, { hariIni: UI.hariIni() });
+        imp.namaBerkas = berkas.name;
+        imp.namaLembar = nama;
+        gambarPratinjauImpor(badan);
+      } catch (err) {
+        kotak.innerHTML = `<div class="banner err"><div><b>Berkas tidak bisa dibaca.</b><br>
+          ${UI.esc(err.message || err)}</div></div>`;
+      }
+    });
+  }
+
+  function gambarPratinjauImpor(badan) {
+    const kotak = badan.querySelector('#hasilImpor');
+    const h = imp.hasil;
+    if (!h) { kotak.innerHTML = ''; return; }
+
+    if (h.galatBerkas) {
+      kotak.innerHTML = `<div class="banner err"><div><b>Berkas belum bisa dipakai.</b><br>
+        ${UI.esc(h.galatBerkas)}</div></div>`;
+      return;
+    }
+
+    const r = ApotekExcel.ringkas(h.baris);
+    const jenisLabel = (ApotekExcel.JENIS_IMPOR.find(x => x.kunci === imp.jenis) || {}).judul;
+
+    // Beri seluruh ruang layar kepada tabel yang harus diperiksa.
+    const awal = badan.querySelector('#langkahAwal');
+    if (awal && !awal.dataset.ringkas) {
+      awal.dataset.ringkas = '1';
+      awal.innerHTML = `<div class="banner ok mb-16" style="align-items:center"><div style="flex:1">
+          Berkas terbaca: <b>${UI.esc(imp.namaBerkas)}</b></div>
+          <button class="btn btn-secondary btn-sm" id="btnGantiBerkas">Ganti berkas</button>
+        </div>`;
+      awal.querySelector('#btnGantiBerkas').addEventListener('click', () => {
+        delete awal.dataset.ringkas;
+        imp.hasil = null;
+        badan.querySelector('#hasilImpor').innerHTML = '';
+        pasangLangkahAwal(badan);
+      });
+    }
+
+    kotak.innerHTML = `
+      <div class="card"><div class="card-head">
+        <div style="flex:1"><h2>Periksa lalu proses</h2>
+          <div class="sub">${UI.esc(imp.namaBerkas)} · lembar "${UI.esc(imp.namaLembar)}"
+            · ${h.baris.length} baris berisi data</div></div>
+      </div>
+      <div class="card-body">
+        <div class="grid grid-4 mb-16">
+          <div class="stat"><div class="lbl">Siap diproses</div>
+            <div class="val" style="color:var(--ok-700,#166534)">${r.siap}</div></div>
+          <div class="stat"><div class="lbl">Perlu diperbaiki</div>
+            <div class="val" style="color:${r.galat ? 'var(--danger-700)' : 'inherit'}">${r.galat}</div></div>
+          <div class="stat"><div class="lbl">Obat baru</div>
+            <div class="val">${r.obatBaru}</div>
+            ${r.tertunda ? `<div class="hint" style="color:var(--warn-700)">
+              ${r.tertunda} belum dicentang</div>` : ''}</div>
+          <div class="stat"><div class="lbl">Nilai yang masuk</div>
+            <div class="val" style="font-size:20px">${rp(r.nilai)}</div></div>
+        </div>
+
+        ${h.kolomTakDikenal.length ? `<div class="banner warn mb-16"><div>
+          Kolom yang tidak dikenali dan diabaikan:
+          <b>${UI.esc(h.kolomTakDikenal.join(', '))}</b>.</div></div>` : ''}
+
+        ${h.adaAmbigu ? `<div class="banner warn mb-16"><div>
+          Ada tanggal yang ditulis seperti <code>03/04/2028</code> — bentuk itu bisa
+          dibaca dua cara. Sistem membacanya <b>hari dulu, baru bulan</b>. Periksa
+          kolom Kadaluwarsa di bawah: tanggalnya ditulis lengkap supaya salah baca
+          langsung terlihat.</div></div>` : ''}
+
+        ${r.tertunda ? `<div class="banner info mb-16"><div>
+          ${r.tertunda} baris obatnya belum ada di Master Data. Centang kolom
+          <b>Buat</b> untuk membuatnya, atau tekan nama yang mirip untuk memakai obat
+          yang sudah ada. Selama masih ada yang belum diputuskan, tombol Proses
+          tetap terkunci.</div></div>` : ''}
+
+        <div class="table-wrap" style="max-height:380px;overflow-y:auto">
+          <table class="tbl"><thead><tr>
+            <th style="width:44px">Baris</th><th>Obat</th>
+            <th class="text-right">Jumlah</th><th class="text-right">Harga beli</th>
+            <th>Kadaluwarsa</th><th>PBF / faktur</th>
+            <th style="width:52px">Buat</th><th>Catatan</th>
+          </tr></thead><tbody>${h.baris.map((b, i) => barisPratinjau(b, i)).join('')}</tbody></table>
+        </div>
+
+        <div class="btn-group" style="margin-top:14px">
+          <button class="btn btn-primary" id="btnProses" ${r.bisaDiproses ? '' : 'disabled'}>
+            Proses ${r.siap} baris sebagai ${UI.esc(jenisLabel)}</button>
+          ${r.galat ? `<span class="hint" style="align-self:center;color:var(--danger-700)">
+            Perbaiki ${r.galat} baris bergalat di Excel, lalu unggah ulang.</span>` : ''}
+        </div>
+      </div></div>`;
+
+    kotak.querySelectorAll('[data-buat]').forEach(c =>
+      c.addEventListener('change', () => {
+        h.baris[+c.dataset.buat].buatObat = c.checked;
+        gambarPratinjauImpor(badan);
+      }));
+    kotak.querySelectorAll('[data-pakai]').forEach(t =>
+      t.addEventListener('click', () => {
+        const [i, id] = t.dataset.pakai.split('|');
+        const b = h.baris[+i];
+        b.obat = imp.master.find(o => String(o.id) === id) || null;
+        b.caraCocok = 'manual';
+        b.buatObat = false;
+        ApotekExcel.periksaBaris(b, { hariIni: UI.hariIni() });
+        if (b.obat) b.peringatan.unshift(`Dipilih manual: ${b.obat.nama}.`);
+        gambarPratinjauImpor(badan);
+      }));
+
+    const btn = kotak.querySelector('#btnProses');
+    if (btn) btn.addEventListener('click', () => prosesImpor(badan, btn));
+  }
+
+  function barisPratinjau(b, i) {
+    const s = ApotekExcel.statusBaris(b);
+    const warna = { galat: 'background:var(--danger-50,#fef2f2)',
+                    tertunda: 'background:var(--warn-50,#fffbeb)' }[s] || '';
+    const catatan = [
+      ...b.galat.map(g => `<div style="color:var(--danger-700)">${UI.esc(g)}</div>`),
+      ...b.peringatan.map(p => `<div class="text-muted">${UI.esc(p)}</div>`)
+    ].join('') || '<span class="text-muted">—</span>';
+
+    const mirip = (!b.obat && b.mirip && b.mirip.length)
+      ? `<div class="chip-list">${b.mirip.map(m =>
+          `<button type="button" class="chip" data-pakai="${i}|${UI.esc(m.obat.id)}"
+             style="cursor:pointer;border:none">pakai: ${UI.esc(m.obat.nama)}</button>`).join('')}</div>`
+      : '';
+
+    return `<tr style="${warna}">
+      <td class="text-xs text-muted">${b.nomorBaris}</td>
+      <td><b>${UI.esc(b.nama_obat || '—')}</b>
+        ${b.obat && b.obat.nama !== b.nama_obat
+          ? `<div class="text-xs text-muted">→ ${UI.esc(b.obat.nama)}</div>` : ''}
+        ${b.kode_obat ? `<div class="text-xs text-muted mono">${UI.esc(b.kode_obat)}</div>` : ''}
+        ${mirip}</td>
+      <td class="text-right">${b.jumlah === null ? '—' : b.jumlah}</td>
+      <td class="text-right">${b.harga_beli === null ? '—' : rp(b.harga_beli)}</td>
+      <td class="text-xs">${b.tgl_expired
+        ? UI.tglIndo(b.tgl_expired) + (b.tglAmbigu
+            ? '<div style="color:var(--warn-700)">dibaca hari-bulan</div>' : '')
+        : '<span style="color:var(--danger-700)">tidak terbaca</span>'}</td>
+      <td class="text-xs">${UI.esc(b.pbf || '—')}
+        ${b.no_faktur ? `<div class="text-muted">${UI.esc(b.no_faktur)}</div>` : ''}</td>
+      <td class="text-center">${b.obat ? '<span class="text-muted">—</span>'
+        : `<input type="checkbox" data-buat="${i}" ${b.buatObat ? 'checked' : ''}
+             title="Buat obat ini di Master Data">`}</td>
+      <td class="text-xs" style="max-width:260px">${catatan}</td>
+    </tr>`;
+  }
+
+  async function prosesImpor(badan, btn) {
+    const h = imp.hasil;
+    const muatan = ApotekExcel.keMuatan(h.baris);
+    const r = ApotekExcel.ringkas(h.baris);
+    if (!muatan.length) { UI.toast('Tidak ada baris yang siap diproses.', 'err'); return; }
+
+    const ok = await UI.konfirmasi(
+      `Proses ${muatan.length} baris?`,
+      `${muatan.length} batch akan masuk sebagai "${imp.jenis}", senilai ${rp(r.nilai)}.`
+      + (r.obatBaru ? ` ${r.obatBaru} obat baru akan ditambahkan ke Master Data.` : '')
+      + ' Seluruh berkas diproses sekaligus — kalau ada satu baris yang ditolak database,'
+      + ' tidak ada satu pun yang tersimpan.',
+      'Ya, proses');
+    if (!ok) return;
+
+    const lama = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = 'Memproses…';
+    try {
+      const hasil = await DB.apotekImpor(muatan, imp.jenis);
+      await segarkan();
+      UI.toast(`${hasil.baris} baris masuk — ${hasil.batch_baru} batch baru, `
+             + `${hasil.batch_digabung} digabung ke batch lama.`);
+
+      badan.querySelector('#hasilImpor').innerHTML = `
+        <div class="banner ok"><div>
+          <b>Impor selesai.</b><br>
+          ${hasil.baris} baris diproses sebagai <b>${UI.esc(hasil.jenis)}</b>,
+          senilai ${rp(hasil.total_nilai)}.<br>
+          ${hasil.batch_baru} batch baru dibuat, ${hasil.batch_digabung} ditambahkan
+          ke batch yang sudah ada.
+          ${hasil.obat_baru ? `<br>${hasil.obat_baru} obat baru ditambahkan ke Master Data:
+            <b>${UI.esc((hasil.nama_obat_baru || []).join(', '))}</b>.` : ''}
+        </div></div>`;
+      imp.hasil = null;
+    } catch (e) {
+      btn.disabled = false; btn.innerHTML = lama;
+      /* Pesan dari database sudah menyebut nomor barisnya. Ditampilkan
+         apa adanya, tidak diringkas — nomor baris itulah satu-satunya
+         cara apoteker menemukan sel yang harus dibetulkan. */
+      UI.modal({
+        judul: 'Impor dibatalkan',
+        isi: `<div class="banner err"><div><b>Tidak ada satu baris pun yang tersimpan.</b><br>
+            ${UI.esc(e.message || e)}</div></div>
+          <p class="text-xs text-muted" style="margin-top:12px">Perbaiki baris tersebut di
+            berkas Excel, simpan, lalu unggah ulang. Karena tidak ada yang tersimpan,
+            berkasnya bisa diunggah utuh tanpa risiko stok tercatat dua kali.</p>`,
+        tombol: [{ teks: 'Mengerti', nilai: null }]
+      });
+    }
   }
 
   return { render };

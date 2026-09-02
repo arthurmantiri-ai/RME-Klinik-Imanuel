@@ -323,6 +323,13 @@ const ApotekCore = (() => {
     };
   }
 
+  /* Pemasukan berkategori 'Saldo Awal' dihitung TERPISAH dari pembelian.
+     Memuat persediaan yang sudah ada di rak ke dalam sistem bukan belanja
+     bulan itu; kalau digabung, laporan bulan pertama menunjukkan
+     pembelian ratusan juta dan tidak bisa dipakai untuk apa pun —
+     termasuk membandingkannya dengan bulan-bulan berikutnya. */
+  const KATEGORI_SALDO_AWAL = 'Saldo Awal';
+
   function laporanBulan(transaksi, bulan, kategoriKeluar) {
     const daftarKat = kategoriKeluar || KATEGORI_KELUAR;
     const trx = (transaksi || []).filter(t =>
@@ -330,22 +337,35 @@ const ApotekCore = (() => {
 
     const total = selBaru(daftarKat);
     const perObat = {};
+    let saldoAwalRp = 0, saldoAwalQty = 0;
+
     trx.forEach(t => {
-      agregatKe(total, t, daftarKat);
+      if (t.jenis === 'MASUK' && t.kategori === KATEGORI_SALDO_AWAL) {
+        saldoAwalRp  += angka(t.total_nilai);
+        saldoAwalQty += angka(t.jumlah);
+      } else {
+        agregatKe(total, t, daftarKat);
+      }
       const k = t.obat_id;
       if (!perObat[k]) {
         perObat[k] = selBaru(daftarKat);
         perObat[k].obatId = k;
         perObat[k].nama = t.nama_obat;
         perObat[k].satuan = t.satuan || '';
+        perObat[k].saldoAwalQty = 0;
       }
-      agregatKe(perObat[k], t, daftarKat);
+      if (t.jenis === 'MASUK' && t.kategori === KATEGORI_SALDO_AWAL) {
+        perObat[k].saldoAwalQty += angka(t.jumlah);
+      } else {
+        agregatKe(perObat[k], t, daftarKat);
+      }
     });
 
     return {
       bulan,
       pembelianRp:  total.masukRp,
       pembelianQty: total.masukQty,
+      saldoAwalRp, saldoAwalQty,
       keluarRp:     total.keluarRp,
       keluarQty:    total.keluarQty,
       selisihRp:    total.masukRp - total.keluarRp,
@@ -357,7 +377,7 @@ const ApotekCore = (() => {
   }
 
   const API = {
-    KATEGORI_KELUAR, KATEGORI_PEMUSNAHAN,
+    KATEGORI_KELUAR, KATEGORI_PEMUSNAHAN, KATEGORI_SALDO_AWAL,
     hariIniLokal, bulanIniLokal, akhirBulan,
     urutFefo, sudahExpired, batchBolehKeluar, simulasiFefo,
     stokSekarang, kartuObat, rekapHarian, daftarObat,

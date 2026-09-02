@@ -692,6 +692,26 @@ const DB = (() => {
     if (error) throw error; return data;
   }
 
+  /* Seluruh master obat untuk mencocokkan berkas impor — termasuk yang
+     nonaktif, supaya obat yang pernah dinonaktifkan tidak lahir kembali
+     sebagai duplikat lewat impor. Diambil bertahap karena PostgREST
+     memotong di 1.000 baris tanpa memberi tanda apa pun. */
+  async function obatUntukPencocokan() {
+    return await ambilSemua(() =>
+      sb.from('v_obat_pencocokan').select('*').order('nama').order('id'));
+  }
+
+  /* Seluruh berkas diproses dalam satu transaksi di database. Impor 80
+     baris yang gagal di baris ke-63 tidak menyisakan 62 batch — apoteker
+     tidak punya cara tahu di mana ia berhenti, dan mengulang dari awal
+     akan menggandakan stok. */
+  async function apotekImpor(baris, jenis) {
+    const { data, error } = await sb.rpc('apotek_impor',
+      { p_baris: baris, p_jenis: jenis || 'Pembelian' });
+    if (error) throw error;
+    return data;
+  }
+
   async function antreanFarmasi({ tanggal = null, semua = false } = {}) {
     let q = sb.from('v_antrean_farmasi').select('*')
       .order('tanggal', { ascending: false }).order('no_antrian');
@@ -907,6 +927,7 @@ const DB = (() => {
     ambilSemua,
     apotekBatch, apotekStok, apotekTransaksi, apotekMasuk, apotekKeluar,
     apotekBatalkanGrup, apotekSerahkanResep, simpanBatch,
+    apotekImpor, obatUntukPencocokan,
     antreanFarmasi, resepUntukFarmasi, batchObat,
     kasirMenunggu, kasirDaftarTagihan, kasirTagihan, kasirItem, kasirPembayaran,
     kasirLengkap, kasirSusunDariKunjungan, kasirCatatPembayaran,

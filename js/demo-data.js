@@ -1038,6 +1038,82 @@ const DB = (() => {
     return { butir: item.length, dari: semua, sebagian: r.diserahkan_sebagian };
   }
 
+  async function obatUntukPencocokan() {
+    await tunggu(40);
+    return OBAT.map(o => ({ id: o.id, kode_internal: o.kode_internal || null,
+      nama: o.nama, nama_generik: o.nama_generik || null, satuan: o.satuan,
+      bentuk_sediaan: o.bentuk_sediaan, kekuatan: o.kekuatan || null,
+      harga: o.harga, aktif: o.aktif !== false }));
+  }
+
+  /* Meniru apotek_impor() termasuk sifat semua-atau-tidak-sama-sekali:
+     perubahan ditumpuk di salinan sementara dan baru dipasang kalau
+     seluruh baris lolos. Tanpa itu, demo akan berperilaku lebih longgar
+     daripada aplikasi sungguhan — jenis ketidakcocokan yang membuat orang
+     percaya pada perilaku yang tidak ada. */
+  async function apotekImpor(baris, jenis) {
+    await tunggu(200);
+    if (!Array.isArray(baris) || !baris.length) throw new Error('Tidak ada baris untuk diimpor.');
+    if (!['Pembelian', 'Saldo Awal'].includes(jenis)) {
+      throw new Error(`Jenis impor "${jenis}" tidak dikenal.`);
+    }
+
+    const cadanganBatch = JSON.parse(JSON.stringify(BATCH));
+    const cadanganTrx   = JSON.parse(JSON.stringify(TRANSAKSI));
+    const jumlahObat    = OBAT.length;
+    const ringkas = { jenis, baris: 0, batch_baru: 0, batch_digabung: 0,
+                      obat_baru: 0, nama_obat_baru: [], total_nilai: 0 };
+    try {
+      for (let i = 0; i < baris.length; i++) {
+        const b = baris[i];
+        ringkas.baris = i + 1;
+        try {
+          let obatId = b.obat_id;
+          if (!obatId) {
+            const nb = b.obat_baru || {};
+            const nama = String(nb.nama || '').trim();
+            if (!nama) throw new Error('nama obat baru kosong.');
+            let ada = OBAT.find(o =>
+              (nb.kode_internal && o.kode_internal === nb.kode_internal) ||
+              (!nb.kode_internal && o.nama.trim().toLowerCase() === nama.toLowerCase()));
+            if (!ada) {
+              ada = { id: uid(), kode_internal: nb.kode_internal || null, nama,
+                      satuan: nb.satuan || 'Tablet', bentuk_sediaan: nb.satuan || 'Tablet',
+                      harga: Number(nb.harga) || 0, aktif: true };
+              OBAT.push(ada);
+              ringkas.obat_baru++;
+              ringkas.nama_obat_baru.push(nama);
+            }
+            obatId = ada.id;
+          }
+          if (!(Number(b.jumlah) > 0)) throw new Error('Jumlah masuk harus lebih dari nol.');
+          if (!b.tgl_expired) throw new Error('Tanggal kadaluwarsa wajib diisi.');
+          if (!String(b.pbf || '').trim()) throw new Error('Nama PBF / distributor wajib diisi.');
+
+          const h = await apotekMasuk({
+            obat_id: obatId, jumlah: Number(b.jumlah),
+            harga_beli: Number(b.harga_beli) || 0, tgl_expired: b.tgl_expired,
+            pbf: b.pbf, no_faktur: b.no_faktur, tgl_masuk: b.tgl_masuk,
+            no_batch: b.no_batch, keterangan: b.keterangan
+          });
+          if (h.digabung) ringkas.batch_digabung++; else ringkas.batch_baru++;
+          ringkas.total_nilai += Number(b.jumlah) * (Number(b.harga_beli) || 0);
+
+          const t = TRANSAKSI.find(x => x.batch_id === h.batch_id && x.jenis === 'MASUK');
+          if (t) t.kategori = jenis;
+        } catch (e) {
+          throw new Error(`Baris ${i + 1}: ${e.message}`);
+        }
+      }
+    } catch (e) {
+      BATCH.length = 0; cadanganBatch.forEach(x => BATCH.push(x));
+      TRANSAKSI.length = 0; cadanganTrx.forEach(x => TRANSAKSI.push(x));
+      OBAT.length = jumlahObat;
+      throw e;
+    }
+    return ringkas;
+  }
+
   async function simpanBatch(id, patch) {
     const b = BATCH.find(x => x.id === id);
     if (b) Object.assign(b, patch);
@@ -1302,6 +1378,7 @@ const DB = (() => {
            panggilBridging, riwayatBridging, ambilSemua,
            apotekBatch, apotekStok, apotekTransaksi, apotekMasuk, apotekKeluar,
            apotekBatalkanGrup, apotekSerahkanResep, simpanBatch,
+           apotekImpor, obatUntukPencocokan,
            antreanFarmasi, resepUntukFarmasi, batchObat,
            kasirMenunggu, kasirDaftarTagihan, kasirTagihan, kasirItem, kasirPembayaran,
            kasirLengkap, kasirSusunDariKunjungan, kasirCatatPembayaran,

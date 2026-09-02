@@ -18,7 +18,7 @@ atas untuk mencoba tampilan tiap peran, termasuk dokter gigi.
 - **Alur**: pendaftaran → kajian awal → SOAP + ICD-10 + tindakan + resep →
   kunci rekam medis → apotek (stok terpotong FEFO) → kasir (tagihan + kwitansi)
 - **Apotek**: stok per batch dengan urutan keluar FEFO, antrean resep dari dokter,
-  kartu stok harian, laporan bulanan
+  kartu stok harian, laporan bulanan, impor & ekspor Excel (saldo awal dan pembelian)
 - **Kasir**: tagihan disusun otomatis dari tindakan dokter dan obat yang benar-benar
   diserahkan; kunjungan BPJS dicatat nilainya tanpa ditagihkan; kwitansi PDF dan
   struk thermal 58/80 mm
