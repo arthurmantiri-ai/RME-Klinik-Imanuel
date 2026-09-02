@@ -1358,6 +1358,354 @@ const DB = (() => {
     TemplateInvoice.pakai(TEMPLATE);
     return TEMPLATE;
   }
+
+  /* ================= LAB & PENUNJANG (demo) =================
+     Aturan penandaannya dipinjam langsung dari LabCore, bukan ditulis
+     ulang di sini. Kalau demo memakai aturan sendiri, demo bisa terlihat
+     benar sementara aplikasi sungguhannya salah. */
+  const REF_LAB = [
+    { id: 'lab-hb',  kode: 'HB',    nama: 'Hemoglobin',            kelompok: 'Hematologi',
+      satuan: 'g/dL', jenis_nilai: 'ANGKA', desimal: 1, urutan: 10, aktif: true,
+      rujukan: [
+        { id: 'rj-hb-l', lab_id: 'lab-hb', jenis_kelamin: 'L', umur_min_bulan: 180,
+          umur_max_bulan: null, batas_bawah: 13, batas_atas: 17, kritis_bawah: 7, kritis_atas: 20 },
+        { id: 'rj-hb-p', lab_id: 'lab-hb', jenis_kelamin: 'P', umur_min_bulan: 180,
+          umur_max_bulan: null, batas_bawah: 12, batas_atas: 15, kritis_bawah: 7, kritis_atas: 20 },
+        { id: 'rj-hb-a', lab_id: 'lab-hb', jenis_kelamin: null, umur_min_bulan: 12,
+          umur_max_bulan: 72, batas_bawah: 11.5, batas_atas: 13.5, kritis_bawah: 7, kritis_atas: 20 }
+      ] },
+    { id: 'lab-leu', kode: 'LEU',   nama: 'Leukosit',              kelompok: 'Hematologi',
+      satuan: '/µL', jenis_nilai: 'ANGKA', desimal: 0, urutan: 20, aktif: true,
+      rujukan: [{ id: 'rj-leu', lab_id: 'lab-leu', jenis_kelamin: null, umur_min_bulan: 180,
+        umur_max_bulan: null, batas_bawah: 4000, batas_atas: 10000,
+        kritis_bawah: 2000, kritis_atas: 30000 }] },
+    { id: 'lab-tro', kode: 'TRO',   nama: 'Trombosit',             kelompok: 'Hematologi',
+      satuan: '/µL', jenis_nilai: 'ANGKA', desimal: 0, urutan: 30, aktif: true,
+      rujukan: [{ id: 'rj-tro', lab_id: 'lab-tro', jenis_kelamin: null, umur_min_bulan: 0,
+        umur_max_bulan: null, batas_bawah: 150000, batas_atas: 400000,
+        kritis_bawah: 50000, kritis_atas: 1000000 }] },
+    { id: 'lab-gds', kode: 'GDS',   nama: 'Glukosa Darah Sewaktu', kelompok: 'Kimia Klinik',
+      satuan: 'mg/dL', jenis_nilai: 'ANGKA', desimal: 0, urutan: 110, aktif: true,
+      rujukan: [{ id: 'rj-gds', lab_id: 'lab-gds', jenis_kelamin: null, umur_min_bulan: 0,
+        umur_max_bulan: null, batas_bawah: 70, batas_atas: 140,
+        kritis_bawah: 45, kritis_atas: 450 }] },
+    { id: 'lab-chol', kode: 'CHOL', nama: 'Kolesterol Total',      kelompok: 'Kimia Klinik',
+      satuan: 'mg/dL', jenis_nilai: 'ANGKA', desimal: 0, urutan: 140, aktif: true,
+      rujukan: [{ id: 'rj-chol', lab_id: 'lab-chol', jenis_kelamin: null, umur_min_bulan: 0,
+        umur_max_bulan: null, batas_bawah: null, batas_atas: 200, teks: '< 200' }] },
+    { id: 'lab-ua',  kode: 'UA',    nama: 'Asam Urat',             kelompok: 'Kimia Klinik',
+      satuan: 'mg/dL', jenis_nilai: 'ANGKA', desimal: 1, urutan: 180, aktif: true,
+      rujukan: [
+        { id: 'rj-ua-l', lab_id: 'lab-ua', jenis_kelamin: 'L', umur_min_bulan: 0,
+          umur_max_bulan: null, batas_bawah: 3.4, batas_atas: 7 },
+        { id: 'rj-ua-p', lab_id: 'lab-ua', jenis_kelamin: 'P', umur_min_bulan: 0,
+          umur_max_bulan: null, batas_bawah: 2.4, batas_atas: 6 }] },
+    { id: 'lab-hbsag', kode: 'HBSAG', nama: 'HBsAg',               kelompok: 'Imunoserologi',
+      satuan: null, jenis_nilai: 'PILIHAN', pilihan: ['Non Reaktif', 'Reaktif'],
+      teks_normal: 'Non Reaktif', desimal: 0, urutan: 420, aktif: true, rujukan: [] },
+    { id: 'lab-upro', kode: 'UPRO', nama: 'Urine - Protein',       kelompok: 'Urinalisis',
+      satuan: null, jenis_nilai: 'PILIHAN', pilihan: ['Negatif', '+1', '+2', '+3', '+4'],
+      teks_normal: 'Negatif', desimal: 0, urutan: 340, aktif: true, rujukan: [] }
+  ];
+
+  const REF_PAKET = [
+    { id: 'pk-dr', kode: 'DR', nama: 'Darah Rutin', urutan: 10, aktif: true,
+      item: [{ lab_id: 'lab-hb', urutan: 1 }, { lab_id: 'lab-leu', urutan: 2 },
+             { lab_id: 'lab-tro', urutan: 3 }] },
+    { id: 'pk-gd', kode: 'GD', nama: 'Gula Darah', urutan: 20, aktif: true,
+      item: [{ lab_id: 'lab-gds', urutan: 1 }] },
+    { id: 'pk-lip', kode: 'LIPID', nama: 'Profil Lipid', urutan: 30, aktif: true,
+      item: [{ lab_id: 'lab-chol', urutan: 1 }] }
+  ];
+
+  let LAB_PERMINTAAN = [
+    { id: 'lp-1', no_lab: 'LAB-2026-0001', pasien_id: 'pas-5', kunjungan_id: 'kunj-2',
+      tanggal: hariIni, asal: 'INTERNAL', status: 'DIMINTA',
+      catatan_klinis: 'Kontrol rutin hipertensi, cek gula dan kolesterol',
+      diminta_oleh: 'peg-1', diminta_pada: jamHariIni(8, 30) },
+    { id: 'lp-2', no_lab: 'LAB-2026-0002', pasien_id: 'pas-1', kunjungan_id: 'kunj-1',
+      tanggal: hariIni, asal: 'INTERNAL', status: 'SELESAI',
+      catatan_klinis: 'Curiga infeksi', diminta_oleh: 'peg-1',
+      diminta_pada: jamHariIni(8, 20), selesai_oleh: 'peg-3', waktu_selesai: jamHariIni(9, 15) }
+  ];
+
+  let LAB_HASIL = [
+    { id: 'lh-1', permintaan_id: 'lp-1', lab_id: 'lab-gds', nama: 'Glukosa Darah Sewaktu',
+      satuan: 'mg/dL', nilai_angka: null, nilai_teks: null, tanda: 'BELUM',
+      rujukan_teks: '70 - 140', rujukan_bawah: 70, rujukan_atas: 140, urutan: 1 },
+    { id: 'lh-2', permintaan_id: 'lp-1', lab_id: 'lab-chol', nama: 'Kolesterol Total',
+      satuan: 'mg/dL', nilai_angka: null, nilai_teks: null, tanda: 'BELUM',
+      rujukan_teks: '< 200', rujukan_bawah: null, rujukan_atas: 200, urutan: 2 },
+    { id: 'lh-3', permintaan_id: 'lp-2', lab_id: 'lab-hb', nama: 'Hemoglobin',
+      satuan: 'g/dL', nilai_angka: 11.2, nilai_teks: null, tanda: 'RENDAH',
+      rujukan_teks: '13.0 - 17.0', rujukan_bawah: 13, rujukan_atas: 17, urutan: 1 },
+    { id: 'lh-4', permintaan_id: 'lp-2', lab_id: 'lab-leu', nama: 'Leukosit',
+      satuan: '/µL', nilai_angka: 13400, nilai_teks: null, tanda: 'TINGGI',
+      rujukan_teks: '4000.0 - 10000.0', rujukan_bawah: 4000, rujukan_atas: 10000, urutan: 2 },
+    { id: 'lh-5', permintaan_id: 'lp-2', lab_id: 'lab-tro', nama: 'Trombosit',
+      satuan: '/µL', nilai_angka: 232000, nilai_teks: null, tanda: 'NORMAL',
+      rujukan_teks: '150000.0 - 400000.0', rujukan_bawah: 150000, rujukan_atas: 400000, urutan: 3 }
+  ];
+
+  let PENUNJANG = [
+    { id: 'pn-1', pasien_id: 'pas-1', kunjungan_id: 'kunj-7', tanggal: hariIni,
+      jenis: 'RO_PERIAPIKAL', judul: 'Periapikal regio 36-37', asal: 'INTERNAL',
+      no_film: 'F-0142',
+      temuan: 'Tampak area radiolusen pada mahkota gigi 36 mencapai kamar pulpa. '
+            + 'Pelebaran ruang ligamen periodontal di apikal mesial.',
+      kesan: 'Karies profunda gigi 36 dengan periodontitis apikalis kronis',
+      saran: 'Perawatan saluran akar gigi 36',
+      dibaca_oleh: 'peg-5', dibaca_pada: jamHariIni(9, 20), gigi: ['36', '37'] }
+  ];
+
+  let LAMPIRAN = [
+    { id: 'lm-1', no_arsip: 'ARS-2026-0001', pasien_id: 'pas-1', kunjungan_id: 'kunj-7',
+      jenis: 'FILM_RONTGEN', judul: 'Film periapikal gigi 36-37',
+      tanggal_dokumen: hariIni, asal: 'Klinik Imanuel', no_dokumen: 'F-0142',
+      lokasi_simpan: 'Lemari B, laci 2', bentuk: 'FISIK',
+      berkas_path: null, dibuat_oleh: 'peg-5', dibuat_pada: jamHariIni(9, 25) }
+  ];
+
+  let urutLab = 2, urutArsip = 1;
+
+  const labRef = (id) => REF_LAB.find(m => m.id === id) || {};
+
+  /* Menandai satu baris hasil dengan aturan yang sama seperti trigger
+     lab_hitung_tanda() di database. */
+  function tandaiHasilDemo(h) {
+    const m = labRef(h.lab_id);
+    const p = PASIEN.find(x => x.id ===
+      (LAB_PERMINTAAN.find(l => l.id === h.permintaan_id) || {}).pasien_id) || {};
+    const ruj = LabCore.pilihRujukan(m.rujukan || [], p.jenis_kelamin,
+      LabCore.umurBulan(p.tanggal_lahir));
+    h.rujukan_bawah = ruj ? ruj.batas_bawah : null;
+    h.rujukan_atas  = ruj ? ruj.batas_atas : null;
+    h.rujukan_teks  = LabCore.teksRujukan(ruj, m);
+    h.tanda = LabCore.tandai(m, ruj, h.nilai_angka, h.nilai_teks);
+    return h;
+  }
+
+  const lampirRef = (h) => Object.assign({}, h, { ref: salin(labRef(h.lab_id)) });
+
+  function ringkasPermintaan(lp) {
+    const isi = LAB_HASIL.filter(h => h.permintaan_id === lp.id);
+    const p = PASIEN.find(x => x.id === lp.pasien_id) || {};
+    const k = KUNJUNGAN.find(x => x.id === lp.kunjungan_id);
+    const po = k ? POLI.find(x => x.id === k.poli_id) : null;
+    const d = PEGAWAI.find(x => x.id === lp.diminta_oleh);
+    const r = LabCore.ringkasLembar(isi);
+    return Object.assign(salin(lp), {
+      no_rm: p.no_rm, nama_pasien: p.nama, jenis_kelamin: p.jenis_kelamin,
+      tanggal_lahir: p.tanggal_lahir, no_kunjungan: k ? k.no_kunjungan : null,
+      cara_bayar: k ? k.cara_bayar : null, nama_poli: po ? po.nama : null,
+      nama_dokter: d ? d.nama : null,
+      jml_pemeriksaan: r.total, jml_terisi: r.terisi,
+      jml_kritis: r.kritis, jml_tak_normal: r.takNormal
+    });
+  }
+
+  async function refLab(hanyaAktif = true) {
+    await tunggu(30);
+    return salin(REF_LAB.filter(m => !hanyaAktif || m.aktif));
+  }
+  async function refLabPaket() { await tunggu(20); return salin(REF_PAKET); }
+  async function simpanRefLab(patch) {
+    if (patch.id) { Object.assign(REF_LAB.find(m => m.id === patch.id), patch); return patch; }
+    const baru = Object.assign({ id: uid(), rujukan: [] }, patch);
+    REF_LAB.push(baru); return baru;
+  }
+  async function simpanRujukan(patch) {
+    const m = REF_LAB.find(x => x.id === patch.lab_id);
+    const baru = Object.assign({ id: uid() }, patch);
+    m.rujukan = (m.rujukan || []).concat(baru);
+    return baru;
+  }
+  async function hapusRujukan(id) {
+    REF_LAB.forEach(m => { m.rujukan = (m.rujukan || []).filter(r => r.id !== id); });
+  }
+
+  async function labMinta(kunjunganId, labIds, catatan, asal, namaLabLuar) {
+    const k = KUNJUNGAN.find(x => x.id === kunjunganId);
+    const id = uid();
+    LAB_PERMINTAAN.push({ id, no_lab: 'LAB-2026-' + String(++urutLab).padStart(4, '0'),
+      pasien_id: k.pasien_id, kunjungan_id: kunjunganId, tanggal: k.tanggal,
+      asal: asal || 'INTERNAL', nama_lab_luar: namaLabLuar || null,
+      status: 'DIMINTA', catatan_klinis: catatan || null,
+      diminta_oleh: PROFIL.id, diminta_pada: new Date().toISOString() });
+    let urut = 0;
+    REF_LAB.filter(m => labIds.includes(m.id)).forEach(m => {
+      LAB_HASIL.push(tandaiHasilDemo({ id: uid(), permintaan_id: id, lab_id: m.id,
+        nama: m.nama, satuan: m.satuan, nilai_angka: null, nilai_teks: null,
+        tanda: 'BELUM', urutan: ++urut }));
+    });
+    return id;
+  }
+  async function labMintaLuar(r) {
+    const id = uid();
+    LAB_PERMINTAAN.push({ id, no_lab: 'LAB-2026-' + String(++urutLab).padStart(4, '0'),
+      pasien_id: r.pasien_id, kunjungan_id: r.kunjungan_id || null,
+      tanggal: r.tanggal || UI.hariIni(), asal: 'EKSTERNAL',
+      nama_lab_luar: r.nama_lab, no_lembar_luar: r.no_lembar || null,
+      status: 'DIKERJAKAN', diminta_oleh: PROFIL.id,
+      diminta_pada: new Date().toISOString() });
+    let urut = 0;
+    REF_LAB.filter(m => r.lab_ids.includes(m.id)).forEach(m => {
+      LAB_HASIL.push(tandaiHasilDemo({ id: uid(), permintaan_id: id, lab_id: m.id,
+        nama: m.nama, satuan: m.satuan, nilai_angka: null, nilai_teks: null,
+        tanda: 'BELUM', urutan: ++urut }));
+    });
+    return id;
+  }
+  async function labAntrean(dari, sampai, status) {
+    await tunggu(40);
+    const st = status ? (Array.isArray(status) ? status : [status]) : null;
+    return LAB_PERMINTAAN
+      .filter(lp => lp.tanggal >= dari && lp.tanggal <= sampai)
+      .filter(lp => !st || st.includes(lp.status))
+      .map(ringkasPermintaan)
+      .sort((a, b) => String(b.tanggal).localeCompare(String(a.tanggal)));
+  }
+  async function labPermintaan(id) {
+    await tunggu(40);
+    const lp = LAB_PERMINTAAN.find(x => x.id === id);
+    const p = PASIEN.find(x => x.id === lp.pasien_id);
+    const k = KUNJUNGAN.find(x => x.id === lp.kunjungan_id);
+    const d = PEGAWAI.find(x => x.id === lp.diminta_oleh);
+    const s = PEGAWAI.find(x => x.id === lp.selesai_oleh);
+    return Object.assign(salin(lp), {
+      pasien: salin(p), kunjungan: k ? salin(k) : null,
+      peminta: d ? { nama: d.nama } : null, penutup: s ? { nama: s.nama } : null,
+      hasil: LAB_HASIL.filter(h => h.permintaan_id === id)
+        .sort((a, b) => (a.urutan || 0) - (b.urutan || 0)).map(lampirRef)
+    });
+  }
+  async function labKunjungan(kunjunganId) {
+    await tunggu(30);
+    return LAB_PERMINTAAN.filter(lp => lp.kunjungan_id === kunjunganId && lp.status !== 'BATAL')
+      .map(lp => Object.assign(salin(lp), {
+        hasil: LAB_HASIL.filter(h => h.permintaan_id === lp.id).map(lampirRef)
+      }));
+  }
+  async function labPasien(pasienId) {
+    await tunggu(30);
+    return LAB_PERMINTAAN.filter(lp => lp.pasien_id === pasienId && lp.status !== 'BATAL')
+      .map(ringkasPermintaan);
+  }
+  async function simpanHasilLab(id, patch) {
+    const h = LAB_HASIL.find(x => x.id === id);
+    const lp = LAB_PERMINTAAN.find(x => x.id === h.permintaan_id);
+    if (lp.status === 'SELESAI' && PROFIL.peran !== 'admin')
+      throw new Error('Lembar hasil ini sudah selesai dan terkunci.');
+    Object.assign(h, patch);
+    tandaiHasilDemo(h);
+    if (lp.status === 'DIMINTA') lp.status = 'DIKERJAKAN';
+    return salin(h);
+  }
+  async function labSelesaikan(id) {
+    const isi = LAB_HASIL.filter(h => h.permintaan_id === id);
+    const kosong = isi.filter(h => h.nilai_angka === null && !h.nilai_teks).length;
+    if (kosong) throw new Error(`Masih ada ${kosong} pemeriksaan yang belum diisi hasilnya.`);
+    const lp = LAB_PERMINTAAN.find(x => x.id === id);
+    lp.status = 'SELESAI'; lp.selesai_oleh = PROFIL.id;
+    lp.waktu_selesai = new Date().toISOString();
+  }
+  async function labBukaKunci(id, alasan) {
+    if (PROFIL.peran !== 'admin') throw new Error('Hanya admin yang boleh membuka kunci.');
+    const lp = LAB_PERMINTAAN.find(x => x.id === id);
+    lp.status = 'DIKERJAKAN';
+    lp.catatan_klinis = (lp.catatan_klinis ? lp.catatan_klinis + '\n' : '') +
+      '[Dibuka kembali] ' + alasan;
+  }
+  async function labBatalkan(id, alasan) {
+    const lp = LAB_PERMINTAAN.find(x => x.id === id);
+    lp.status = 'BATAL'; lp.alasan_batal = alasan;
+  }
+  async function labTren(pasienId, labId) {
+    await tunggu(30);
+    return LAB_HASIL
+      .filter(h => h.lab_id === labId)
+      .map(h => {
+        const lp = LAB_PERMINTAAN.find(x => x.id === h.permintaan_id);
+        return (lp && lp.pasien_id === pasienId && lp.status === 'SELESAI')
+          ? Object.assign(salin(h), { tanggal: lp.tanggal, no_lab: lp.no_lab }) : null;
+      })
+      .filter(Boolean);
+  }
+  async function labBelumSelesai(kunjunganId) {
+    return LAB_PERMINTAAN.filter(lp => lp.kunjungan_id === kunjunganId &&
+      lp.asal === 'INTERNAL' && ['DIMINTA', 'DIKERJAKAN'].includes(lp.status)).length;
+  }
+
+  const lengkapiPenunjang = (b) => {
+    const p = PASIEN.find(x => x.id === b.pasien_id) || {};
+    const k = KUNJUNGAN.find(x => x.id === b.kunjungan_id);
+    const d = PEGAWAI.find(x => x.id === b.dibaca_oleh);
+    return Object.assign(salin(b), {
+      no_rm: p.no_rm, nama_pasien: p.nama, no_kunjungan: k ? k.no_kunjungan : null,
+      nama_pembaca: d ? d.nama : null,
+      daftar_gigi: (b.gigi || []).join(', ') || null
+    });
+  };
+  async function penunjangSimpan(p) {
+    if (!p.kesan || !p.kesan.trim()) throw new Error('Kesan wajib diisi.');
+    if (p.id) {
+      const b = PENUNJANG.find(x => x.id === p.id);
+      Object.assign(b, p, { gigi: p.gigi || [] });
+      return b.id;
+    }
+    const baru = Object.assign({ id: uid(), dibaca_oleh: PROFIL.id,
+      dibaca_pada: new Date().toISOString() }, p, { gigi: p.gigi || [] });
+    PENUNJANG.push(baru);
+    return baru.id;
+  }
+  async function penunjangPasien(pasienId) {
+    await tunggu(30);
+    return PENUNJANG.filter(b => b.pasien_id === pasienId).map(lengkapiPenunjang);
+  }
+  async function penunjangKunjungan(kunjunganId) {
+    await tunggu(20);
+    return PENUNJANG.filter(b => b.kunjungan_id === kunjunganId).map(lengkapiPenunjang);
+  }
+  async function gigiBerbacaan(pasienId) {
+    const peta = {};
+    PENUNJANG.filter(b => b.pasien_id === pasienId).forEach(b => {
+      (b.gigi || []).forEach(g => {
+        (peta[g] = peta[g] || []).push({ id: b.id, tanggal: b.tanggal,
+                                         jenis: b.jenis, kesan: b.kesan });
+      });
+    });
+    return peta;
+  }
+  async function hapusPenunjang(id) { PENUNJANG = PENUNJANG.filter(b => b.id !== id); }
+
+  async function lampiranPasien(pasienId) {
+    await tunggu(30);
+    return LAMPIRAN.filter(l => l.pasien_id === pasienId).map(l => {
+      const k = KUNJUNGAN.find(x => x.id === l.kunjungan_id);
+      const d = PEGAWAI.find(x => x.id === l.dibuat_oleh);
+      return Object.assign(salin(l), {
+        kunjungan: k ? { no_kunjungan: k.no_kunjungan, tanggal: k.tanggal } : null,
+        pencatat: d ? { nama: d.nama } : null });
+    });
+  }
+  async function lampiranKunjungan(kunjunganId) {
+    await tunggu(20);
+    return salin(LAMPIRAN.filter(l => l.kunjungan_id === kunjunganId));
+  }
+  async function simpanLampiran(patch) {
+    if (patch.id) {
+      const l = LAMPIRAN.find(x => x.id === patch.id);
+      Object.assign(l, patch); return salin(l);
+    }
+    const baru = Object.assign({ id: uid(),
+      no_arsip: 'ARS-2026-' + String(++urutArsip).padStart(4, '0'),
+      bentuk: 'FISIK', berkas_path: null, dibuat_oleh: PROFIL.id,
+      dibuat_pada: new Date().toISOString() }, patch);
+    LAMPIRAN.push(baru);
+    return salin(baru);
+  }
+  async function hapusLampiran(id) { LAMPIRAN = LAMPIRAN.filter(l => l.id !== id); }
+
   async function ambilSemua(f) { return []; }
 
   return { sb, masuk, keluar, sesi, saya, bolehTulis, faskes, simpanFaskes,
@@ -1386,5 +1734,11 @@ const DB = (() => {
            kasirTambahItem, kasirUbahItem, kasirHapusItem,
            daftarTarif, simpanTarif, kasirRekap,
            templateInvoice, simpanTemplateInvoice,
+           refLab, refLabPaket, simpanRefLab, simpanRujukan, hapusRujukan,
+           labMinta, labMintaLuar, labAntrean, labPermintaan, labKunjungan, labPasien,
+           simpanHasilLab, labSelesaikan, labBukaKunci, labBatalkan,
+           labTren, labBelumSelesai,
+           penunjangSimpan, penunjangPasien, penunjangKunjungan, gigiBerbacaan, hapusPenunjang,
+           lampiranPasien, lampiranKunjungan, simpanLampiran, hapusLampiran,
            gantiPeranDemo, peranDemoSekarang, PERAN_DEMO };
 })();

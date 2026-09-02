@@ -16,14 +16,32 @@ const Rekam = (() => {
     const k = rm.kunjungan;
     const alergi = await DB.alergiPasien(k.pasien_id);
 
+    /* Penunjang sengaja diambil terpisah dari rekamMedisLengkap(): hasil lab
+       sering baru masuk setelah dokter mengunci rekam medis, jadi bagian ini
+       memang harus dibaca ulang setiap kali halaman dibuka. */
+    const [labRM, bacaanRM, arsipRM] = await Promise.all([
+      DB.labKunjungan(id).catch(() => []),
+      DB.penunjangKunjungan(id).catch(() => []),
+      DB.lampiranKunjungan(id).catch(() => [])
+    ]);
+
     const poliGigi = k.poli?.jenis === 'GIGI';
-    let gigiRef = [], kondisiRef = [], odoSaatItu = {};
+    let gigiRef = [], kondisiRef = [], odoSaatItu = {}, bacaanGigi = {};
     if (poliGigi) {
-      [gigiRef, kondisiRef, odoSaatItu] = await Promise.all([
+      [gigiRef, kondisiRef, odoSaatItu, bacaanGigi] = await Promise.all([
         DB.refGigi(), DB.refKondisiGigi(),
         DB.odontogramPadaKunjungan(k.pasien_id, k.id,
-          k.waktu_selesai || k.waktu_periksa || null)
+          k.waktu_selesai || k.waktu_periksa || null),
+        DB.gigiBerbacaan(k.pasien_id).catch(() => ({}))
       ]);
+      /* Odontogram di sini sengaja direkonstruksi sesuai keadaan SAAT
+         kunjungan. Tanda bacaan rontgen harus ikut aturan yang sama, kalau
+         tidak rekam medis bulan Maret yang dicetak hari ini akan menandai
+         gigi karena foto yang baru dibuat bulan Juni. */
+      Object.keys(bacaanGigi).forEach(fdi => {
+        const sampai = bacaanGigi[fdi].filter(b => String(b.tanggal) <= String(k.tanggal));
+        if (sampai.length) bacaanGigi[fdi] = sampai; else delete bacaanGigi[fdi];
+      });
     }
     DB.catatAkses(k.pasien_id, 'Melihat rekam medis kunjungan ' + k.no_kunjungan);
 
@@ -142,6 +160,8 @@ const Rekam = (() => {
                 <td>${t.jumlah}</td></tr>`).join('')}</tbody></table>
           ` : ''}
 
+          ${blokPenunjang(labRM, bacaanRM, arsipRM)}
+
           <div class="divider"></div>
           <h3 class="mb-8">Terapi / Resep</h3>
           ${!rm.resep || !rm.resep.item?.length
@@ -203,7 +223,7 @@ const Rekam = (() => {
       if (w) {
         const umur = UI.umur(k.pasien.tanggal_lahir);
         Odontogram.buat(w, {
-          kondisiRef, gigiRef, data: odoSaatItu,
+          kondisiRef, gigiRef, data: odoSaatItu, bacaan: bacaanGigi,
           umur: umur ? umur.tahun : null, bacaSaja: true
         });
       }
@@ -214,6 +234,80 @@ const Rekam = (() => {
     ? `<div style="display:flex;gap:12px;padding:4px 0">
         <span class="text-muted" style="width:190px;flex-shrink:0">${UI.esc(k)}</span>
         <span style="flex:1;white-space:pre-wrap">${UI.esc(v)}</span></div>` : '';
+
+  /* ---------------- Pemeriksaan penunjang di rekam medis ----------------
+     Ikut tercetak bersama rekam medis. Nilai di luar rujukan ditebalkan,
+     nilai kritis diberi keterangan — pada lembar hitam putih itu satu-
+     satunya cara membedakannya. */
+  function blokPenunjang(lab, bacaan, arsip) {
+    if (!lab.length && !bacaan.length && !arsip.length) return '';
+
+    const blokLab = lab.filter(lp => lp.status !== 'BATAL').map(lp => {
+      const isi = (lp.hasil || [])
+        .filter(h => h.nilai_angka !== null || h.nilai_teks)
+        .sort((a, b) => (a.urutan || 0) - (b.urutan || 0));
+      if (!isi.length) return '';
+      return `
+        <div class="text-xs text-muted mt-8">${UI.esc(lp.no_lab)} · ${UI.tglIndo(lp.tanggal)}
+          ${lp.asal === 'EKSTERNAL'
+            ? '· ' + UI.esc(lp.nama_lab_luar || 'lab luar')
+              + (lp.no_lembar_luar ? ' no. ' + UI.esc(lp.no_lembar_luar) : '')
+            : '· laboratorium klinik'}</div>
+        <table class="tbl" style="border:1px solid var(--ink-200);border-radius:6px">
+          <thead><tr><th>Pemeriksaan</th><th style="width:110px">Hasil</th>
+            <th style="width:80px">Satuan</th><th style="width:150px">Nilai rujukan</th>
+            <th style="width:110px">Tanda</th></tr></thead>
+          <tbody>${isi.map(h => {
+            const m = h.ref || {};
+            const nilai = m.jenis_nilai === 'ANGKA'
+              ? LabCore.formatNilai(h.nilai_angka, m.desimal) : (h.nilai_teks || '');
+            const t = LabCore.TANDA[h.tanda] || {};
+            return `<tr>
+              <td>${UI.esc(h.nama)}</td>
+              <td ${t.berat >= 2 ? 'style="font-weight:700"' : ''}>${UI.esc(nilai)}</td>
+              <td class="muted">${UI.esc(h.satuan || '')}</td>
+              <td class="muted mono" style="font-size:12px">${UI.esc(h.rujukan_teks || '—')}</td>
+              <td ${t.berat >= 3 ? 'style="font-weight:700"' : ''}>${UI.esc(t.berat ? t.label : '')}</td>
+            </tr>`;
+          }).join('')}</tbody></table>`;
+    }).join('');
+
+    const blokBacaan = bacaan.map(b => `
+      <div class="text-sm" style="border-left:3px solid var(--ink-200);padding-left:12px;margin:10px 0">
+        <div class="text-xs text-muted">${UI.esc(LabCore.labelJenis(b.jenis))} ·
+          ${UI.tglIndo(b.tanggal)}
+          ${b.daftar_gigi ? ' · gigi ' + UI.esc(b.daftar_gigi) : ''}
+          ${b.asal === 'EKSTERNAL' ? ' · di ' + UI.esc(b.nama_tempat || 'tempat lain') : ''}
+          ${b.no_film ? ' · film ' + UI.esc(b.no_film) : ''}</div>
+        ${b.temuan ? `<div class="mt-8"><b>Temuan.</b> ${UI.esc(b.temuan)}</div>` : ''}
+        <div class="mt-8"><b>Kesan.</b> ${UI.esc(b.kesan)}</div>
+        ${b.saran ? `<div><b>Saran.</b> ${UI.esc(b.saran)}</div>` : ''}
+        <div class="text-xs text-muted mt-8">Dibaca oleh ${UI.esc(b.nama_pembaca || '-')}</div>
+      </div>`).join('');
+
+    /* Berkas fisiknya tidak ada di sistem — yang ada nomor arsipnya.
+       Dicetak di sini supaya siapa pun yang membaca rekam medis ini tahu
+       film dan lembar aslinya ada, dan tahu harus mencari nomor berapa. */
+    const blokArsip = arsip.length ? `
+      <div class="text-sm mt-12">
+        <b>Berkas fisik terkait kunjungan ini:</b>
+        <ul style="margin:6px 0 0;padding-left:20px">
+          ${arsip.map(a => `<li><span class="mono">${UI.esc(a.no_arsip)}</span> —
+            ${UI.esc(a.judul)}
+            ${a.lokasi_simpan ? ` <span class="text-muted">(${UI.esc(a.lokasi_simpan)})</span>` : ''}
+          </li>`).join('')}
+        </ul>
+      </div>` : '';
+
+    return `
+      <div class="divider"></div>
+      <h3 class="mb-8">Pemeriksaan penunjang</h3>
+      ${blokLab || ''}
+      ${blokBacaan || ''}
+      ${blokArsip}
+      ${!blokLab && !blokBacaan && !blokArsip
+        ? '<p class="text-muted text-sm mb-0">Tidak ada pemeriksaan penunjang.</p>' : ''}`;
+  }
 
   function statusBridging(k) {
     if (!CONFIG.BRIDGING.PCARE_AKTIF && !CONFIG.BRIDGING.SATUSEHAT_AKTIF) return '';

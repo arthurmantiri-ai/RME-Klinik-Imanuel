@@ -10,19 +10,20 @@ Biaya: **Rp 0** (Supabase free tier + Netlify free tier).
 1. [Apa yang sudah jadi](#1-apa-yang-sudah-jadi)
 2. [Yang perlu Anda siapkan](#2-yang-perlu-anda-siapkan)
 3. [Langkah 1 — Buat database Supabase](#langkah-1--buat-database-supabase)
-4. [Langkah 2 — Jalankan enam berkas SQL](#langkah-2--jalankan-enam-berkas-sql)
+4. [Langkah 2 — Jalankan dua belas berkas SQL](#langkah-2--jalankan-dua-belas-berkas-sql)
 5. [Langkah 3 — Buat akun admin pertama](#langkah-3--buat-akun-admin-pertama)
 6. [Langkah 4 — Hubungkan aplikasi ke database](#langkah-4--hubungkan-aplikasi-ke-database)
 7. [Langkah 5 — Unggah ke Netlify](#langkah-5--unggah-ke-netlify)
 8. [Langkah 6 — Isi data klinik](#langkah-6--isi-data-klinik)
 9. [Alur pemakaian harian](#alur-pemakaian-harian)
 10. [Poli gigi](#poli-gigi)
-11. [Master data](#master-data)
-12. [Bridging PCare & SatuSehat](#bridging-pcare--satusehat)
-13. [Keamanan dan kepatuhan PMK 24/2022](#keamanan-dan-kepatuhan-pmk-242022)
-14. [Batas paket gratis](#batas-paket-gratis)
-15. [Rencana penggabungan dengan portal klinik](#rencana-penggabungan-dengan-portal-klinik)
-16. [Yang belum ada](#yang-belum-ada)
+11. [Lab & pemeriksaan penunjang](#lab--pemeriksaan-penunjang)
+12. [Master data](#master-data)
+13. [Bridging PCare & SatuSehat](#bridging-pcare--satusehat)
+14. [Keamanan dan kepatuhan PMK 24/2022](#keamanan-dan-kepatuhan-pmk-242022)
+15. [Batas paket gratis](#batas-paket-gratis)
+16. [Rencana penggabungan dengan portal klinik](#rencana-penggabungan-dengan-portal-klinik)
+17. [Yang belum ada](#yang-belum-ada)
 
 ---
 
@@ -62,6 +63,7 @@ rme-imanuel/
 │   ├── struk_core.js       Mesin struk thermal (fungsi murni)
 │   ├── struk_printer.js    Bluetooth / USB / dialog cetak
 │   ├── invoice_template.js Pengaturan tampilan invoice
+│   ├── lab_core.js         Nilai rujukan & penandaan hasil lab (fungsi murni)
 │   ├── demo-data.js        Data contoh untuk demo.html
 │   └── pages/              Satu berkas per halaman
 ├── sql/
@@ -74,7 +76,9 @@ rme-imanuel/
 │   ├── 07_peran_kasir.sql  Menambah peran 'kasir' (satu baris, jalankan sendiri)
 │   ├── 08_apotek.sql       Stok obat batch FEFO, penyerahan resep
 │   ├── 09_kasir.sql        Tarif, tagihan, pembayaran, template invoice
-│   └── 10_apotek_impor.sql Impor stok dari Excel (saldo awal & pembelian)
+│   ├── 10_apotek_impor.sql Impor stok dari Excel (saldo awal & pembelian)
+│   ├── 11_penunjang.sql    Lab, bacaan rontgen, register arsip berkas
+│   └── 12_kasir_penunjang.sql Lab & penunjang masuk ke tagihan
 └── supabase/functions/
     ├── pcare-proxy/        Jembatan ke PCare BPJS
     └── satusehat-proxy/    Jembatan ke SatuSehat (FHIR R4)
@@ -105,7 +109,7 @@ Tidak perlu memasang apa pun di komputer. Tidak perlu kartu kredit.
 
 ---
 
-## Langkah 2 — Jalankan sepuluh berkas SQL
+## Langkah 2 — Jalankan dua belas berkas SQL
 
 Di dasbor Supabase, buka **SQL Editor** (ikon terminal di bilah kiri).
 
@@ -123,6 +127,8 @@ Jalankan **berurutan**, satu per satu. Untuk tiap berkas: buka isinya, salin sel
 | 8 | `sql/08_apotek.sql` | Stok obat per batch, mesin FEFO, penyerahan resep |
 | 9 | `sql/09_kasir.sql` | Tarif, tagihan, pembayaran, template invoice |
 | 10 | `sql/10_apotek_impor.sql` | Impor stok dari Excel |
+| 11 | `sql/11_penunjang.sql` | Laboratorium, bacaan rontgen/EKG/USG, register arsip berkas |
+| 12 | `sql/12_kasir_penunjang.sql` | Lab & penunjang ikut masuk tagihan |
 
 > **Berkas 7 harus dijalankan sendirian.** Isinya hanya satu baris, tetapi
 > PostgreSQL melarang nilai enum yang baru ditambahkan dipakai di dalam
@@ -242,15 +248,16 @@ tersedia di klinik. Lihat [Master data](#master-data).
 ## Alur pemakaian harian
 
 ```
-PENDAFTARAN        PERAWAT           DOKTER              APOTEK              KASIR
-     │                │                │                   │                   │
- Cari pasien ─▶ Kajian awal ─▶ SOAP + Diagnosa ─▶ Resep masuk antrean ─▶ Tagihan disusun
- atau daftar    (tanda vital,   (ICD-10) +          apotek, obat            otomatis dari
- pasien baru     anamnesis)      Tindakan +         diserahkan,             tindakan + obat
-     │                │          Resep              stok terpotong          yang diserahkan
- Nomor antrian   Status naik   Kunci rekam medis     FEFO                         │
- keluar otomatis  MENUNGGU     Status SELESAI          │                    Bayar → kwitansi
-                  DOKTER                                                     & struk thermal
+PENDAFTARAN      PERAWAT        DOKTER            LAB            APOTEK          KASIR
+     │              │             │                │                │              │
+ Cari pasien ─▶ Kajian ─▶ SOAP + Diagnosa ─▶ Hasil diisi, ─▶ Resep masuk ─▶ Tagihan
+ atau daftar    awal      (ICD-10) +          ditandai        antrean,       disusun
+ pasien baru              Tindakan +          Tinggi/Rendah   stok           otomatis
+     │                    Minta lab +         otomatis        terpotong      dari yang
+ Nomor antrian            Resep                  │            FEFO           dikerjakan
+ keluar otomatis            │              Lembar ditutup       │                 │
+                     Kunci rekam medis     & terkunci                     Bayar → kwitansi
+                                                                           & struk thermal
 ```
 
 Hal-hal yang bekerja otomatis:
@@ -265,8 +272,12 @@ Hal-hal yang bekerja otomatis:
 - Resep dokter langsung muncul di antrean apotek, tanpa diketik ulang
 - Stok terpotong dengan urutan **FEFO** — batch yang paling dekat kadaluwarsa
   keluar lebih dulu, tanggal masuk hanya jadi pemutus seri
-- Kasir menarik tindakan dari catatan dokter dan obat dari **yang benar-benar
-  diserahkan apotek**, bukan dari angka yang ditulis di resep
+- Permintaan lab dokter langsung muncul di antrean laboratorium, tanpa diketik ulang
+- Hasil lab ditandai **Tinggi**, **Rendah**, atau **Kritis** menurut nilai rujukan yang
+  sesuai jenis kelamin dan umur pasien, dan hasilnya kembali sendiri ke layar dokter
+- Kasir menarik tindakan dari catatan dokter, pemeriksaan lab dari **yang benar-benar
+  dikerjakan**, dan obat dari **yang benar-benar diserahkan apotek** — bukan dari angka
+  yang ditulis di resep
 - Kunjungan BPJS tetap dicatat nilainya untuk laporan, tetapi tidak ditagihkan
   ke pasien
 
@@ -501,9 +512,147 @@ Bagian tindakan juga muncul di poli umum, dengan daftar kode untuk tindakan FKTP
 
 ---
 
+## Lab & pemeriksaan penunjang
+
+Menu **Lab & Penunjang** berisi tiga hal yang biasanya dikerjakan orang yang sama:
+antrean laboratorium, bacaan pemeriksaan penunjang, dan register arsip berkas.
+
+### Keputusan yang perlu Anda ketahui: modul ini tidak menyimpan gambar
+
+Supabase paket gratis memberi 1 GB penyimpanan berkas. Satu foto rontgen dari kamera HP
+berukuran 3–5 MB; seratus foto sebulan menghabiskan kuota itu dalam waktu di bawah dua
+tahun. Dan cara habisnya paling tidak enak: unggahan mulai gagal di tengah jam praktek,
+tanpa pemberitahuan sebelumnya.
+
+Karena itu yang disimpan aplikasi ini adalah **isi medisnya**, bukan gambarnya:
+
+| Yang biasanya difoto | Yang disimpan di sini | Kenapa |
+|---|---|---|
+| Lembar hasil lab | Angkanya, per pemeriksaan | Angka bisa ditandai Tinggi/Rendah otomatis, bisa dibandingkan antar kunjungan, dan kelak bisa dikirim ke SatuSehat. Foto lembar tidak bisa satu pun dari ketiganya |
+| Film rontgen gigi | Bacaannya: temuan, kesan, saran — terkait nomor gigi | Inilah yang dibaca dokter berikutnya; filmnya sendiri jarang dibuka ulang |
+| Berkas fisik apa pun | Nomor arsipnya di register | Nol byte, tetap ketemu saat dicari |
+
+Akibatnya penggunaan penyimpanan berkas tetap **0 byte**, dan yang tumbuh hanya database
+— sekitar 2 KB per lembar hasil lab lengkap. Kuota database 500 MB baru habis setelah
+kira-kira 250.000 pemeriksaan.
+
+Kalau suatu hari klinik berlangganan Supabase berbayar dan ingin menyimpan gambarnya
+juga: tabel `lampiran` sudah punya kolom `berkas_path`, `berkas_mime`, `berkas_ukuran`,
+dan `berkas_sha256` yang sengaja dibiarkan kosong. Yang perlu ditambah hanya unggahan di
+sisi aplikasi — tabel, kebijakan RLS, laporan, dan cetakan tidak ada yang berubah.
+
+### Alur laboratorium
+
+1. **Dokter meminta.** Di halaman Pemeriksaan Dokter ada kartu *Pemeriksaan penunjang*
+   dengan tombol **Minta lab**. Pilih per pemeriksaan, atau sekali klik lewat paket
+   (Darah Rutin, Gula Darah, Profil Lipid, Fungsi Ginjal, Fungsi Hati, Urine Lengkap,
+   Skrining Ibu Hamil). Boleh menambahkan keterangan klinis untuk petugas lab.
+2. **Petugas mengisi.** Menu **Lab & Penunjang → Antrean lab**. Klik lembarnya, ketik
+   angkanya. Setiap angka disimpan begitu kotaknya ditinggalkan — tidak ada tombol
+   "Simpan semua" yang bisa membuat setengah jam pekerjaan hilang.
+3. **Penandaan otomatis.** Nilai di luar rujukan ditandai *Tinggi* atau *Rendah*; nilai
+   yang berbahaya ditandai **Kritis** dan memunculkan peringatan agar dokter segera
+   diberi tahu. Rujukannya mengikuti jenis kelamin dan umur pasien — Hb 12,5 g/dL
+   *rendah* pada laki-laki dewasa tetapi *normal* pada perempuan dewasa.
+4. **Lembar ditutup.** Tombol **Selesaikan lembar** baru hidup setelah semua isian
+   terisi. Setelah ditutup, hasilnya terkunci; hanya admin yang bisa membukanya kembali,
+   dan alasannya wajib diisi serta tercatat pada lembarnya.
+5. **Dokter membaca.** Hasilnya muncul sendiri di kartu *Pemeriksaan penunjang* pada
+   halaman pemeriksaan, dan ikut tercetak di rekam medis.
+
+Hasil lab boleh masuk **setelah** dokter mengunci rekam medis — memang begitu urutannya
+di banyak kasus, dan bagian penunjang sengaja tidak ikut terkunci.
+
+### Melihat tren
+
+Ikon grafik di ujung tiap baris hasil membuka riwayat pemeriksaan yang sama pada pasien
+itu, lengkap dengan selisih terhadap pemeriksaan sebelumnya. Inilah yang tidak bisa
+diberikan foto lembar hasil, dan alasan utama angkanya diketik ulang.
+
+### Hasil dari lab luar
+
+**Antrean lab → Catat hasil lab luar.** Pilih pasien, tanggal pemeriksaan aslinya, nama
+laboratoriumnya, lalu pemeriksaan mana saja yang ada hasilnya — dan ketik angkanya.
+Hasil lab luar:
+
+- boleh dicatat perawat (mencatat hasil jadi adalah entri data, bukan permintaan medis);
+- boleh bertanggal mundur, bahkan tanpa kunjungan, untuk hasil yang dibawa pasien dari
+  sebelum ia terdaftar di klinik ini;
+- **tidak ikut ditagihkan**, karena bukan klinik yang mengerjakannya.
+
+Lembar kertasnya sendiri dicatat di **Arsip berkas** supaya dapat nomor.
+
+### Bacaan rontgen gigi
+
+**Lab & Penunjang → Bacaan penunjang**, atau langsung dari halaman pemeriksaan dokter
+lewat tombol **Tulis bacaan**. Isinya mengikuti kebiasaan penulisan radiologi: *temuan*
+(apa yang terlihat), *kesan* (kesimpulan — wajib diisi), dan *saran*.
+
+Untuk foto periapikal, bitewing, panoramik, dan oklusal, sebutkan **nomor giginya**
+(FDI, mis. `36 37`). Gigi yang punya bacaan diberi sudut ungu di odontogram; arahkan
+kursor ke giginya untuk melihat kesan terakhirnya. Nomor yang bukan gigi FDI ditolak
+sebelum tersimpan.
+
+Bacaan hanya boleh ditulis dokter — menafsirkan gambaran radiologis adalah tindakan
+medis, bukan pekerjaan administratif.
+
+### Register arsip berkas
+
+Film, lembar hasil lab luar, surat rujukan, dan informed consent tetap berwujud kertas.
+PMK 24/2022 mewajibkan rekam medis disimpan 25 tahun; yang tidak diwajibkan adalah
+menyimpannya dalam bentuk digital.
+
+**Lab & Penunjang → Arsip berkas.** Catat berkasnya, sistem memberi nomor
+`ARS-2026-0001`, tulis nomor itu di pojok berkasnya dengan spidol, lalu simpan berurutan
+menurut nomor. Mencari film gigi dari dua tahun lalu berubah dari membongkar lemari
+menjadi membaca satu nomor di layar. Nomor arsipnya ikut tercetak di rekam medis, jadi
+siapa pun yang membacanya tahu berkas aslinya ada dan tahu harus mencari nomor berapa.
+
+### Nilai rujukan — **wajib dicocokkan sebelum lab dipakai**
+
+Aplikasi terpasang dengan 41 pemeriksaan dan nilai rujukan umum yang lazim dipakai di
+Indonesia. **Itu bukan nilai rujukan alat Anda.** Setiap alat dan setiap reagen punya
+rentangnya sendiri, dan yang sah adalah yang tercetak pada sisipan reagen.
+
+Buka **Master Data → Pemeriksaan Lab**, cocokkan dengan buku alat, lalu perbaiki yang
+berbeda sebelum lab melayani pasien pertama. Satu pemeriksaan boleh punya beberapa baris
+rujukan: laki-laki, perempuan, dan beberapa rentang umur — yang paling khusus yang dipakai.
+
+Memperbaiki nilai rujukan hari ini **tidak** mengubah hasil kemarin: setiap lembar hasil
+menyimpan salinan nilai rujukan yang berlaku saat pemeriksaan dilakukan, prinsip yang
+sama dengan tarif di modul kasir.
+
+### Tarif lab dan penunjang
+
+**Tarif & Invoice → Tarif baru**, pilih jenis **Pemeriksaan laboratorium** atau
+**Penunjang**, lalu pilih pemeriksaannya dari daftar (bukan diketik bebas — kode yang
+berselisih satu huruf membuat tarifnya diam-diam tidak pernah ketemu saat menagih).
+
+Yang ditagihkan adalah pemeriksaan yang **benar-benar dikerjakan**, bukan yang diminta
+dokter. Kalau dokter meminta sepuluh dan hari itu hanya delapan yang bisa dikerjakan,
+yang masuk tagihan delapan. Pemeriksaan tanpa tarif tetap masuk dengan harga Rp 0 dan
+ketahuan belum diisi — jauh lebih baik daripada hilang diam-diam dari tagihan.
+
+Untuk pasien BPJS, nilainya tetap tercatat untuk laporan tetapi tidak ditagihkan.
+
+### Siapa boleh apa
+
+| | Minta lab | Isi hasil | Tutup lembar | Buka kunci | Tulis bacaan | Catat arsip |
+|---|---|---|---|---|---|---|
+| Admin | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Dokter | ✓ | ✓ | ✓ | — | ✓ | ✓ |
+| Perawat | hanya hasil lab luar | ✓ | ✓ | — | — | ✓ |
+| Pendaftaran | — | — | — | — | — | ✓ |
+| Apoteker & kasir | — | — | — | — | — | — |
+
+Semua peran tetap bisa **membaca** hasil lab dan bacaan penunjang; yang dibatasi hanya
+menulisnya. Batasan ini ditegakkan di database (RLS), bukan hanya disembunyikan di layar.
+
+---
+
 ## Master data
 
-Menu **Master Data** (hanya admin) berisi tiga daftar yang muncul saat dokter memeriksa
+Menu **Master Data** (hanya admin) berisi empat daftar yang muncul saat dokter memeriksa
 pasien. Semuanya bisa diubah dari aplikasi — tidak perlu membuka dasbor Supabase.
 
 ### Obat
@@ -711,10 +860,16 @@ tahu langkahnya bekerja sebelum benar-benar membutuhkannya.
 | Layanan | Batas gratis | Perkiraan cukup untuk |
 |---|---|---|
 | Supabase Database | 500 MB | ± 150.000–250.000 kunjungan (data teks murni) |
-| Supabase Storage | 1 GB | Lampiran/foto — hemat-hemat |
+| Supabase Storage | 1 GB | **Tidak dipakai sama sekali** — lihat [Lab & pemeriksaan penunjang](#lab--pemeriksaan-penunjang) |
 | Supabase Edge Function | 500.000 panggilan/bulan | Jauh lebih dari cukup |
 | Netlify | 100 GB bandwidth/bulan | Jauh lebih dari cukup |
 | Cadangan otomatis | **Tidak ada di paket gratis** | Harus dicadangkan sendiri — lihat [Cadangan data](#cadangan-data) |
+
+**Kenapa penyimpanan berkas kosong.** Foto rontgen dan lembar hasil sengaja tidak
+diunggah; yang disimpan angka dan bacaannya, dan berkas fisiknya dicatat nomor arsipnya.
+Dengan begitu satu-satunya kuota yang tumbuh adalah database, dan pertumbuhannya lambat:
+sekitar 2 KB per lembar hasil lab. Alasan lengkapnya ada di bagian
+[Lab & pemeriksaan penunjang](#lab--pemeriksaan-penunjang).
 
 **Yang perlu diperhatikan:** project Supabase gratis akan dijeda bila **tidak ada aktivitas selama 7 hari**. Untuk klinik yang dipakai tiap hari kerja ini tidak jadi masalah. Bila klinik tutup panjang, cukup buka aplikasi sekali untuk membangunkannya.
 
@@ -737,13 +892,15 @@ Langkah penggabungan nanti, ringkasnya: jalankan keenam berkas SQL di project po
 
 ## Yang belum ada
 
-Sesuai kesepakatan, versi ini fokus pada alur inti rawat jalan. Yang belum dibuat:
+Yang belum dibuat:
 
-- Tarif tindakan dan modul kasir
+- Ubah atau batalkan pendaftaran yang salah (sementara lewat dasbor Supabase)
+- "Lupa kata sandi" di halaman login
+- Koreksi stok opname berkala lewat Excel (sengaja ditunda)
 - Surat keterangan sakit, surat rujukan format BPJS, surat kontrol
-- Input hasil laboratorium dan unggah lampiran
-- Foto rontgen gigi (periapikal/panoramik) — perlu penyimpanan gambar
-- Modul apotek (stok obat, penyerahan) — sebagian sudah ada di portal Anda
+- **Unggah gambar** (foto rontgen, pindaian lembar hasil) — sengaja tidak dibuat selama
+  klinik memakai paket gratis. Struktur tabelnya sudah disiapkan; lihat
+  [Lab & pemeriksaan penunjang](#lab--pemeriksaan-penunjang)
 - Antrean online / integrasi Mobile JKN (Antrol)
 - Laporan LB1 dan format Dinkes
 - Skrining PTM/Prolanis terstruktur

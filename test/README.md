@@ -4,9 +4,9 @@ Tiga lapis, dijalankan dengan `./test/semua.sh` dari folder `rme-imanuel`.
 
 | Lapis | Berkas | Butuh apa | Menguji apa |
 |---|---|---|---|
-| SQL | `uji_apotek.sql`, `uji_kasir.sql`, `uji_rls.sql`, `uji_impor.sql` | PostgreSQL 15+ | Mesin FEFO, penyerahan resep, pembatalan, penyusunan tagihan, trigger status bayar, impor massal, dan kebijakan RLS per peran |
-| Fungsi murni | `uji_apotek_core.js`, `uji_apotek_excel.js`, `uji_struk_core.js` | Node saja | Kartu stok, pratinjau FEFO, penafsiran nilai Excel, pencocokan nama obat, dan mesin struk thermal — tanpa peramban, tanpa database |
-| Halaman | `uji_halaman.js`, `uji_impor_halaman.js` | Node + Playwright + Chromium + SheetJS | `demo.html` dijalankan di peramban sungguhan; berkas .xlsx betulan dibuat, diunggah, dan diproses. Setiap galat console menggagalkan pengujian |
+| SQL | `uji_apotek.sql`, `uji_kasir.sql`, `uji_rls.sql`, `uji_impor.sql`, `uji_penunjang.sql` | PostgreSQL 15+ | Mesin FEFO, penyerahan resep, pembatalan, penyusunan tagihan, trigger status bayar, impor massal, penandaan hasil lab, penguncian lembar, dan kebijakan RLS per peran |
+| Fungsi murni | `uji_apotek_core.js`, `uji_apotek_excel.js`, `uji_struk_core.js`, `uji_lab_core.js` | Node saja | Kartu stok, pratinjau FEFO, penafsiran nilai Excel, pencocokan nama obat, mesin struk thermal, pemilihan nilai rujukan dan penandaan hasil lab — tanpa peramban, tanpa database |
+| Halaman | `uji_halaman.js`, `uji_impor_halaman.js`, `uji_lab_halaman.js` | Node + Playwright + Chromium + SheetJS | `demo.html` dijalankan di peramban sungguhan; berkas .xlsx betulan dibuat, diunggah, dan diproses; alur lab ditelusuri dari permintaan dokter sampai lembar ditutup. Setiap galat console menggagalkan pengujian |
 
 ## Menyiapkan Node
 
@@ -48,6 +48,20 @@ menangkap kesalahan yang berbeda:
 - **Halaman** menguji jalur yang tidak bisa disentuh keduanya: SheetJS membaca
   berkas sungguhan, pratinjau menampilkan yang benar, dan stok benar-benar
   bertambah setelah Proses ditekan.
+
+## Kenapa penandaan hasil lab diuji dua kali
+
+Aturan Tinggi/Rendah/Kritis ditulis dua kali dengan sengaja: yang berlaku ada di
+database (`lab_hitung_tanda()`), dan kembarannya di `lab_core.js` dipakai layar untuk
+menampilkan tanda sebelum petugas menekan Simpan. Dua salinan aturan bisa berselisih
+diam-diam, dan selisih itu berbahaya — layar berkata Normal sementara database menyimpan
+Tinggi.
+
+Karena itu `uji_lab_core.js` memakai contoh yang **sama persis** dengan
+`uji_penunjang.sql`: Hb 12,5 rendah pada laki-laki dewasa tetapi normal pada perempuan
+dewasa; Hb 6,2 kritis, bukan sekadar rendah; rentang umur tersempit menang atas yang
+paling umum. Kalau seed nilai rujukan di SQL diubah, uji SQL nomor 1 dan 2 gagal; kalau
+penandaan di JS diubah, uji fungsi murni yang gagal.
 
 ## Kenapa uji RLS terpisah
 

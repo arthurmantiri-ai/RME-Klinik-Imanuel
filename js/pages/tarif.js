@@ -15,6 +15,7 @@ const Tarif = (() => {
   let tab = 'tarif';
   let daftar = [];
   let icd9 = [];
+  let refLab = [];
   let tersimpan = null;       // salinan template yang berlaku di database
   let contohLunas = true;
   let lebarPratinjau = 58;
@@ -111,6 +112,7 @@ const Tarif = (() => {
 
   async function dialogTarif(t, versiBaru = false) {
     if (!icd9.length) { try { icd9 = await DB.daftarIcd9('', null, 400); } catch (e) { icd9 = []; } }
+    if (!refLab.length) { try { refLab = await DB.refLab(true); } catch (e) { refLab = []; } }
     const baru = !t || versiBaru;
 
     await UI.modal({
@@ -125,6 +127,8 @@ const Tarif = (() => {
             <select name="jenis">
               <option value="TINDAKAN">Tindakan (ICD-9-CM)</option>
               <option value="LAYANAN">Layanan (karcis, administrasi, surat)</option>
+              <option value="LAB">Pemeriksaan laboratorium</option>
+              <option value="PENUNJANG">Penunjang (rontgen, EKG, USG)</option>
               <option value="LAIN">Lain-lain</option>
             </select></div>
           <div class="field"><label>Tarif (Rp) *</label>
@@ -135,6 +139,17 @@ const Tarif = (() => {
             ${icd9.map(i => `<option value="${UI.esc(i.kode)}">${UI.esc(i.kode)} — ${UI.esc(i.nama_id)}</option>`).join('')}
           </select>
           <div class="hint">Tarif tindakan dicocokkan lewat kode ini saat tagihan disusun.</div></div>
+        <div class="field" id="wrapLab"><label>Pemeriksaan laboratorium</label>
+          <select name="kode_lab"><option value="">— pilih pemeriksaan —</option>
+            ${refLab.map(m => `<option value="${UI.esc(m.kode)}">${UI.esc(m.kode)} — ${UI.esc(m.nama)}</option>`).join('')}
+          </select>
+          <div class="hint">Tarif lab dicocokkan lewat kode pemeriksaan ini. Pemeriksaan tanpa
+            tarif tetap masuk tagihan dengan harga Rp 0 dan ketahuan belum diisi.</div></div>
+        <div class="field" id="wrapPenunjang"><label>Jenis pemeriksaan penunjang</label>
+          <select name="kode_penunjang"><option value="">— pilih jenis —</option>
+            ${LabCore.JENIS_PENUNJANG.map(j =>
+              `<option value="${j.kode}">${UI.esc(j.label)}</option>`).join('')}
+          </select></div>
         <div class="form-row c2">
           <div class="field"><label>Nama tampil *</label>
             <input type="text" name="nama" value="${UI.esc(t?.nama || '')}"></div>
@@ -160,11 +175,31 @@ const Tarif = (() => {
         if (t) {
           badan.querySelector('[name=jenis]').value = t.jenis;
           badan.querySelector('[name=kode_icd9]').value = t.kode_icd9 || '';
+          if (t.jenis === 'LAB') badan.querySelector('[name=kode_lab]').value = t.kode || '';
+          if (t.jenis === 'PENUNJANG') badan.querySelector('[name=kode_penunjang]').value = t.kode || '';
         }
-        const sel = badan.querySelector('[name=jenis]');
+        const sel  = badan.querySelector('[name=jenis]');
         const wrap = badan.querySelector('#wrapIcd');
-        const atur = () => { wrap.style.display = sel.value === 'TINDAKAN' ? '' : 'none'; };
+        const wLab = badan.querySelector('#wrapLab');
+        const wPn  = badan.querySelector('#wrapPenunjang');
+        const nama = badan.querySelector('[name=nama]');
+        const atur = () => {
+          wrap.style.display = sel.value === 'TINDAKAN'  ? '' : 'none';
+          wLab.style.display = sel.value === 'LAB'       ? '' : 'none';
+          wPn.style.display  = sel.value === 'PENUNJANG' ? '' : 'none';
+        };
         sel.addEventListener('change', atur); atur();
+
+        /* Memilih pemeriksaan langsung mengisi nama dan kode internalnya.
+           Tanpa ini, kode tarif dan kode pemeriksaan gampang berselisih satu
+           huruf, dan tarifnya diam-diam tidak pernah ketemu saat menagih. */
+        badan.querySelector('[name=kode_lab]').addEventListener('change', (e) => {
+          const m = refLab.find(x => x.kode === e.target.value);
+          if (m && !nama.value.trim()) nama.value = m.nama;
+        });
+        badan.querySelector('[name=kode_penunjang]').addEventListener('change', (e) => {
+          if (!nama.value.trim()) nama.value = LabCore.labelJenis(e.target.value);
+        });
       },
       tombol: [
         { teks: 'Batal', nilai: null },
@@ -172,9 +207,20 @@ const Tarif = (() => {
           aksi: async (badan) => {
             const f = UI.nilaiForm(badan);
             if (!f.nama) { UI.toast('Nama tampil wajib diisi.', 'err'); return false; }
+            /* Untuk LAB dan PENUNJANG, kolom `kode` BUKAN sekadar catatan:
+               itulah yang dicari kasir_tarif_kode() saat menyusun tagihan.
+               Karena itu diambil dari daftar, bukan diketik bebas. */
+            let kode = f.kode;
+            if (f.jenis === 'LAB') {
+              if (!f.kode_lab) { UI.toast('Pilih pemeriksaan laboratoriumnya.', 'err'); return false; }
+              kode = f.kode_lab;
+            } else if (f.jenis === 'PENUNJANG') {
+              if (!f.kode_penunjang) { UI.toast('Pilih jenis pemeriksaan penunjangnya.', 'err'); return false; }
+              kode = f.kode_penunjang;
+            }
             const rec = {
               jenis: f.jenis, kode_icd9: f.jenis === 'TINDAKAN' ? (f.kode_icd9 || null) : null,
-              kode: f.kode, nama: f.nama, tarif: Number(f.tarif) || 0,
+              kode, nama: f.nama, tarif: Number(f.tarif) || 0,
               otomatis: !!f.otomatis, aktif: !!f.aktif,
               berlaku_mulai: f.berlaku_mulai, keterangan: f.keterangan
             };

@@ -7,6 +7,7 @@
        gigiRef,             // daftar dari ref_gigi
        data,                // { "36": {kondisi:null, bidang:{O:'car'}}, ... }
        umur,                // umur pasien dalam tahun, untuk memilih tampilan awal
+       bacaan,              // { "36": [{tanggal, jenis, kesan}, …] } — bacaan rontgen per gigi
        bacaSaja,            // true di halaman rekam medis
        onUbah               // dipanggil tiap kali ada perubahan
      });
@@ -61,6 +62,11 @@ const Odontogram = (() => {
     const gigiRef    = opsi.gigiRef || [];
     const bacaSaja   = !!opsi.bacaSaja;
     const onUbah     = opsi.onUbah || (() => {});
+    /* Gigi yang pernah dirontgen. Yang ditandai di bagan bukan gambarnya —
+       gambarnya memang tidak disimpan — melainkan adanya bacaan, beserta
+       kesan terakhirnya sebagai tooltip. Dokter jadi tahu gigi mana yang
+       sudah punya keterangan radiologis tanpa membuka riwayat satu per satu. */
+    const bacaanGigi = opsi.bacaan || {};
 
     /* Salin data supaya tidak mengubah objek milik pemanggil */
     let data = JSON.parse(JSON.stringify(opsi.data || {}));
@@ -131,11 +137,18 @@ const Odontogram = (() => {
 
       const adaCatatan = d.catatan ? `<circle cx="36" cy="4" r="3" fill="var(--brand-700)"/>` : '';
 
+      const bc = bacaanGigi[String(fdi)] || [];
+      const adaBacaan = bc.length
+        ? `<path d="M0,40 L12,40 L0,28 Z" fill="#7C3AED"><title>${UI.esc(
+             bc.length + ' bacaan rontgen. Terakhir ' +
+             (bc[0].tanggal || '') + ': ' + (bc[0].kesan || ''))}</title></path>`
+        : '';
+
       return `
         <div class="odo-gigi ${kondisi === 'mis' ? 'hilang' : ''}" data-gigi="${fdi}">
           <svg viewBox="0 0 40 40" class="odo-svg" ${kSeluruh ? `data-kondisi="${kondisi}"` : ''}
                ${menutup ? 'data-menutup="1"' : ''}>
-            ${isi}${adaCatatan}
+            ${isi}${adaCatatan}${adaBacaan}
           </svg>
           <button class="odo-nomor" data-nomor="${fdi}" ${bacaSaja ? 'disabled' : ''}
                   title="${UI.esc(g.nama)}">${fdi}</button>
@@ -201,7 +214,8 @@ const Odontogram = (() => {
         if (d.kondisi) dipakai.add(d.kondisi);
         Object.values(d.bidang || {}).forEach(v => dipakai.add(v));
       });
-      if (!dipakai.size) return '';
+      const adaBacaan = Object.keys(bacaanGigi).length > 0;
+      if (!dipakai.size && !adaBacaan) return '';
       return `<div class="odo-legenda">
         ${[...dipakai].filter(k => petaKondisi[k]).map(k => {
           const c = petaKondisi[k];
@@ -209,6 +223,9 @@ const Odontogram = (() => {
                     <span class="odo-warna" style="background:${c.warna}"></span>
                     <b>${c.kode}</b> ${UI.esc(c.nama)}</span>`;
         }).join('')}
+        ${adaBacaan ? `<span class="odo-legenda-item">
+            <span class="odo-warna" style="background:#7C3AED"></span>
+            Sudut ungu = ada bacaan rontgen (arahkan kursor untuk kesannya)</span>` : ''}
       </div>`;
     }
 

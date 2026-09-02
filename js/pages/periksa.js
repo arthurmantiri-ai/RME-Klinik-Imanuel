@@ -11,9 +11,12 @@ const Periksa = (() => {
   let simpanOtomatis = null;
   // Poli gigi
   let poliGigi = false;
+  // Penunjang: permintaan lab dan bacaan pada kunjungan ini
+  let labKunjungan = [], bacaanKunjungan = [], paketLab = [], masterLab = [];
   let odoWidget = null;
   let gigiRef = [], kondisiGigiRef = [];
   let dataOdontogram = {};
+  let bacaanGigi = {};
 
   async function render(el, param) {
     const id = param && param[0];
@@ -27,12 +30,16 @@ const Periksa = (() => {
       DB.diagnosa(id), DB.resep(id), DB.daftarSigna(), DB.cariIcd(''), DB.tindakan(id)
     ]);
     refStatusPulang = await DB.refStatusPulang();
+    [labKunjungan, bacaanKunjungan] = await Promise.all([
+      DB.labKunjungan(id).catch(() => []), DB.penunjangKunjungan(id).catch(() => [])
+    ]);
     DB.catatAkses(kj.pasien_id, 'Membuka pemeriksaan dokter');
 
     let pgigi = null;
     if (poliGigi) {
-      [gigiRef, kondisiGigiRef, dataOdontogram, pgigi] = await Promise.all([
-        DB.refGigi(), DB.refKondisiGigi(), DB.odontogram(kj.pasien_id), DB.pemeriksaanGigi(id)
+      [gigiRef, kondisiGigiRef, dataOdontogram, pgigi, bacaanGigi] = await Promise.all([
+        DB.refGigi(), DB.refKondisiGigi(), DB.odontogram(kj.pasien_id), DB.pemeriksaanGigi(id),
+        DB.gigiBerbacaan(kj.pasien_id).catch(() => ({}))
       ]);
     }
 
@@ -147,6 +154,9 @@ const Periksa = (() => {
             </div>
           </div>
 
+          <!-- ============ PEMERIKSAAN PENUNJANG ============ -->
+          ${kartuPenunjang(terkunci, bolehTulis)}
+
           <!-- ============ RESEP ============ -->
           <div class="card">
             <div class="card-head"><div class="flex-1"><h2>Resep</h2>
@@ -247,6 +257,15 @@ const Periksa = (() => {
       el.querySelector('#icdCepat').addEventListener('click', (e) => {
         const b = e.target.closest('[data-kode]'); if (!b) return;
         tambahDiagnosa({ kode: b.dataset.kode, nama: b.dataset.nama });
+      });
+      const bLab = el.querySelector('#btnMintaLab');
+      if (bLab) bLab.addEventListener('click', modalMintaLab);
+      const bBacaan = el.querySelector('#btnTulisBacaan');
+      if (bBacaan) bBacaan.addEventListener('click', async () => {
+        if (await Lab.modalBacaan(kj.pasien, kj.id, null)) {
+          bacaanKunjungan = await DB.penunjangKunjungan(kj.id);
+          App.segarkan();
+        }
       });
       el.querySelector('#btnSimpanDraf').addEventListener('click', () => simpan(false));
       el.querySelector('#btnFinal').addEventListener('click', () => simpan(true));
@@ -522,6 +541,7 @@ const Periksa = (() => {
       gigiRef,
       data: dataOdontogram,
       umur: umur ? umur.tahun : null,
+      bacaan: bacaanGigi,
       bacaSaja: terkunci,
       onUbah: (baru) => { dataOdontogram = baru; }
     });
@@ -609,6 +629,151 @@ const Periksa = (() => {
     w.querySelectorAll('[data-jml-tindakan]').forEach(inp => inp.addEventListener('change', () => {
       daftarTindakan[+inp.dataset.jmlTindakan].jumlah = Math.max(1, Number(inp.value) || 1);
     }));
+  }
+
+  /* ---------------- Pemeriksaan penunjang ----------------
+     Dokter meminta pemeriksaan dari sini, dan hasilnya muncul di kartu
+     yang sama begitu petugas lab mengisinya. Nilai di luar rujukan diberi
+     warna supaya tidak perlu dibandingkan satu per satu dengan kolom
+     rujukan — itulah yang tidak bisa dilakukan foto lembar hasil. */
+  function kartuPenunjang(terkunci, bolehTulis) {
+    const adaLab = labKunjungan.length, adaBacaan = bacaanKunjungan.length;
+
+    const barisLab = labKunjungan.map(lp => {
+      const isi = (lp.hasil || []).slice().sort((a, b) => (a.urutan || 0) - (b.urutan || 0));
+      const r = LabCore.ringkasLembar(isi);
+      return `
+        <div class="fieldset" style="margin-bottom:12px">
+          <legend>${UI.esc(lp.no_lab)} · ${UI.tglPendek(lp.tanggal)}
+            ${lp.asal === 'EKSTERNAL' ? '· ' + UI.esc(lp.nama_lab_luar || 'lab luar') : ''}</legend>
+          <div class="flex mb-8" style="gap:8px;align-items:center;flex-wrap:wrap">
+            ${Lab.lencanaStatus(lp.status)}
+            <span class="text-muted" style="font-size:12.5px">${r.terisi} dari ${r.total} terisi</span>
+            ${r.kritis ? `<span class="badge b-danger">${r.kritis} nilai kritis</span>` : ''}
+            <a href="#/lab/hasil/${lp.id}" class="btn btn-ghost btn-sm no-print">Buka lembar</a>
+          </div>
+          ${r.terisi ? `<div class="table-wrap"><table class="tbl">
+            <thead><tr><th>Pemeriksaan</th><th class="num">Hasil</th>
+              <th>Rujukan</th><th>Tanda</th></tr></thead>
+            <tbody>${isi.filter(h => h.nilai_angka !== null || h.nilai_teks).map(h => {
+              const m = h.ref || {};
+              const nilai = m.jenis_nilai === 'ANGKA'
+                ? LabCore.formatNilai(h.nilai_angka, m.desimal) : (h.nilai_teks || '');
+              const berat = (LabCore.TANDA[h.tanda] || {}).berat || 0;
+              return `<tr>
+                <td>${UI.esc(h.nama)}</td>
+                <td class="num" ${berat >= 3 ? 'style="color:var(--danger);font-weight:700"'
+                                : berat >= 2 ? 'style="font-weight:700"' : ''}>
+                  ${UI.esc(nilai)} <span class="text-muted">${UI.esc(h.satuan || '')}</span></td>
+                <td class="muted mono" style="font-size:12px">${UI.esc(h.rujukan_teks || '—')}</td>
+                <td>${Lab.lencanaTanda(h.tanda)}</td>
+              </tr>`;
+            }).join('')}</tbody></table></div>`
+            : `<p class="text-muted" style="margin:0;font-size:13px">Belum ada hasil yang masuk.</p>`}
+        </div>`;
+    }).join('');
+
+    const barisBacaan = bacaanKunjungan.map(b => `
+      <div class="fieldset" style="margin-bottom:12px">
+        <legend>${UI.esc(LabCore.labelJenis(b.jenis))} · ${UI.tglPendek(b.tanggal)}
+          ${b.daftar_gigi ? '· gigi ' + UI.esc(b.daftar_gigi) : ''}</legend>
+        ${b.temuan ? `<p style="margin:0 0 6px;font-size:13.5px">
+          <b>Temuan:</b> ${UI.esc(b.temuan)}</p>` : ''}
+        <p style="margin:0 0 6px;font-size:13.5px"><b>Kesan:</b> ${UI.esc(b.kesan)}</p>
+        ${b.saran ? `<p style="margin:0;font-size:13.5px"><b>Saran:</b> ${UI.esc(b.saran)}</p>` : ''}
+      </div>`).join('');
+
+    return `
+      <div class="card">
+        <div class="card-head">
+          <div class="flex-1"><h2>Pemeriksaan penunjang</h2>
+            <div class="sub">Laboratorium dan bacaan rontgen / EKG / USG pada kunjungan ini</div></div>
+          ${!terkunci && bolehTulis ? `<div class="btn-group no-print">
+            <button class="btn btn-secondary btn-sm" id="btnMintaLab">${UI.ikon('plus',15)} Minta lab</button>
+            <button class="btn btn-secondary btn-sm" id="btnTulisBacaan">${UI.ikon('plus',15)} Tulis bacaan</button>
+          </div>` : ''}
+        </div>
+        <div class="card-body">
+          ${!adaLab && !adaBacaan
+            ? `<p class="text-muted" style="margin:0;font-size:13.5px">
+                 Belum ada pemeriksaan penunjang pada kunjungan ini.</p>`
+            : barisLab + barisBacaan}
+        </div>
+      </div>`;
+  }
+
+  async function modalMintaLab() {
+    if (!masterLab.length) masterLab = await DB.refLab(true);
+    if (!paketLab.length)  paketLab  = await DB.refLabPaket();
+
+    const dipilih = new Set();
+    const grup = {};
+    masterLab.forEach(m => { (grup[m.kelompok] = grup[m.kelompok] || []).push(m); });
+
+    const hasil = await UI.modal({
+      judul: 'Minta pemeriksaan laboratorium',
+      lebar: true,
+      isi: `
+        <div class="field"><label>Paket yang sering diminta</label>
+          <div class="chip-list" id="pkLab">
+            ${paketLab.map(pk => `<button type="button" class="chip-quick" data-paket="${pk.id}">
+              ${UI.esc(pk.nama)}</button>`).join('')}
+          </div></div>
+        <div class="field"><label>Pemeriksaan</label>
+          <div style="max-height:260px;overflow-y:auto;border:1px solid var(--ink-200);
+                      border-radius:8px;padding:10px" id="dfLab">
+            ${Object.entries(grup).map(([k, isi]) => `
+              <div style="margin-bottom:10px">
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;
+                      letter-spacing:.04em;color:var(--ink-500);margin-bottom:5px">${UI.esc(k)}</div>
+                <div class="form-row c3">
+                  ${isi.map(m => `<label class="check">
+                    <input type="checkbox" value="${m.id}">
+                    <span>${UI.esc(m.nama)}${m.satuan
+                      ? ` <span class="text-muted">(${UI.esc(m.satuan)})</span>` : ''}</span>
+                  </label>`).join('')}
+                </div>
+              </div>`).join('')}
+          </div>
+          <div class="hint" id="hitungLab">Belum ada yang dipilih.</div></div>
+        <div class="field mb-0"><label for="catLab">Keterangan klinis untuk petugas lab
+          <span class="opt">opsional</span></label>
+          <input type="text" id="catLab" placeholder="mis. curiga demam berdarah hari ke-3"></div>`,
+      siap: (b) => {
+        const perbarui = () => {
+          b.querySelector('#hitungLab').textContent = dipilih.size
+            ? dipilih.size + ' pemeriksaan dipilih.' : 'Belum ada yang dipilih.';
+        };
+        b.querySelector('#dfLab').addEventListener('change', (e) => {
+          const c = e.target.closest('input[type=checkbox]'); if (!c) return;
+          c.checked ? dipilih.add(c.value) : dipilih.delete(c.value);
+          perbarui();
+        });
+        b.querySelector('#pkLab').addEventListener('click', (e) => {
+          const t = e.target.closest('[data-paket]'); if (!t) return;
+          const pk = paketLab.find(x => x.id === t.dataset.paket);
+          (pk.item || []).forEach(it => {
+            dipilih.add(it.lab_id);
+            const c = b.querySelector(`input[value="${it.lab_id}"]`);
+            if (c) c.checked = true;
+          });
+          perbarui();
+        });
+      },
+      tombol: [
+        { teks: 'Batal', nilai: null },
+        { teks: 'Kirim ke lab', kelas: 'btn-primary', aksi: async (b) => {
+            if (!dipilih.size) { UI.toast('Pilih minimal satu pemeriksaan.', 'err'); return false; }
+            try {
+              await DB.labMinta(kj.id, Array.from(dipilih),
+                                b.querySelector('#catLab').value.trim() || null);
+              UI.toast('Permintaan dikirim ke laboratorium.');
+              return true;
+            } catch (e) { UI.toast(e.message || 'Gagal mengirim permintaan.', 'err'); return false; }
+          } }
+      ]
+    });
+    if (hasil === true) { labKunjungan = await DB.labKunjungan(kj.id); App.segarkan(); }
   }
 
   /* ---------------- Simpan ---------------- */

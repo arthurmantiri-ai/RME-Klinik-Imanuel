@@ -15,14 +15,22 @@ atas untuk mencoba tampilan tiap peran, termasuk dokter gigi.
 
 - **Peran**: admin · pendaftaran · perawat · dokter · apoteker · kasir
 - **Poli**: umum dan gigi (poli gigi memunculkan odontogram dan pemeriksaan gigi)
-- **Alur**: pendaftaran → kajian awal → SOAP + ICD-10 + tindakan + resep →
+- **Alur**: pendaftaran → kajian awal → SOAP + ICD-10 + tindakan + penunjang + resep →
   kunci rekam medis → apotek (stok terpotong FEFO) → kasir (tagihan + kwitansi)
 - **Apotek**: stok per batch dengan urutan keluar FEFO, antrean resep dari dokter,
   kartu stok harian, laporan bulanan, impor & ekspor Excel (saldo awal dan pembelian)
 - **Kasir**: tagihan disusun otomatis dari tindakan dokter dan obat yang benar-benar
   diserahkan; kunjungan BPJS dicatat nilainya tanpa ditagihkan; kwitansi PDF dan
   struk thermal 58/80 mm
-- **Master data**: kelola obat, ICD-10, tindakan, dan tarif dari aplikasi; impor/ekspor CSV
+- **Lab & penunjang**: dokter meminta lewat paket, petugas mengisi angkanya, nilai di
+  luar rujukan ditandai otomatis menurut jenis kelamin dan umur, nilai kritis diberi
+  peringatan, tren antar kunjungan, lembar hasil siap cetak. Bacaan rontgen gigi
+  terkait nomor gigi dan tampil di odontogram
+- **Tanpa penyimpanan gambar**: yang disimpan angka dan bacaannya; berkas fisik
+  (film, lembar hasil lab luar) dicatat nomor arsipnya. Kuota 1 GB Supabase Storage
+  tidak terpakai sedikit pun — alasannya di [PANDUAN.md](PANDUAN.md#lab--pemeriksaan-penunjang)
+- **Master data**: kelola obat, ICD-10, tindakan, pemeriksaan lab, dan tarif dari
+  aplikasi; impor/ekspor CSV
 - **Kepatuhan**: PMK 24/2022 — audit trail, penguncian rekam medis, addendum, ICD-10
 - **Siap bridging**: PCare BPJS & SatuSehat (FHIR R4) sudah ditulis dan diuji;
   bridging dinyalakan belakangan, dan aplikasi menandai data yang belum lengkap sejak sekarang

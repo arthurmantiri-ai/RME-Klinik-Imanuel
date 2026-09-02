@@ -891,6 +891,198 @@ const DB = (() => {
   }
 
 
+  /* ------------------ Penunjang: lab, bacaan, arsip ---------------------- */
+  /* Tidak ada satu pun fungsi unggah berkas di bagian ini, dan itu memang
+     disengaja — lihat kepala sql/11_penunjang.sql. Yang disimpan adalah
+     angka dan bacaannya; berkas fisiknya cukup dicatat nomor arsipnya. */
+
+  /* Master pemeriksaan beserta nilai rujukannya, dimuat sekali per halaman. */
+  async function refLab(hanyaAktif = true) {
+    let q = sb.from('ref_lab').select('*, rujukan:ref_lab_rujukan(*)').order('kelompok').order('urutan');
+    if (hanyaAktif) q = q.eq('aktif', true);
+    const { data, error } = await q;
+    if (error) throw error; return data;
+  }
+  async function refLabPaket() {
+    const { data, error } = await sb.from('ref_lab_paket')
+      .select('*, item:ref_lab_paket_item(lab_id, urutan)')
+      .eq('aktif', true).order('urutan');
+    if (error) throw error; return data;
+  }
+  async function simpanRefLab(patch) {
+    const { data, error } = patch.id
+      ? await sb.from('ref_lab').update(patch).eq('id', patch.id).select().single()
+      : await sb.from('ref_lab').insert(patch).select().single();
+    if (error) throw error; return data;
+  }
+  async function simpanRujukan(patch) {
+    const { data, error } = patch.id
+      ? await sb.from('ref_lab_rujukan').update(patch).eq('id', patch.id).select().single()
+      : await sb.from('ref_lab_rujukan').insert(patch).select().single();
+    if (error) throw error; return data;
+  }
+  async function hapusRujukan(id) {
+    const { error } = await sb.from('ref_lab_rujukan').delete().eq('id', id);
+    if (error) throw error;
+  }
+
+  /* Permintaan & hasil */
+  async function labMinta(kunjunganId, labIds, catatan = null,
+                          asal = 'INTERNAL', namaLabLuar = null) {
+    const { data, error } = await sb.rpc('lab_minta', {
+      p_kunjungan_id: kunjunganId, p_lab_ids: labIds,
+      p_catatan: catatan || null, p_asal: asal,
+      p_nama_lab_luar: namaLabLuar || null
+    });
+    if (error) throw error; return data;
+  }
+  /* Hasil dari lab luar: pasien wajib, kunjungan boleh kosong. Dipisah
+     dari labMinta() karena isian layarnya memang berbeda — yang satu
+     memilih pemeriksaan untuk dikerjakan, yang satu menyalin lembar
+     yang sudah jadi. */
+  async function labMintaLuar({ pasien_id, kunjungan_id, lab_ids, tanggal,
+                                nama_lab, no_lembar, catatan }) {
+    const { data, error } = await sb.rpc('lab_minta', {
+      p_kunjungan_id: kunjungan_id || null, p_lab_ids: lab_ids,
+      p_catatan: catatan || null, p_asal: 'EKSTERNAL',
+      p_nama_lab_luar: nama_lab || null, p_pasien_id: pasien_id,
+      p_tanggal: tanggal || null, p_no_lembar_luar: no_lembar || null
+    });
+    if (error) throw error; return data;
+  }
+  async function labAntrean(dari, sampai, status = null) {
+    let q = sb.from('v_lab_antrean').select('*')
+      .gte('tanggal', dari).lte('tanggal', sampai)
+      .order('tanggal', { ascending: false }).order('diminta_pada', { ascending: false });
+    if (status) q = Array.isArray(status) ? q.in('status', status) : q.eq('status', status);
+    const { data, error } = await q;
+    if (error) throw error; return data;
+  }
+  async function labPermintaan(id) {
+    const { data, error } = await sb.from('lab_permintaan')
+      .select(`*, pasien:pasien_id(id,no_rm,nama,tanggal_lahir,jenis_kelamin,no_bpjs),
+               kunjungan:kunjungan_id(id,no_kunjungan,tanggal,cara_bayar),
+               peminta:diminta_oleh(nama), penutup:selesai_oleh(nama),
+               hasil:lab_hasil(*, ref:lab_id(id,kode,nama,kelompok,satuan,jenis_nilai,pilihan,teks_normal,desimal))`)
+      .eq('id', id).single();
+    if (error) throw error;
+    if (data && data.hasil) data.hasil.sort((a, b) => (a.urutan || 0) - (b.urutan || 0));
+    return data;
+  }
+  async function labKunjungan(kunjunganId) {
+    const { data, error } = await sb.from('lab_permintaan')
+      .select(`*, hasil:lab_hasil(*, ref:lab_id(kode,nama,kelompok,satuan,jenis_nilai,desimal))`)
+      .eq('kunjungan_id', kunjunganId).neq('status', 'BATAL')
+      .order('diminta_pada');
+    if (error) throw error; return data;
+  }
+  async function labPasien(pasienId, batas = 40) {
+    const { data, error } = await sb.from('v_lab_antrean').select('*')
+      .eq('pasien_id', pasienId).neq('status', 'BATAL')
+      .order('tanggal', { ascending: false }).limit(batas);
+    if (error) throw error; return data;
+  }
+  /* Satu nilai berubah = satu simpanan. Tidak dikirim borongan supaya
+     kegagalan pada satu baris tidak menghapus ketikan baris lain. */
+  async function simpanHasilLab(id, patch) {
+    const { data, error } = await sb.from('lab_hasil')
+      .update(patch).eq('id', id).select().single();
+    if (error) throw error; return data;
+  }
+  async function labSelesaikan(id) {
+    const { error } = await sb.rpc('lab_selesaikan', { p_permintaan_id: id });
+    if (error) throw error;
+  }
+  async function labBukaKunci(id, alasan) {
+    const { error } = await sb.rpc('lab_buka_kunci', { p_permintaan_id: id, p_alasan: alasan });
+    if (error) throw error;
+  }
+  async function labBatalkan(id, alasan) {
+    const { error } = await sb.rpc('lab_batalkan', { p_permintaan_id: id, p_alasan: alasan });
+    if (error) throw error;
+  }
+  async function labTren(pasienId, labId, batas = 12) {
+    const { data, error } = await sb.from('v_lab_tren').select('*')
+      .eq('pasien_id', pasienId).eq('lab_id', labId)
+      .order('tanggal', { ascending: false }).limit(batas);
+    if (error) throw error; return data;
+  }
+  async function labBelumSelesai(kunjunganId) {
+    const { data, error } = await sb.from('v_kasir_menunggu_lab')
+      .select('lab_belum_selesai').eq('kunjungan_id', kunjunganId).maybeSingle();
+    if (error) throw error;
+    return data ? data.lab_belum_selesai : 0;
+  }
+
+  /* Bacaan penunjang */
+  async function penunjangSimpan(p) {
+    const { data, error } = await sb.rpc('penunjang_simpan', {
+      p_id: p.id || null, p_pasien_id: p.pasien_id, p_kunjungan_id: p.kunjungan_id || null,
+      p_tanggal: p.tanggal || null, p_jenis: p.jenis, p_judul: p.judul || null,
+      p_asal: p.asal || 'INTERNAL', p_nama_tempat: p.nama_tempat || null,
+      p_no_film: p.no_film || null, p_temuan: p.temuan || null,
+      p_kesan: p.kesan, p_saran: p.saran || null, p_gigi: p.gigi || null
+    });
+    if (error) throw error; return data;
+  }
+  async function penunjangPasien(pasienId, batas = 40) {
+    const { data, error } = await sb.from('v_penunjang_lengkap').select('*')
+      .eq('pasien_id', pasienId).order('tanggal', { ascending: false }).limit(batas);
+    if (error) throw error; return data;
+  }
+  async function penunjangKunjungan(kunjunganId) {
+    const { data, error } = await sb.from('v_penunjang_lengkap').select('*')
+      .eq('kunjungan_id', kunjunganId).order('dibaca_pada');
+    if (error) throw error; return data;
+  }
+  /* Gigi mana saja yang pernah dirontgen — dipakai odontogram untuk
+     memberi tanda kecil pada giginya. Satu permintaan untuk seluruh
+     mulut, bukan 52 permintaan per gigi. */
+  async function gigiBerbacaan(pasienId) {
+    const { data, error } = await sb.from('penunjang_gigi')
+      .select('fdi, penunjang!inner(id,tanggal,jenis,kesan,pasien_id)')
+      .eq('penunjang.pasien_id', pasienId);
+    if (error) throw error;
+    const peta = {};
+    (data || []).forEach(r => {
+      if (!peta[r.fdi]) peta[r.fdi] = [];
+      peta[r.fdi].push(r.penunjang);
+    });
+    Object.values(peta).forEach(a =>
+      a.sort((x, y) => String(y.tanggal).localeCompare(String(x.tanggal))));
+    return peta;
+  }
+  async function hapusPenunjang(id) {
+    const { error } = await sb.from('penunjang').delete().eq('id', id);
+    if (error) throw error;
+  }
+
+  /* Register arsip berkas fisik */
+  async function lampiranPasien(pasienId, batas = 60) {
+    const { data, error } = await sb.from('lampiran')
+      .select('*, kunjungan:kunjungan_id(no_kunjungan,tanggal), pencatat:dibuat_oleh(nama)')
+      .eq('pasien_id', pasienId)
+      .order('tanggal_dokumen', { ascending: false, nullsFirst: false })
+      .order('dibuat_pada', { ascending: false }).limit(batas);
+    if (error) throw error; return data;
+  }
+  async function lampiranKunjungan(kunjunganId) {
+    const { data, error } = await sb.from('lampiran').select('*')
+      .eq('kunjungan_id', kunjunganId).order('dibuat_pada');
+    if (error) throw error; return data;
+  }
+  async function simpanLampiran(patch) {
+    const { data, error } = patch.id
+      ? await sb.from('lampiran').update(patch).eq('id', patch.id).select().single()
+      : await sb.from('lampiran').insert(patch).select().single();
+    if (error) throw error; return data;
+  }
+  async function hapusLampiran(id) {
+    const { error } = await sb.from('lampiran').delete().eq('id', id);
+    if (error) throw error;
+  }
+
+
   /* --------------------------- Bridging --------------------------------- */
   /* Aplikasi TIDAK pernah memegang kredensial. Ia hanya memanggil Edge
      Function, dan Edge Function-lah yang menyimpan rahasia serta berbicara
@@ -935,6 +1127,12 @@ const DB = (() => {
     kasirTambahItem, kasirUbahItem, kasirHapusItem,
     daftarTarif, simpanTarif, kasirRekap,
     templateInvoice, simpanTemplateInvoice,
+    refLab, refLabPaket, simpanRefLab, simpanRujukan, hapusRujukan,
+    labMinta, labMintaLuar, labAntrean, labPermintaan, labKunjungan, labPasien,
+    simpanHasilLab, labSelesaikan, labBukaKunci, labBatalkan,
+    labTren, labBelumSelesai,
+    penunjangSimpan, penunjangPasien, penunjangKunjungan, gigiBerbacaan, hapusPenunjang,
+    lampiranPasien, lampiranKunjungan, simpanLampiran, hapusLampiran,
     panggilBridging, riwayatBridging
   };
 })();

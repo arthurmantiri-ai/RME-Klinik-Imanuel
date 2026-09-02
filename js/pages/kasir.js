@@ -184,6 +184,20 @@ const Kasir = (() => {
 
   async function susunTagihan(kunjunganId) {
     const m = menunggu.find(x => x.kunjungan_id === kunjunganId);
+    /* Lab yang belum selesai jauh lebih berbahaya daripada resep yang belum
+       diserahkan: tagihan yang sudah DIBAYAR tidak bisa disusun ulang, jadi
+       biaya lab yang keluar sepuluh menit kemudian tidak sekadar terlewat —
+       ia hilang permanen kecuali kasir mengetiknya manual. */
+    let labTertunda = 0;
+    try { labTertunda = await DB.labBelumSelesai(kunjunganId); } catch (e) { labTertunda = 0; }
+    if (labTertunda > 0) {
+      const ok = await UI.konfirmasi('Pemeriksaan lab belum selesai',
+        `Masih ada ${labTertunda} lembar pemeriksaan laboratorium yang berjalan pada `
+        + 'kunjungan ini. Kalau tagihan disusun sekarang lalu dibayar, biaya lab yang '
+        + 'keluar setelahnya tidak bisa dimasukkan lagi ke tagihan ini.',
+        'Susun sekarang');
+      if (!ok) return;
+    }
     if (m && m.resep_belum_diserahkan) {
       const ok = await UI.konfirmasi('Resep belum diserahkan',
         'Obat yang belum diserahkan apotek tidak akan masuk tagihan ini. '
