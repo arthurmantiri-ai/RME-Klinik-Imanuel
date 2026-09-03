@@ -1,0 +1,22 @@
+# Alat pengujian saja — dipasang dengan `npm install playwright xlsx`
+# saat hendak menjalankan test/uji_*_halaman.js dan test/uji_apotek_excel.js.
+# Aplikasinya sendiri tidak memakai npm sama sekali: app.html memuat
+# berkas js/ langsung, tanpa build step.
+node_modules/
+package.json
+package-lock.json
+
+# Berkas kerja
+*.log
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# js/config.js SENGAJA ikut ter-commit sebagai contoh berisi nilai
+# 'GANTI-DENGAN-…'. Kunci `anon` di dalamnya memang aman terlihat: seluruh
+# pembatasan akses dijalankan Row Level Security di database, bukan browser.
+# Yang tidak boleh ikut hanyalah kunci `service_role` — kunci itu melewati
+# RLS sepenuhnya dan tidak pernah dipakai aplikasi ini.
+.env
+.env.*
