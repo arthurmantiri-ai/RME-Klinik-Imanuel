@@ -212,6 +212,50 @@ const KONTRAK = [
             '(pages/surat.js memakainya untuk ttd_sip). Tanpa kolom ini surat keluar ' +
             'tanpa nomor SIP — tetap rapi, tetap tercetak, dan tidak sah sebagai ' +
             'keterangan dokter. Tidak ada galat apa pun yang muncul.'
+  },
+  {
+    fungsi: 'refSistemFisik',
+    wajib: ['normal_teks'],
+    alasan: 'kalimat "dalam batas normal" per sistem tubuh. Kalimat inilah yang ' +
+            'masuk rekam medis dan yang dikirim ke SatuSehat saat dokter menandai ' +
+            'satu sistem normal. Tanpa kolom ini tombolnya tetap bisa ditekan, ' +
+            'centangnya tetap menyala, dan bagian O rekam medis keluar kosong ' +
+            'tanpa satu pun galat.'
+  },
+  {
+    fungsi: 'refSistemFisik',
+    wajib: ['temuan_lazim'],
+    alasan: 'daftar temuan yang bisa diklik saat satu sistem ditandai abnormal. ' +
+            'Tanpa kolom ini dokter harus mengetik setiap temuan dari nol, dan ' +
+            'pemeriksaan fisik terstruktur berubah jadi kotak teks bebas lagi.'
+  },
+  {
+    fungsi: 'refSistemFisik',
+    wajib: ['bawaan_periksa'],
+    alasan: 'penentu sistem mana yang ikut tombol "Semua dalam batas normal". ' +
+            'Tanpa kolom ini genitourinaria ikut tertandai normal padahal tidak ' +
+            'diperiksa — pernyataan medis yang keliru dan tercatat atas nama dokter.'
+  },
+  {
+    fungsi: 'cariObat',
+    wajib: ['dpho'],
+    alasan: 'penentu obat dikirim ke PCare sebagai kdObat (DPHO) atau sebagai ' +
+            'nmObatNonDPHO. Tanpa kolom ini setiap obat yang diresepkan tercatat ' +
+            'non-DPHO tanpa satu pun galat, dan klaim obat program tidak terbayar.'
+  },
+  {
+    fungsi: 'cariObat',
+    wajib: ['kode_pcare'],
+    alasan: 'kode obat BPJS yang disalin ke baris resep saat diresepkan. Kalau ' +
+            'tidak diminta di sini, baris resep menyimpan null dan obat DPHO ' +
+            'terkirim tanpa kode.'
+  },
+  {
+    fungsi: 'refVitalSemua',
+    wajib: ['kode_loinc'],
+    alasan: 'kode LOINC tiap tanda vital. Tanpa kolom ini pratinjau Observation ' +
+            'SatuSehat tampil lengkap tetapi tanpa kode, dan yang menandatangani ' +
+            'kesiapan bridging tidak punya cara tahu bahwa kodenya hilang.'
   }
 ];
 

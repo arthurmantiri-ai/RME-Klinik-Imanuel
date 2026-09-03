@@ -25,6 +25,13 @@ const Rekam = (() => {
       DB.lampiranKunjungan(id).catch(() => [])
     ]);
 
+    /* Nama sistem tubuh dibaca dari tabel rujukan, bukan ditanam di sini:
+       rekam medis lama menyimpan kode sistemnya, dan kalau namanya
+       dikarang ulang di halaman ini, mengubah satu nama di master akan
+       diam-diam mengubah bunyi rekam medis tahun lalu. */
+    const sistemRef = await DB.refSistemFisik(k.poli?.jenis).catch(() => []);
+    const taccRef = await DB.refTacc().catch(() => []);
+
     const poliGigi = k.poli?.jenis === 'GIGI';
     let gigiRef = [], kondisiRef = [], odoSaatItu = {}, bacaanGigi = {};
     if (poliGigi) {
@@ -136,6 +143,8 @@ const Rekam = (() => {
           <h3 class="mb-8">Pemeriksaan dokter</h3>
           ${Komponen.blokSoap(rm.pemeriksaan)}
 
+          ${blokFisik(rm.pemeriksaan, sistemRef)}
+
           <div class="divider"></div>
           <h3 class="mb-8">Diagnosa</h3>
           ${rm.diagnosa.length === 0
@@ -181,9 +190,14 @@ const Rekam = (() => {
           <div class="text-sm">
             ${baris('Rencana', LABEL_LANJUT[rm.pemeriksaan?.tindak_lanjut] || '—')}
             ${rm.pemeriksaan?.tanggal_kontrol ? baris('Tanggal kontrol', UI.tglIndo(rm.pemeriksaan.tanggal_kontrol)) : ''}
+            ${baris('Terapi non-obat', rm.pemeriksaan?.terapi_non_obat)}
+            ${baris('Bahan medis habis pakai', rm.pemeriksaan?.bmhp)}
             ${baris('Dirujuk ke', rm.pemeriksaan?.rujuk_ke_faskes)}
             ${baris('Spesialis tujuan', rm.pemeriksaan?.rujuk_spesialis)}
+            ${rm.pemeriksaan?.rujuk_tgl_estimasi
+              ? baris('Perkiraan tanggal dirujuk', UI.tglIndo(rm.pemeriksaan.rujuk_tgl_estimasi)) : ''}
             ${baris('Alasan rujukan', rm.pemeriksaan?.rujuk_alasan)}
+            ${baris('Kriteria TACC', teksTacc(rm.pemeriksaan, taccRef))}
             ${baris('Keadaan saat pulang', rm.pemeriksaan?.status_pulang)}
             ${baris('Prognosa', rm.pemeriksaan?.prognosa)}
             ${baris('Edukasi', rm.pemeriksaan?.edukasi)}
@@ -259,6 +273,47 @@ const Rekam = (() => {
     ? `<div style="display:flex;gap:12px;padding:4px 0">
         <span class="text-muted" style="width:190px;flex-shrink:0">${UI.esc(k)}</span>
         <span style="flex:1;white-space:pre-wrap">${UI.esc(v)}</span></div>` : '';
+
+  function teksTacc(pm, taccRef) {
+    if (!pm || !pm.tacc_kode || pm.tacc_kode === 'TIDAK') return '';
+    const t = (taccRef || []).find(x => x.kode === pm.tacc_kode);
+    return (t ? t.nama : pm.tacc_kode) + (pm.tacc_alasan ? ' — ' + pm.tacc_alasan : '');
+  }
+
+  /* ---------------- Pemeriksaan fisik per sistem ----------------
+     Tabel ini ikut tercetak. Yang normal DISEBUTKAN, tidak dilewati:
+     "sudah diperiksa dan hasilnya normal" adalah keterangan medis, dan
+     rekam medis yang hanya memuat temuan abnormal tidak bisa membedakannya
+     dari sistem yang tidak pernah disentuh. */
+  function blokFisik(pm, sistemRef) {
+    const fisik = (pm && pm.pemeriksaan_fisik) || {};
+    const isi = (sistemRef || []).filter(s => fisik[s.kode] && fisik[s.kode].status);
+    if (!isi.length) return '';
+
+    const label = { NORMAL: 'Dalam batas normal', ABNORMAL: 'Ada temuan',
+                    TIDAK_DIPERIKSA: 'Tidak diperiksa' };
+
+    return `
+      <div class="divider"></div>
+      <h3 class="mb-8">Pemeriksaan fisik</h3>
+      <table class="tbl" style="border:1px solid var(--ink-200);border-radius:6px">
+        <thead><tr><th style="width:210px">Sistem</th>
+          <th style="width:150px">Keadaan</th><th>Uraian</th></tr></thead>
+        <tbody>${isi.map(s => {
+          const f = fisik[s.kode];
+          return `<tr>
+            <td>${UI.esc(s.nama)}</td>
+            <td class="${f.status === 'ABNORMAL' ? '' : 'muted'}">${UI.esc(label[f.status] || f.status)}</td>
+            <td>${f.status === 'NORMAL' ? UI.esc(s.normal_teks)
+                 : f.status === 'ABNORMAL' ? `<b>${UI.esc(f.temuan || '—')}</b>`
+                 : '<span class="muted">—</span>'}</td>
+          </tr>`;
+        }).join('')}</tbody></table>
+      ${Array.isArray(pm.diagnosis_banding) && pm.diagnosis_banding.length
+        ? `<div class="text-sm mt-12">${baris('Diagnosis banding',
+            pm.diagnosis_banding.map(d => d.nama + (d.kode ? ` (${d.kode})` : '')).join(', '))}</div>`
+        : ''}`;
+  }
 
   /* ---------------- Pemeriksaan penunjang di rekam medis ----------------
      Ikut tercetak bersama rekam medis. Nilai di luar rujukan ditebalkan,

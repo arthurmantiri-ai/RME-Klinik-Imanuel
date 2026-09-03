@@ -187,10 +187,17 @@ const Master = (() => {
           <div class="field mb-0" style="align-self:end">
             <label class="check mb-8"><input type="checkbox" name="formularium"
               ${obat?.formularium ? 'checked' : ''}><span>Masuk formularium nasional</span></label>
+            <label class="check mb-8"><input type="checkbox" name="dpho"
+              ${obat?.dpho ? 'checked' : ''}><span>Ada di DPHO BPJS</span></label>
             <label class="check"><input type="checkbox" name="aktif"
               ${obat === null || obat.aktif ? 'checked' : ''}><span>Aktif — muncul saat dokter meresepkan</span></label>
           </div>
-        </div>`,
+        </div>
+        <p class="hint mt-8 mb-0">Obat bertanda DPHO dikirim ke PCare memakai
+          <span class="mono">kdObat</span> di atas; yang tidak bertanda dikirim
+          sebagai <span class="mono">nmObatNonDPHO</span> dengan namanya. Salah
+          tanda tidak menimbulkan galat — klaim obat programnya saja yang tidak
+          terbayar.</p>`,
       tombol: [
         { teks: 'Batal', nilai: null },
         { teks: baru ? 'Simpan obat' : 'Simpan perubahan', kelas: 'btn-primary', aksi: async (b) => {
@@ -219,7 +226,7 @@ const Master = (() => {
 
   /* --------------------------- CSV --------------------------- */
   const KOLOM_OBAT = ['kode_internal','nama','nama_generik','bentuk_sediaan','kekuatan',
-                      'satuan','golongan','kode_kfa','kode_pcare','formularium','harga'];
+                      'satuan','golongan','kode_kfa','kode_pcare','dpho','formularium','harga'];
 
   function eksporObat(data) {
     if (!data.length) { UI.toast('Tidak ada data untuk diekspor.', 'warn'); return; }
@@ -579,6 +586,10 @@ const Master = (() => {
             placeholder="Pencabutan gigi tetap"></div>
         <div class="field"><label>Nama Inggris</label>
           <input type="text" name="nama_en" value="${UI.esc(d?.nama_en)}"></div>
+        <div class="field"><label>Kode tindakan PCare</label>
+          <input type="text" name="kode_pcare" value="${UI.esc(d?.kode_pcare)}" class="mono">
+          <div class="hint">Diisi dari referensi tindakan BPJS. Tindakan tanpa kode ini
+            tercatat di rekam medis tetapi tidak bisa dikirim sebagai tindakan PCare.</div></div>
         <div class="field mb-0">
           <label class="check mb-8"><input type="checkbox" name="per_gigi"
             ${d?.per_gigi ? 'checked' : ''}><span>Tindakan pada satu gigi tertentu — meminta nomor gigi</span></label>

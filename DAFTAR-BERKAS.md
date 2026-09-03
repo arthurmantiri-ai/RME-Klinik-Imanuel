@@ -1,75 +1,148 @@
-# Modul Surat Keterangan — daftar berkas untuk diunggah
+# Modul Pemeriksaan Terstruktur — daftar berkas untuk diunggah
 
-Paket ini berisi **8 berkas baru** dan **16 berkas yang diubah**. Semuanya sudah diuji:
-seluruh `./test/semua.sh` hijau (16 uji SQL surat, 208 pemeriksaan fungsi murni,
-30 kontrak kolom, 54 alur halaman di Chromium, nol galat console).
+Paket ini berisi **5 berkas baru** dan **15 berkas yang diubah**.
+
+Semuanya sudah diuji, seluruh `./test/semua.sh` hijau:
+20 uji SQL pemeriksaan (di atas 103 uji SQL yang sudah ada),
+67 pemeriksaan fungsi murni `periksa_core`, 36 kontrak kolom `db.js` ↔ skema,
+dan 59 alur halaman di Chromium sungguhan — nol galat console, nol regresi
+pada empat modul yang sudah jalan.
 
 Salin berkas-berkas di bawah ke repo `arthurmantiri-ai/RME-Klinik-Imanuel`
 **pada jalur yang sama persis**, lalu commit.
 
+> `js/config.js` **tidak ikut** dalam paket ini. Berkas itu sudah berisi URL
+> dan kunci anon Anda di repo, dan tidak ada satu pun perubahan yang
+> membutuhkannya.
+
 ---
 
-## A. Berkas baru (8)
+## Apa yang berubah, dalam satu paragraf
+
+Layar pemeriksaan dokter tidak lagi empat kotak teks bebas. Setiap hal yang
+diminta PCare (30 field) dan SatuSehat (Observation berkode) kini punya
+kolomnya sendiri, dan catatan **S/O/A/P tetap ada** — tersusun sendiri dari
+field itu, masih bisa disunting. Database mendapat tujuh tabel rujukan berkode
+dan empat view yang menyusun payload PCare & SatuSehat **persis** seperti bentuk
+yang diminta, sehingga saat bridging dinyalakan tidak ada lagi yang perlu
+disesuaikan — kecuali memasangkan kode milik BPJS lewat halaman baru
+**Pengaturan → Rujukan & Kode PCare**.
+
+---
+
+## A. Berkas baru (5)
 
 | Jalur | Isi |
 |---|---|
-| `sql/13_surat.sql` | Tabel `ref_jenis_surat`, `surat`, `sys_surat_pengaturan`; penomoran; fungsi pembatalan; RLS; audit; view `v_surat` |
-| `js/kop_klinik.js` | Gambar kop Klinik Imanuel, tertanam sebagai data URI (dari `Kop Klinik Imanuel.doc`) |
-| `js/surat_core.js` | Bentuk nomor surat, hitungan tanggal, terbilang, dan definisi enam jenis surat — fungsi murni |
-| `js/surat_cetak.js` | Penyaji satu model dokumen menjadi halaman cetak (HTML) dan berkas PDF (pdfmake) |
-| `js/pages/surat.js` | Halaman Surat Keterangan: formulir + pratinjau, dan tab Riwayat surat |
-| `test/uji_surat.sql` | 16 uji SQL: penomoran, keunikan, pembatalan, RLS, GRANT view, audit |
-| `test/uji_surat_core.js` | 208 pemeriksaan fungsi murni, dijalankan di zona waktu lain agar salah-tanggal gagal keras |
-| `test/uji_surat_halaman.js` | 54 pemeriksaan alur halaman di Chromium sungguhan |
+| `sql/14_periksa_terstruktur.sql` | 7 tabel rujukan berkode (`ref_prognosa`, `ref_tacc`, `ref_tkp`, `ref_alergi`, `ref_ppk`, `ref_subspesialis`, `ref_sarana`, `ref_sistem_fisik`, `ref_vital`), 20 kolom baru pada `pemeriksaan`, kolom PCare pada `resep_item`/`tindakan`/`obat`/`icd9cm`, 2 trigger penjaga isi, 4 view payload (`v_pcare_kunjungan`, `v_pcare_obat`, `v_pcare_tindakan`, `v_satusehat_observasi`), 2 view kesiapan, RLS + GRANT |
+| `js/periksa_core.js` | Fungsi murni: menyusun narasi S/O/A/P dari isian terstruktur, mengurai aturan pakai jadi `signa1`/`signa2`, membangun payload PCare untuk pratinjau, menyusun Observation SatuSehat, memeriksa kelengkapan sebelum rekam medis dikunci |
+| `test/uji_periksa.sql` | 20 uji SQL: bentuk payload, urutan `kdDiag1..3`, TACC wajib beralasan, nama menyusul kode, alergi satu kode per jenis, Observation LOINC, GRANT view, RLS master |
+| `test/uji_periksa_core.js` | 67 pemeriksaan fungsi murni, dijalankan di `TZ=America/Los_Angeles` agar salah-tanggal gagal keras |
+| `test/uji_periksa_halaman.js` | 59 pemeriksaan alur halaman di Chromium sungguhan — dokter, perawat, dan admin |
 
-## B. Berkas yang diubah (16)
+## B. Berkas yang diubah (15)
 
 | Jalur | Apa yang berubah |
 |---|---|
-| `js/db.js` | 13 fungsi surat baru + pengaturan surat; ditambahkan sebelum bagian Bridging dan didaftarkan di blok `return` |
-| `js/app.js` | Menu **Surat Keterangan**, rute `#/surat`, judul halaman |
-| `js/ui.js` | Satu ikon baru (`surat`) |
-| `js/demo-data.js` | Data contoh surat + 13 fungsi tiruan, supaya `demo.html` bisa dipakai tanpa database |
-| `js/pages/periksa.js` | Kartu **Surat keterangan** di panel kanan layar pemeriksaan dokter |
-| `js/pages/rekam.js` | Tombol **Buat surat** dan daftar surat kunjungan di rekam medis |
-| `js/pages/pengaturan.js` | Tab baru **Kop & Surat**: unggah kop, kota, catatan kaki |
-| `css/style.css` | Gaya halaman surat (tata letak formulir + pratinjau, kotak nomor) |
-| `app.html` | 4 tag `<script>` baru |
-| `demo.html` | 4 tag `<script>` baru |
-| `test/jalankan.sh` | `uji_surat` masuk daftar uji SQL |
-| `test/semua.sh` | `uji_surat_core` dan `uji_surat_halaman` masuk daftar |
-| `test/uji_kolom_db.js` | Kontrak `daftarDokter.no_sip` + pemeriksaan kode jenis surat sama di JS, SQL, dan demo |
-| `test/README.md` | Penjelasan kenapa nomor surat diuji dua kali dan kenapa ujinya berjalan di zona waktu lain |
-| `PANDUAN.md` | Bab **Surat keterangan** (±110 baris), berkas SQL ke-13, pohon berkas, daftar isi |
-| `README.md` | Ringkasan modul surat |
-
-`perubahan-berkas-lama.patch` berisi `git diff` bagian B, kalau lebih enak ditinjau
-sebagai patch daripada berkas utuh.
+| `js/pages/periksa.js` | **Ditulis ulang.** Anamnesis terstruktur (8 butir riwayat penyakit sekarang), pemeriksaan fisik 13 sistem dengan tombol "Semua dalam batas normal", diagnosis banding, terapi non-obat & BMHP, prognosa & TACC berkode, blok rujukan terstruktur, kartu kesiapan BPJS + pratinjau payload, kartu SOAP yang tersusun sendiri |
+| `js/db.js` | Pemuat 8 tabel rujukan baru (dengan cache), alergi berkode per jenis, pratinjau payload PCare, observasi SatuSehat, kesiapan kode, `simpanPpk`, `simpanPemetaanKode`; `cariObat` kini meminta `kode_pcare` & `dpho`, `cariIcd9` meminta `kode_pcare`; `simpanResep` & `simpanTindakan` menyimpan kolom PCare |
+| `js/pages/rekam.js` | Tabel pemeriksaan fisik per sistem (yang normal ikut tercetak), diagnosis banding, terapi non-obat, BMHP, tanggal estimasi rujukan, kriteria TACC |
+| `js/pages/pengaturan.js` | Tab baru **Rujukan & Kode PCare**: kelola daftar faskes tujuan rujukan (`kdppk`) dan isi pemetaan kode PCare yang masih kosong |
+| `js/pages/master.js` | Centang **Ada di DPHO BPJS** pada obat, kolom **Kode tindakan PCare** pada ICD-9-CM, `dpho` masuk kolom ekspor/impor CSV |
+| `js/demo-data.js` | Data contoh 8 tabel rujukan baru + 12 fungsi tiruan, pemeriksaan contoh berisi field terstruktur — supaya `demo.html` tetap bisa dipakai tanpa database |
+| `css/style.css` | Gaya baris pemeriksaan fisik per sistem (`.sistem-baris` dan turunannya) |
+| `app.html` | 1 tag `<script>` baru (`js/periksa_core.js`) |
+| `demo.html` | 1 tag `<script>` baru (`js/periksa_core.js`) |
+| `supabase/functions/pcare-proxy/index.ts` | 8 jalur referensi baru (`ref.statuspulang`, `ref.prognosa`, `ref.alergi`, `ref.spesialis`, `ref.subspesialis`, `ref.sarana`, `ref.faskes`, `ref.tindakan`) dan 4 operasi obat/tindakan — inilah asal nilai `kode_pcare` nanti |
+| `test/jalankan.sh` | `uji_periksa` masuk daftar uji SQL |
+| `test/semua.sh` | `uji_periksa_core` dan `uji_periksa_halaman` masuk daftar |
+| `test/uji_kolom_db.js` | 5 kontrak kolom baru: `refSistemFisik.normal_teks`/`temuan_lazim`/`bawaan_periksa`, `refVitalSemua.kode_loinc`, `cariObat.dpho`/`kode_pcare` |
+| `test/README.md` | Kenapa payload PCare diuji dua kali, kenapa ujinya di zona waktu barat, kenapa aturan pakai tidak ditebak |
+| `PANDUAN.md` | Bab **Layar pemeriksaan dokter** (±70 baris), bab bridging diperluas, berkas SQL ke-14, pohon berkas, daftar isi |
+| `README.md` | Ringkasan pemeriksaan berfield dan kesiapan bridging |
 
 ---
 
-## Setelah diunggah — satu langkah di Supabase
+## Yang harus Anda lakukan setelah mengunggah
 
-Jalankan **`sql/13_surat.sql`** sekali di **SQL Editor** Supabase. Berkas ini aman
-dijalankan di database yang sudah berisi data: semuanya `create ... if not exists`,
-`create or replace`, dan `on conflict do nothing/update`.
+### 1. Jalankan `sql/14_periksa_terstruktur.sql` di Supabase
 
-Memeriksa hasilnya:
+Sekali saja, **setelah** berkas 13. Aman dijalankan di database yang sudah
+berisi data — seluruhnya `add column if not exists` dan `create table if not
+exists`, tidak ada satu pun kolom yang dibuang. Rekam medis yang sudah ada
+tetap terbaca persis seperti semula.
 
-```sql
-select count(*) from ref_jenis_surat;      -- harus 6
-select public.format_no_surat(7,'SKS',9,2026);  -- harus 07/SKS/YAKIM/IX/2026
-```
+### 2. Isi daftar faskes tujuan rujukan
 
-Tidak ada langkah lain. Tidak ada berkas yang perlu disunting — kop surat sudah
-tertanam di `js/kop_klinik.js`.
+**Pengaturan → Rujukan & Kode PCare → Tambah faskes.** Cukup rumah sakit yang
+biasa dituju pasien klinik — sekali saja.
+
+Selama daftarnya kosong, dokter tidak bisa memilih faskes tujuan dan rujukan
+tidak bisa dikunci. Kode `kdppk` yang Anda ketik sendiri ditandai *diketik
+sendiri* sampai dicocokkan dengan daftar resmi BPJS.
+
+### 3. Tandai obat yang ada di DPHO
+
+**Master Data → Obat → Ubah → centang "Ada di DPHO BPJS"**, dan isi kolom
+**Kode obat PCare**-nya. Obat bertanda DPHO dikirim memakai `kdObat`; yang
+tidak bertanda dikirim sebagai `nmObatNonDPHO` dengan namanya. Bisa dikerjakan
+bertahap — obat yang belum ditandai tetap bisa diresepkan seperti biasa.
+
+### 4. (Nanti) Isi pemetaan kode PCare
+
+**Pengaturan → Rujukan & Kode PCare** mendaftar setiap nilai berkode yang belum
+punya pasangan kode BPJS, lengkap dengan nama field PCare-nya. Isi setelah
+kredensial datang.
 
 ---
 
-## Yang mungkin ingin Anda ubah sendiri
+## Kenapa kolom `kode_pcare` sengaja dibiarkan kosong
 
-| Di mana | Apa |
-|---|---|
-| Pengaturan → Kop & Surat | Kota pada baris tanggal (bawaan **Manado**) dan catatan kaki |
-| Pengaturan → Kop & Surat | Unggah kop lain bila kop klinik diperbarui |
-| Pengaturan → Pengguna | Pastikan **No. SIP** tiap dokter terisi — nomor itu tercetak di bawah tanda tangan pada semua surat |
+Ini keputusan, bukan pekerjaan yang belum selesai.
+
+Kode untuk kesadaran, keadaan pulang, prognosa, sub spesialis, sarana, dan
+alergi **milik BPJS**. Menebaknya tidak menimbulkan galat apa pun: `kdStatusPulang`
+yang salah tetap membuat klaim terkirim, tetap diterima, dan tetap keliru
+isinya — tanpa satu pun tanda di layar. Kesalahan seperti itu baru ketahuan
+berbulan-bulan kemudian, lewat klaim yang dikembalikan, dan tidak bisa
+ditelusuri lagi ke keputusan yang membuatnya.
+
+Yang bisa dibangun sekarang justru sudah dibangun, dan itulah bagian yang mahal
+kalau ditunda: **strukturnya**. Tempat kodenya ada, halaman pemetaannya ada,
+daftar apa yang masih kosong ada, jalur mengambilnya dari PCare ada, dan
+view payload-nya sudah menyusun 30 field itu dari data yang benar-benar
+tersimpan. Yang tersisa hanya mengetik kode di satu halaman.
+
+Yang **memang diisi** sekarang hanya nilai yang baku dan tidak berubah:
+kode LOINC tanda vital (dari profil FHIR *vitalsigns*, sama di semua negara)
+dan `kdTkp`/`kdTacc` yang nilainya tetap sejak PCare v1.
+
+---
+
+## Dua bug yang ditemukan saat mengerjakan ini
+
+Keduanya sudah diperbaiki dan sudah ada ujinya.
+
+**1. Pendengar peristiwa bertumpuk di daftar pemeriksaan fisik.** `gambarFisik()`
+memasang pendengar klik setiap kali dipanggil, sementara ia dipanggil ulang tiap
+kali satu sistem ditandai. Setelah dua kali penggambaran, satu klik berjalan dua
+kali: yang pertama menandai ABNORMAL, yang kedua melihat statusnya sudah sama
+lalu membatalkannya. Gejalanya adalah tombol yang "tidak bereaksi" — tanpa galat,
+tanpa pesan, dan makin parah tiap kali layar digambar. Pendengarnya kini dipasang
+sekali di `pasangFisik()`.
+
+**2. TACC tanpa alasan menggagalkan simpan sementara.** Trigger `cek_tacc()` di
+database menolak TACC yang perlu alasan tetapi alasannya kosong — dan penolakan
+itu menggagalkan **seluruh** penyimpanan, termasuk catatan pemeriksaan yang sudah
+panjang diketik. Sekarang TACC yang belum beralasan tidak ikut dikirim saat
+menyimpan sementara; yang menahan adalah pemeriksaan kelengkapan pada tombol
+**Selesai & kunci rekam medis**, dan itu memang tempatnya.
+
+---
+
+## Catatan tentang `test/jalankan.sh` dan `test/semua.sh`
+
+Kedua berkas ini ikut berubah mode jadi dapat dieksekusi (`chmod +x`). Kalau
+Anda menyalin berkasnya lewat antarmuka web GitHub, mode itu tidak ikut dan
+Anda perlu menjalankannya dengan `bash test/semua.sh`. Kalau lewat `git`,
+patch-nya sudah membawa perubahan mode.

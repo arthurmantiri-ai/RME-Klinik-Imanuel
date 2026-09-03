@@ -84,8 +84,14 @@ const DB = (() => {
       .order('sering_dipakai', { ascending: false }).limit(batas);
     if (error) throw error; return data;
   }
+  /* `kode_pcare` dan `dpho` WAJIB ikut terpilih. Keduanya yang menentukan
+     obat ini dikirim ke PCare sebagai kdObat (obat DPHO) atau sebagai
+     nmObatNonDPHO. Kalau lupa diminta, setiap obat yang diresepkan
+     tercatat sebagai non-DPHO tanpa satu pun galat, dan klaim obat
+     program tidak pernah terbayar. */
   async function cariObat(kata, batas = 25) {
-    let q = sb.from('obat').select('id,nama,satuan,bentuk_sediaan,kekuatan,kode_kfa,golongan')
+    let q = sb.from('obat')
+      .select('id,nama,satuan,bentuk_sediaan,kekuatan,kode_kfa,kode_pcare,dpho,golongan')
       .eq('aktif', true).order('nama').limit(batas);
     if (kata && kata.length >= 2) q = q.or(`nama.ilike.%${kata}%,nama_generik.ilike.%${kata}%`);
     const { data, error } = await q;
@@ -258,9 +264,16 @@ const DB = (() => {
       if (error) throw error;
     }
     if (!item.length) return { ...r, item: [] };
+    /* frekuensi & dosis = signa1 & signa2 milik PCare, kode_pcare &
+       obat_dpho menentukan obat dikirim berkode atau bernama. Empat
+       kolom ini disalin ke baris resep, bukan dibaca dari master saat
+       pengiriman: master obat bisa berubah bertahun-tahun kemudian,
+       sedangkan yang diklaim adalah obat yang diserahkan hari itu. */
     const rows = item.map((o, i) => ({
       resep_id: r.id, obat_id: o.obat_id || null, nama_obat: o.nama_obat,
-      kode_kfa: o.kode_kfa || null, jumlah: o.jumlah, satuan: o.satuan,
+      kode_kfa: o.kode_kfa || null, kode_pcare: o.kode_pcare || null,
+      obat_dpho: !!o.obat_dpho,
+      jumlah: o.jumlah, satuan: o.satuan,
       signa: o.signa, frekuensi: o.frekuensi || null, dosis: o.dosis || null,
       rute: o.rute || 'Oral', keterangan: o.keterangan || null, urutan: i
     }));
@@ -433,7 +446,7 @@ const DB = (() => {
 
   /* Tindakan (ICD-9-CM) */
   async function cariIcd9(kata, kategori = null, batas = 25) {
-    let q = sb.from('icd9cm').select('kode,nama_id,nama_en,kategori,per_gigi')
+    let q = sb.from('icd9cm').select('kode,nama_id,nama_en,kategori,per_gigi,kode_pcare')
       .eq('aktif', true).limit(batas);
     if (kata && kata.length >= 2) {
       const k = `%${kata}%`;
@@ -457,6 +470,7 @@ const DB = (() => {
     if (!daftar.length) return [];
     const rows = daftar.map((t, i) => ({
       kunjungan_id: kunjunganId, kode_icd9: t.kode, nama: t.nama,
+      kode_pcare: t.kode_pcare || null,
       fdi: t.fdi || null, jumlah: t.jumlah || 1, catatan: t.catatan || null,
       dilakukan_oleh: _saya?.id, urutan: i
     }));
@@ -495,6 +509,150 @@ const DB = (() => {
       .eq('aktif', true).order('urutan');
     if (error) throw error;
     _refStatusPulang = data; return data;
+  }
+
+  /* --------------------- Rujukan pemeriksaan terstruktur ---------------
+     Semua di-cache karena isinya puluhan baris yang tidak berubah selama
+     sesi, sementara halaman pemeriksaan memuat tujuh tabel sekaligus.
+
+     PERHATIKAN kolom yang diminta. `ref_sistem_fisik.normal_teks` dan
+     `temuan_lazim` bukan hiasan: kalimat normal itulah yang masuk rekam
+     medis dan yang dikirim ke SatuSehat. Kalau lupa diminta di sini,
+     tombol "dalam batas normal" tetap bisa ditekan dan rekam medisnya
+     keluar kosong tanpa satu pun galat — kelas kesalahan yang sama
+     dengan hilangnya poli.jenis dulu. Dijaga test/uji_kolom_db.js. */
+  const _ref = {};
+  function refCache(nama, tabel, kolom, urut = 'urutan') {
+    return async () => {
+      if (_ref[nama]) return _ref[nama];
+      const { data, error } = await sb.from(tabel).select(kolom)
+        .eq('aktif', true).order(urut);
+      if (error) throw error;
+      _ref[nama] = data; return data;
+    };
+  }
+
+  const refPrognosa     = refCache('prognosa', 'ref_prognosa',
+                            'kode,nama,keterangan,kode_pcare,urutan');
+  const refTacc         = refCache('tacc', 'ref_tacc',
+                            'kode,nama,keterangan,kode_pcare,perlu_alasan,urutan');
+  const refSubspesialis = refCache('subspesialis', 'ref_subspesialis',
+                            'kode,nama,kode_pcare,urutan');
+  const refSarana       = refCache('sarana', 'ref_sarana',
+                            'kode,nama,kode_pcare,urutan');
+  const refAlergi       = refCache('alergi', 'ref_alergi',
+                            'id,jenis,kode,nama,kode_pcare,urutan');
+  const refPpk          = refCache('ppk', 'ref_ppk',
+                            'kode,nama,jenis,alamat,telepon,sumber,urutan', 'nama');
+
+  async function refSistemFisik(poliJenis = null) {
+    const kunci = 'sistem_' + (poliJenis || 'semua');
+    if (_ref[kunci]) return _ref[kunci];
+    const { data, error } = await sb.from('ref_sistem_fisik')
+      .select('kode,nama,normal_teks,temuan_lazim,kode_loinc,kode_snomed,'
+            + 'poli_jenis,bawaan_periksa,urutan')
+      .eq('aktif', true).order('urutan');
+    if (error) throw error;
+    /* Sistem tanpa poli_jenis berlaku di semua poli; yang bertanda hanya
+       muncul di poli itu. Disaring di sini, bukan di SQL, supaya satu
+       permintaan cukup untuk poli mana pun. */
+    const hasil = (data || []).filter(s => !s.poli_jenis || s.poli_jenis === poliJenis);
+    _ref[kunci] = hasil; return hasil;
+  }
+
+  /* ref_vital tidak punya kolom `aktif`; refCache tidak bisa dipakai. */
+  async function refVitalSemua() {
+    if (_ref.vital_semua) return _ref.vital_semua;
+    const { data, error } = await sb.from('ref_vital')
+      .select('kode,nama,satuan,satuan_ucum,kode_loinc,urutan').order('urutan');
+    if (error) throw error;
+    _ref.vital_semua = data; return data;
+  }
+
+  /* Alergi berkode pasien: satu baris per jenis (MAKANAN, UDARA, OBAT),
+     karena PCare hanya menerima satu kode per jenis. */
+  async function alergiKode(pasienId) {
+    const { data, error } = await sb.from('pasien_alergi')
+      .select('id,jenis,nama,reaksi,tingkat,ref_alergi_id,dicatat_pada')
+      .eq('pasien_id', pasienId).not('ref_alergi_id', 'is', null)
+      .order('dicatat_pada', { ascending: false });
+    if (error) throw error;
+    const per = {};
+    (data || []).forEach(a => { if (!per[a.jenis]) per[a.jenis] = a; });
+    return per;
+  }
+
+  /* Mengganti alergi berkode satu jenis. Baris alergi lama yang diketik
+     bebas TIDAK dihapus — itu catatan medis, bukan sampah. */
+  async function setAlergiKode(pasienId, jenis, refAlergiId, nama, catatan) {
+    const { error: e1 } = await sb.from('pasien_alergi').delete()
+      .eq('pasien_id', pasienId).eq('jenis', jenis).not('ref_alergi_id', 'is', null);
+    if (e1) throw e1;
+    if (!refAlergiId) return null;
+    const { data, error } = await sb.from('pasien_alergi').insert({
+      pasien_id: pasienId, jenis, nama: nama || jenis,
+      reaksi: catatan || null, ref_alergi_id: refAlergiId,
+      dicatat_oleh: _saya?.id
+    }).select().single();
+    if (error) throw error; return data;
+  }
+
+  /* Pratinjau payload PCare langsung dari database — inilah yang benar-
+     benar akan dikirim nanti, bukan susunan ulang di peramban. */
+  async function pcarePratinjau(kunjunganId) {
+    const [k, o, t] = await Promise.all([
+      sb.from('v_pcare_kunjungan').select('*').eq('kunjungan_id', kunjunganId).maybeSingle(),
+      sb.from('v_pcare_obat').select('*').eq('kunjungan_id', kunjunganId),
+      sb.from('v_pcare_tindakan').select('*').eq('kunjungan_id', kunjunganId)
+    ]);
+    if (k.error) throw k.error;
+    return { kunjungan: k.data, obat: o.data || [], tindakan: t.data || [] };
+  }
+
+  async function observasiSatuSehat(kunjunganId) {
+    const { data, error } = await sb.from('v_satusehat_observasi').select('*')
+      .eq('kunjungan_id', kunjunganId).order('kelompok').order('urutan');
+    if (error) throw error; return data;
+  }
+
+  async function kesiapanKode() {
+    const { data, error } = await sb.from('v_kesiapan_kode').select('*');
+    if (error) throw error; return data;
+  }
+
+  async function simpanPpk(rec) {
+    const { data, error } = await sb.from('ref_ppk')
+      .upsert({ ...rec, updated_at: new Date().toISOString() }, { onConflict: 'kode' })
+      .select().single();
+    if (error) throw error;
+    delete _ref.ppk;                      // daftar berubah, cache tidak boleh basi
+    return data;
+  }
+
+  /* Mengisi kolom kode_pcare (atau kode_loinc untuk sistem pemeriksaan
+     fisik) pada tabel rujukan. Nama tabel TIDAK diambil mentah dari
+     pemanggil: daftar putih di bawah yang menentukan, supaya satu nilai
+     yang salah dari layar tidak bisa menulis ke tabel mana pun. */
+  const TABEL_KODE = {
+    ref_kesadaran: 'kode_pcare', ref_status_pulang: 'kode_pcare',
+    ref_prognosa: 'kode_pcare', ref_subspesialis: 'kode_pcare',
+    ref_sarana: 'kode_pcare', ref_alergi: 'kode_pcare',
+    ref_sistem_fisik: 'kode_loinc'
+  };
+
+  async function simpanPemetaanKode(daftar) {
+    for (const it of daftar) {
+      const kolom = TABEL_KODE[it.tabel];
+      if (!kolom) throw new Error(`Tabel "${it.tabel}" tidak boleh diubah dari sini.`);
+      const { error } = await sb.from(it.tabel)
+        .update({ [kolom]: it.nilai }).eq('kode', it.kode);
+      if (error) throw error;
+    }
+    /* Seluruh cache rujukan dibuang: yang dipakai halaman pemeriksaan
+       adalah salinan lama yang kodenya masih kosong. */
+    Object.keys(_ref).forEach(k => delete _ref[k]);
+    _refKesadaran = null; _refStatusPulang = null;
+    return daftar.length;
   }
 
   /* --- Obat --- */
@@ -1252,6 +1410,10 @@ const DB = (() => {
     pemeriksaanGigi, simpanPemeriksaanGigi,
     cariIcd9, tindakan, simpanTindakan, tindakanTeratas,
     refKesadaran, refStatusPulang,
+    refPrognosa, refTacc, refSubspesialis, refSarana, refAlergi, refPpk,
+    refSistemFisik, refVital: refVitalSemua,
+    alergiKode, setAlergiKode,
+    pcarePratinjau, observasiSatuSehat, kesiapanKode, simpanPpk, simpanPemetaanKode,
     daftarObat, simpanObat, imporObat,
     daftarIcd10, simpanIcd10, daftarIcd9, simpanIcd9,
     kesiapanPasien, kesiapanKunjungan, ringkasanKesiapan,

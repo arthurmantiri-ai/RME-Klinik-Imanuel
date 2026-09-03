@@ -10,21 +10,22 @@ Biaya: **Rp 0** (Supabase free tier + Netlify free tier).
 1. [Apa yang sudah jadi](#1-apa-yang-sudah-jadi)
 2. [Yang perlu Anda siapkan](#2-yang-perlu-anda-siapkan)
 3. [Langkah 1 — Buat database Supabase](#langkah-1--buat-database-supabase)
-4. [Langkah 2 — Jalankan tiga belas berkas SQL](#langkah-2--jalankan-tiga-belas-berkas-sql)
+4. [Langkah 2 — Jalankan empat belas berkas SQL](#langkah-2--jalankan-empat-belas-berkas-sql)
 5. [Langkah 3 — Buat akun admin pertama](#langkah-3--buat-akun-admin-pertama)
 6. [Langkah 4 — Hubungkan aplikasi ke database](#langkah-4--hubungkan-aplikasi-ke-database)
 7. [Langkah 5 — Unggah ke Netlify](#langkah-5--unggah-ke-netlify)
 8. [Langkah 6 — Isi data klinik](#langkah-6--isi-data-klinik)
 9. [Alur pemakaian harian](#alur-pemakaian-harian)
-10. [Poli gigi](#poli-gigi)
-11. [Lab & pemeriksaan penunjang](#lab--pemeriksaan-penunjang)
-12. [Surat keterangan](#surat-keterangan)
-13. [Master data](#master-data)
-14. [Bridging PCare & SatuSehat](#bridging-pcare--satusehat)
-15. [Keamanan dan kepatuhan PMK 24/2022](#keamanan-dan-kepatuhan-pmk-242022)
-16. [Batas paket gratis](#batas-paket-gratis)
-17. [Rencana penggabungan dengan portal klinik](#rencana-penggabungan-dengan-portal-klinik)
-18. [Yang belum ada](#yang-belum-ada)
+10. [Layar pemeriksaan dokter](#layar-pemeriksaan-dokter)
+11. [Poli gigi](#poli-gigi)
+12. [Lab & pemeriksaan penunjang](#lab--pemeriksaan-penunjang)
+13. [Surat keterangan](#surat-keterangan)
+14. [Master data](#master-data)
+15. [Bridging PCare & SatuSehat](#bridging-pcare--satusehat)
+16. [Keamanan dan kepatuhan PMK 24/2022](#keamanan-dan-kepatuhan-pmk-242022)
+17. [Batas paket gratis](#batas-paket-gratis)
+18. [Rencana penggabungan dengan portal klinik](#rencana-penggabungan-dengan-portal-klinik)
+19. [Yang belum ada](#yang-belum-ada)
 
 ---
 
@@ -84,7 +85,8 @@ rme-imanuel/
 │   ├── 10_apotek_impor.sql Impor stok dari Excel (saldo awal & pembelian)
 │   ├── 11_penunjang.sql    Lab, bacaan rontgen, register arsip berkas
 │   ├── 12_kasir_penunjang.sql Lab & penunjang masuk ke tagihan
-│   └── 13_surat.sql        Surat keterangan, penomoran, dan riwayatnya
+│   ├── 13_surat.sql        Surat keterangan, penomoran, dan riwayatnya
+│   └── 14_periksa_terstruktur.sql  Pemeriksaan berfield, siap PCare & SatuSehat
 └── supabase/functions/
     ├── pcare-proxy/        Jembatan ke PCare BPJS
     └── satusehat-proxy/    Jembatan ke SatuSehat (FHIR R4)
@@ -115,7 +117,7 @@ Tidak perlu memasang apa pun di komputer. Tidak perlu kartu kredit.
 
 ---
 
-## Langkah 2 — Jalankan tiga belas berkas SQL
+## Langkah 2 — Jalankan empat belas berkas SQL
 
 Di dasbor Supabase, buka **SQL Editor** (ikon terminal di bilah kiri).
 
@@ -136,6 +138,7 @@ Jalankan **berurutan**, satu per satu. Untuk tiap berkas: buka isinya, salin sel
 | 11 | `sql/11_penunjang.sql` | Laboratorium, bacaan rontgen/EKG/USG, register arsip berkas |
 | 12 | `sql/12_kasir_penunjang.sql` | Lab & penunjang ikut masuk tagihan |
 | 13 | `sql/13_surat.sql` | Surat keterangan: jenis surat, penomoran, riwayat, pengaturan kop |
+| 14 | `sql/14_periksa_terstruktur.sql` | Pemeriksaan dokter berfield: tabel rujukan berkode, kolom baru pada `pemeriksaan`, view payload PCare & Observation SatuSehat |
 
 > **Berkas 7 harus dijalankan sendirian.** Isinya hanya satu baris, tetapi
 > PostgreSQL melarang nilai enum yang baru ditambahkan dipakai di dalam
@@ -191,7 +194,7 @@ Ulangi Langkah 3 untuk tiap staf. Peran yang tersedia:
 | `admin` | Semua, termasuk pengaturan dan master data |
 | `pendaftaran` | Daftar pasien, buat kunjungan, lihat rekam medis |
 | `perawat` | Kajian awal (tanda vital), catat alergi |
-| `dokter` | SOAP, diagnosa, tindakan, resep, odontogram, kunci rekam medis |
+| `dokter` | Anamnesis, pemeriksaan fisik, diagnosa, tindakan, resep, odontogram, kunci rekam medis |
 | `apoteker` | Lihat resep, tandai penyerahan obat |
 
 ---
@@ -296,6 +299,80 @@ Hal-hal yang bekerja otomatis:
 > di Rekam Medis, jadi surat sakit atau rujukan bisa langsung dicetak begitu pemeriksaan
 > selesai — pasien tidak perlu antre ke loket lagi untuk itu. Surat tetap bisa dibuat
 > belakangan lewat menu Surat Keterangan; datanya diambil dari kunjungan yang dipilih.
+
+---
+
+## Layar pemeriksaan dokter
+
+Sejak September 2026 layar ini tidak lagi berupa empat kotak teks bebas. Isinya
+kini **field terpisah** — dan itu bukan demi kerapian, melainkan karena tidak
+satu pun paragraf bisa dikirim ke PCare maupun SatuSehat. PCare meminta 30 field
+terpisah (keluhan, kdSadar, sistole, suhu, kdPrognosa, terapiObat, kdTacc, dan
+seterusnya); SatuSehat meminta tiap tanda vital dan tiap temuan sebagai
+Observation berkode tersendiri.
+
+**Catatan SOAP tetap ada.** Kotak S, O, A, dan P masih di bawah layar, dan
+isinya **tersusun sendiri** dari field yang Anda isi di atasnya — jadi rekam
+medis yang dicetak tetap berbunyi seperti tulisan dokter, bukan seperti daftar
+centang. Anda boleh menyuntingnya; huruf yang Anda ketik sendiri tidak akan
+ditimpa saat isian lain berubah.
+
+### Urutan mengisi
+
+| Bagian | Isinya | Yang mempercepat |
+|---|---|---|
+| **S — Anamnesis** | Keluhan utama, delapan butir riwayat penyakit sekarang, riwayat dahulu/keluarga/obat/sosial, alergi berkode | Keluhan utama, riwayat dahulu, dan obat rutin **sudah terisi** dari kajian awal perawat |
+| **O — Pemeriksaan fisik** | Keadaan umum, kesadaran, lalu 13 sistem tubuh | Tombol **Semua dalam batas normal** menandai 12 sistem sekaligus; Anda tinggal membuka yang memang tidak normal |
+| **A — Diagnosa** | ICD-10 ditegakkan + diagnosis banding | Daftar diagnosa yang sering dipakai bisa diklik |
+| **P — Resep & terapi** | Obat, terapi non-obat, BMHP, edukasi | Aturan pakai diurai jadi angka sendiri |
+| **Tindak lanjut** | Rencana, rujukan berkode, TACC, keadaan pulang, prognosa | Blok rujukan hanya muncul bila pasien memang dirujuk |
+
+### Tiga keadaan tiap sistem, bukan dua
+
+Tiap sistem tubuh punya **Normal**, **Ada temuan**, dan **Tidak diperiksa**.
+Ketiganya berbeda arti, dan bedanya penting: rekam medis yang hanya memuat
+temuan abnormal tidak bisa dibedakan dari sistem yang tidak pernah disentuh.
+Karena itu sistem yang Anda tandai normal **ikut tercetak** di rekam medis,
+lengkap dengan kalimat bakunya.
+
+Genitourinaria sengaja **tidak ikut** tombol "Semua dalam batas normal".
+Menandainya normal berarti menuliskan pemeriksaan yang tidak dilakukan, atas
+nama Anda, di dokumen hukum.
+
+### Aturan pakai jadi dua angka
+
+PCare tidak menerima kalimat "3 x sehari 1 tablet"; yang diminta dua angka —
+berapa kali sehari dan berapa tiap kali. Angkanya **diurai sendiri** dari
+kalimat yang memang sudah Anda ketik, dan hasilnya diperlihatkan di bawah kotak
+aturan pakai (`signa 3 × 1`). Aturan pakai yang tidak berangka — "sesuai anjuran
+dokter", "oleskan tipis" — ditandai **belum terbaca sebagai angka** dan tidak
+ditebak. Menebaknya berarti mengirim aturan pakai yang salah ke BPJS sementara
+kertas resep yang dipegang pasien tetap benar; tidak akan ada yang pernah tahu.
+
+### Kartu "Data untuk BPJS & SatuSehat"
+
+Muncul di panel kanan untuk setiap pasien JKN, **juga selagi bridging belum
+menyala**. Gunanya justru itu: memperlihatkan kekurangan data hari ini, bukan
+pada hari kredensial datang. Tombol **Lihat data yang akan dikirim** membuka
+isi payload PCare apa adanya — field yang belum terisi ditandai berwarna.
+
+Dua tingkat peringatan, dan bedanya disengaja:
+
+- **Merah — belum bisa dikunci.** Rekam medisnya sendiri tidak sah tanpa ini:
+  keluhan utama, diagnosa, pemeriksaan fisik, keadaan pulang, tujuan rujukan,
+  alasan TACC.
+- **Kuning — pengingat.** Data bridging kurang, tetapi pelayanan tetap sah dan
+  rekam medis tetap bisa dikunci: prognosa, tanda vital, aturan pakai yang tidak
+  berangka. Sistem yang menolak menyimpan rekam medis karena satu kolom PCare
+  kosong akan segera dicari akalnya — dokter akan mengisi apa saja supaya
+  tombolnya menyala, dan data yang masuk jadi lebih buruk daripada kolom kosong.
+
+### Diagnosa lebih dari tiga
+
+PCare hanya punya tiga slot (`kdDiag1`–`kdDiag3`). Diagnosa keempat dan
+seterusnya **tetap tersimpan di rekam medis** tetapi ditandai *tidak terkirim*
+di tabel diagnosa. Yang terkirim adalah tiga teratas menurut urutan tabel; ubah
+jenis diagnosa atau hapus baris untuk mengatur mana yang ikut.
 
 ---
 
@@ -815,6 +892,44 @@ diisi.
 ## Bridging PCare & SatuSehat
 
 Struktur data sudah disiapkan sejak awal untuk keduanya, jadi tidak perlu membongkar aplikasi saat kredensial nanti keluar. Yang perlu diurus:
+
+### Yang sudah siap, dan yang memang menunggu orang
+
+Sejak berkas `sql/14_periksa_terstruktur.sql` dijalankan, **bentuk datanya sudah
+selesai**. Ada tiga view yang menyusun payload persis seperti yang diminta BPJS,
+dan bisa Anda lihat isinya kapan saja lewat tombol *Lihat data yang akan dikirim*
+di layar pemeriksaan:
+
+| View | Isinya | Dipakai untuk |
+|---|---|---|
+| `v_pcare_kunjungan` | Satu baris per kunjungan BPJS, nama kolomnya sama persis dengan field payload | `POST /kunjungan` |
+| `v_pcare_obat` | Satu baris per butir resep, lengkap `signa1` & `signa2` | `POST /obat/kunjungan` |
+| `v_pcare_tindakan` | Satu baris per tindakan | `POST /tindakan` |
+| `v_satusehat_observasi` | Tiap tanda vital dan tiap temuan fisik sebagai satu Observation berkode LOINC | `POST /Observation` |
+
+**Yang sengaja masih kosong: kolom `kode_pcare`.** Nilai-nilai itu — kode
+kesadaran, keadaan pulang, prognosa, sub spesialis, sarana, alergi — **milik
+BPJS**, dan sistem tidak menebaknya. Alasannya sederhana: kode `kdStatusPulang`
+yang salah tidak menimbulkan galat apa pun. Klaimnya terkirim, diterima, dan
+isinya keliru — dan tidak ada satu pun tanda di layar yang memberitahu Anda.
+
+Yang bisa dibangun sekarang justru sudah dibangun: **tempatnya**, halaman
+pemetaan, dan daftar apa saja yang masih kosong. Buka **Pengaturan → Rujukan &
+Kode PCare**; di sana ada dua hal:
+
+1. **Daftar faskes tujuan rujukan.** Isi rumah sakit yang biasa dituju pasien
+   klinik — cukup sekali. Selama daftarnya kosong, dokter tidak bisa memilih
+   faskes tujuan dan rujukan tidak bisa dikunci. Kode yang Anda ketik sendiri
+   ditandai *diketik sendiri* sampai dicocokkan dengan daftar resmi BPJS.
+2. **Pemetaan kode PCare.** Setiap nilai berkode yang belum punya pasangan
+   didaftar di sini beserta nama field PCare-nya. Isi setelah kredensial datang;
+   nilainya bisa diambil dari endpoint referensi PCare (jalurnya sudah ada di
+   `supabase/functions/pcare-proxy/index.ts`, operasi `ref.*`).
+
+Kode LOINC untuk pemeriksaan fisik per sistem juga terdaftar di sana, dan diisi
+setelah klinik terdaftar SatuSehat. **Kode LOINC tanda vital sudah terisi** —
+nilainya berasal dari profil FHIR *vitalsigns* yang baku lintas negara dan tidak
+berubah oleh keputusan lokal mana pun.
 
 ### A. PCare BPJS Kesehatan
 

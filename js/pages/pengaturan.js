@@ -15,7 +15,7 @@ const Pengaturan = (() => {
         <p class="text-muted mb-0">Profil klinik, poli, pengguna, dan status bridging.</p></div>
       <div class="tabs" id="tabs">
         ${[['klinik','Profil Klinik'],['poli','Poli'],['pengguna','Pengguna'],
-           ['surat','Kop &amp; Surat'],['bridging','Bridging']]
+           ['surat','Kop &amp; Surat'],['rujukan','Rujukan &amp; Kode PCare'],['bridging','Bridging']]
           .map(([k, t]) => `<button class="tab ${tabAktif === k ? 'on' : ''}" data-t="${k}">${t}</button>`).join('')}
       </div>
       <div id="isiTab">${UI.memuat(3)}</div>`;
@@ -38,6 +38,7 @@ const Pengaturan = (() => {
       if (tabAktif === 'poli')     return await tabPoli(w);
       if (tabAktif === 'pengguna') return await tabPengguna(w);
       if (tabAktif === 'surat')    return await tabSurat(w);
+      if (tabAktif === 'rujukan')  return await tabRujukan(w);
       if (tabAktif === 'bridging') return await tabBridging(w);
     } catch (e) {
       w.innerHTML = `<div class="banner err">${UI.esc(e.message)}</div>`;
@@ -406,6 +407,182 @@ const Pengaturan = (() => {
         UI.toast('Gagal menyimpan: ' + (err.message || err), 'err');
       } finally { b.disabled = false; }
     });
+  }
+
+  /* ---------------- Rujukan & pemetaan kode PCare ----------------
+
+     Dua hal berbeda ada di satu tab karena keduanya dikerjakan sekali
+     lalu dilupakan, dan keduanya tidak bisa dikerjakan sistem sendiri:
+
+     1. Daftar faskes tujuan rujukan. Dokter memilih dari daftar, bukan
+        mengetik nama bebas — supaya kolom kdppk terisi kode, bukan
+        kalimat "RSUD kota" yang tidak bisa dikirim ke mana pun.
+
+     2. Pemetaan kode PCare untuk nilai-nilai berkode (kesadaran, status
+        pulang, prognosa, sub spesialis, sarana, alergi). Kode-kode itu
+        MILIK BPJS. Sistem sengaja tidak menebaknya: kode kdStatusPulang
+        yang salah tidak menimbulkan galat apa pun — klaimnya terkirim,
+        diterima, dan isinya keliru. Yang bisa dilakukan sistem adalah
+        menyediakan tempatnya dan memperlihatkan mana yang masih kosong.
+  */
+  async function tabRujukan(w) {
+    const [ppk, kurang] = await Promise.all([
+      DB.refPpk().catch(() => []),
+      DB.kesiapanKode().catch(() => [])
+    ]);
+
+    const perTabel = {};
+    kurang.forEach(k => { (perTabel[k.tabel] = perTabel[k.tabel] || []).push(k); });
+
+    w.innerHTML = `
+      <div class="card">
+        <div class="card-head">
+          <div class="flex-1"><h2>Faskes tujuan rujukan</h2>
+            <div class="sub">Rumah sakit dan fasilitas yang biasa dituju pasien klinik ini</div></div>
+          <button class="btn btn-primary btn-sm" id="btnTambahPpk">
+            ${UI.ikon('plus',15)} Tambah faskes</button>
+        </div>
+        <div class="card-body ${ppk.length ? 'tight' : ''}">
+          ${!ppk.length
+            ? `<div class="banner warn mb-0"><div><b>Daftar masih kosong.</b>
+                 Selama kosong, dokter tidak bisa memilih faskes tujuan dan rujukan
+                 tidak bisa dikunci. Tambahkan rumah sakit yang biasa dituju —
+                 cukup sekali, daftarnya dipakai seterusnya.</div></div>`
+            : `<div class="table-wrap"><table class="tbl">
+                <thead><tr><th style="width:130px">Kode (kdppk)</th><th>Nama</th>
+                  <th style="width:110px">Jenis</th><th style="width:110px">Sumber</th>
+                  <th style="width:1%"></th></tr></thead>
+                <tbody>${ppk.map(p => `<tr>
+                  <td class="mono">${UI.esc(p.kode)}</td>
+                  <td>${UI.esc(p.nama)}
+                    ${p.alamat ? `<div class="text-xs text-muted">${UI.esc(p.alamat)}</div>` : ''}</td>
+                  <td class="muted">${UI.esc(p.jenis || '')}</td>
+                  <td>${p.sumber === 'PCARE'
+                    ? '<span class="badge b-ok">dari BPJS</span>'
+                    : '<span class="badge b-warn">diketik sendiri</span>'}</td>
+                  <td><button class="btn-icon" data-ubah-ppk="${UI.esc(p.kode)}"
+                    title="Ubah">${UI.ikon('ubah',14)}</button></td>
+                </tr>`).join('')}</tbody></table></div>`}
+        </div>
+        ${ppk.some(p => p.sumber !== 'PCARE') ? `<div class="card-foot">
+          <span class="text-sm text-muted">Kode faskes yang diketik sendiri harus
+            dicocokkan dengan daftar resmi BPJS sebelum bridging dinyalakan.</span>
+        </div>` : ''}
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div class="flex-1"><h2>Pemetaan kode PCare</h2>
+            <div class="sub">Nilai berkode yang perlu dipasangkan dengan kode BPJS</div></div>
+          <span class="badge ${kurang.length ? 'b-warn' : 'b-ok'}">
+            ${kurang.length ? kurang.length + ' belum dipetakan' : 'Semua sudah dipetakan'}</span>
+        </div>
+        <div class="card-body">
+          <div class="banner info">
+            <div>Kode di kolom kanan <b>milik BPJS</b>, bukan buatan klinik. Sistem
+              sengaja tidak menebaknya: kode yang salah tidak menimbulkan galat apa pun —
+              klaim tetap terkirim dan tetap diterima, hanya isinya keliru. Ambil
+              nilainya dari dokumen referensi PCare atau dari endpoint referensi
+              setelah kredensial diterima, lalu isikan di sini sekali saja.</div>
+          </div>
+          ${!kurang.length
+            ? `<div class="banner ok mb-0">${UI.ikon('cek',16)}
+                 <div>Seluruh nilai berkode sudah punya pasangan kode PCare.</div></div>`
+            : Object.entries(perTabel).map(([tabel, isi]) => `
+                <fieldset class="fieldset">
+                  <legend>${UI.esc(labelTabelKode(tabel))} — ${isi.length} belum diisi</legend>
+                  <div class="table-wrap"><table class="tbl">
+                    <thead><tr><th style="width:170px">Kode internal</th><th>Nama</th>
+                      <th style="width:170px">Kode PCare</th></tr></thead>
+                    <tbody>${isi.map(k => `<tr>
+                      <td class="mono">${UI.esc(k.kode)}</td>
+                      <td>${UI.esc(k.nama)}</td>
+                      <td><input type="text" class="mono" style="padding:5px 8px"
+                            data-kode-tabel="${UI.esc(tabel)}" data-kode-baris="${UI.esc(k.kode)}"
+                            placeholder="${UI.esc(k.field_pcare)}"></td>
+                    </tr>`).join('')}</tbody></table></div>
+                </fieldset>`).join('')}
+        </div>
+        ${kurang.length ? `<div class="card-foot">
+          <button class="btn btn-primary" id="btnSimpanKode">Simpan pemetaan</button>
+          <span class="text-sm text-muted">Yang dikosongkan dibiarkan apa adanya.</span>
+        </div>` : ''}
+      </div>`;
+
+    w.querySelector('#btnTambahPpk').addEventListener('click', () => modalPpk(null, w));
+    w.querySelectorAll('[data-ubah-ppk]').forEach(b => b.addEventListener('click', () =>
+      modalPpk(ppk.find(x => x.kode === b.dataset.ubahPpk), w)));
+
+    const btnKode = w.querySelector('#btnSimpanKode');
+    if (btnKode) btnKode.addEventListener('click', async () => {
+      const isian = Array.from(w.querySelectorAll('[data-kode-tabel]'))
+        .filter(i => i.value.trim())
+        .map(i => ({ tabel: i.dataset.kodeTabel, kode: i.dataset.kodeBaris, nilai: i.value.trim() }));
+      if (!isian.length) { UI.toast('Belum ada kode yang diisi.', 'warn'); return; }
+      btnKode.disabled = true; btnKode.textContent = 'Menyimpan…';
+      try {
+        await DB.simpanPemetaanKode(isian);
+        UI.toast(`${isian.length} pemetaan kode tersimpan.`, 'ok');
+        await gambarTab(w);
+      } catch (e) {
+        UI.toast(e.message || 'Gagal menyimpan pemetaan.', 'err', 5000);
+        btnKode.disabled = false; btnKode.textContent = 'Simpan pemetaan';
+      }
+    });
+  }
+
+  const LABEL_TABEL_KODE = {
+    ref_kesadaran: 'Tingkat kesadaran', ref_status_pulang: 'Keadaan saat pulang',
+    ref_prognosa: 'Prognosa', ref_subspesialis: 'Sub spesialis rujukan',
+    ref_sarana: 'Sarana penunjang rujukan', ref_alergi: 'Alergi',
+    ref_sistem_fisik: 'Sistem pemeriksaan fisik (kode LOINC SatuSehat)'
+  };
+  const labelTabelKode = (t) => LABEL_TABEL_KODE[t] || t;
+
+  async function modalPpk(lama, w) {
+    const hasil = await UI.modal({
+      judul: lama ? 'Ubah faskes rujukan' : 'Tambah faskes rujukan',
+      isi: `
+        <div class="form-row c2">
+          <div class="field"><label>Kode faskes (kdppk) <span class="req">*</span></label>
+            <input type="text" name="kode" class="mono" value="${UI.esc(lama?.kode)}"
+              ${lama ? 'readonly' : ''} placeholder="dari daftar BPJS"></div>
+          <div class="field"><label>Jenis</label>
+            <select name="jenis">
+              ${['RS','KLINIK','LABORATORIUM','APOTEK'].map(j =>
+                `<option ${lama?.jenis === j ? 'selected' : ''}>${j}</option>`).join('')}
+            </select></div>
+        </div>
+        <div class="field"><label>Nama faskes <span class="req">*</span></label>
+          <input type="text" name="nama" value="${UI.esc(lama?.nama)}"
+            placeholder="Nama seperti tertulis di surat rujukan"></div>
+        <div class="field"><label>Alamat</label>
+          <input type="text" name="alamat" value="${UI.esc(lama?.alamat)}"></div>
+        <div class="field mb-0"><label>Telepon</label>
+          <input type="text" name="telepon" value="${UI.esc(lama?.telepon)}"></div>
+        ${lama ? `<div class="field mt-12 mb-0">
+          <label class="check"><input type="checkbox" name="aktif" checked>
+            <span>Masih dipakai</span></label></div>` : ''}`,
+      tombol: [{ teks: 'Batal', nilai: null },
+               { teks: 'Simpan', kelas: 'btn-primary', aksi: (b) => {
+                  const d = UI.nilaiForm(b);
+                  if (!d.kode || !d.nama) {
+                    UI.toast('Kode dan nama wajib diisi.', 'err'); return false;
+                  }
+                  return d;
+               }}]
+    });
+    if (!hasil) return;
+    try {
+      await DB.simpanPpk({
+        kode: hasil.kode.trim(), nama: hasil.nama.trim(), jenis: hasil.jenis,
+        alamat: hasil.alamat, telepon: hasil.telepon,
+        aktif: hasil.aktif === undefined ? true : !!hasil.aktif,
+        sumber: lama ? lama.sumber : 'MANUAL'
+      });
+      UI.toast('Faskes rujukan tersimpan.', 'ok');
+      await gambarTab(w);
+    } catch (e) { UI.toast(e.message || 'Gagal menyimpan.', 'err'); }
   }
 
   async function tabBridging(w) {

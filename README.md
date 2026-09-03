@@ -15,9 +15,15 @@ atas untuk mencoba tampilan tiap peran, termasuk dokter gigi.
 
 - **Peran**: admin · pendaftaran · perawat · dokter · apoteker · kasir
 - **Poli**: umum dan gigi (poli gigi memunculkan odontogram dan pemeriksaan gigi)
-- **Alur**: pendaftaran → kajian awal → SOAP + ICD-10 + tindakan + penunjang + resep →
-  kunci rekam medis → surat keterangan bila perlu → apotek (stok terpotong FEFO) →
-  kasir (tagihan + kwitansi)
+- **Alur**: pendaftaran → kajian awal → pemeriksaan dokter (anamnesis + pemeriksaan
+  fisik per sistem + ICD-10 + tindakan + penunjang + resep) → kunci rekam medis →
+  surat keterangan bila perlu → apotek (stok terpotong FEFO) → kasir (tagihan + kwitansi)
+- **Pemeriksaan dokter berfield, bukan paragraf**: setiap hal yang diminta PCare dan
+  SatuSehat punya kolomnya sendiri — keluhan, kesadaran, tanda vital, temuan fisik per
+  sistem tubuh, prognosa, TACC, rujukan berkode. Catatan S/O/A/P tetap ada dan
+  **tersusun sendiri** dari isian itu, jadi rekam medis yang dicetak tetap berbunyi
+  seperti tulisan dokter. Satu tombol menandai seluruh pemeriksaan fisik dalam batas
+  normal; dokter tinggal membuka yang memang tidak normal
 - **Apotek**: stok per batch dengan urutan keluar FEFO, antrean resep dari dokter,
   kartu stok harian, laporan bulanan, impor & ekspor Excel (saldo awal dan pembelian)
 - **Kasir**: tagihan disusun otomatis dari tindakan dokter dan obat yang benar-benar
@@ -36,11 +42,15 @@ atas untuk mencoba tampilan tiap peran, termasuk dokter gigi.
   pratinjau yang sama persis dengan hasil cetak, riwayat lengkap dengan cetak ulang,
   unduh PDF, dan pembatalan beralasan. Tanda tangan tetap dengan pulpen —
   [alasannya di PANDUAN.md](PANDUAN.md#tanda-tangan)
+- **Siap bridging, bukan sekadar "nanti disesuaikan"**: empat view di database menyusun
+  payload `POST /kunjungan`, `/obat/kunjungan`, `/tindakan` PCare dan daftar Observation
+  SatuSehat persis seperti bentuk yang diminta — isinya bisa dilihat dari layar dokter
+  hari ini juga. Yang tersisa hanya memasangkan kode milik BPJS di
+  **Pengaturan → Rujukan & Kode PCare**; sistem sengaja tidak menebaknya, karena kode
+  yang salah tidak menimbulkan galat apa pun
 - **Master data**: kelola obat, ICD-10, tindakan, pemeriksaan lab, dan tarif dari
   aplikasi; impor/ekspor CSV
 - **Kepatuhan**: PMK 24/2022 — audit trail, penguncian rekam medis, addendum, ICD-10
-- **Siap bridging**: PCare BPJS & SatuSehat (FHIR R4) sudah ditulis dan diuji;
-  bridging dinyalakan belakangan, dan aplikasi menandai data yang belum lengkap sejak sekarang
 
 ## Satu-satunya berkas yang perlu disunting
 

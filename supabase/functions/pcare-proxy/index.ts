@@ -130,19 +130,48 @@ const OPERASI: Record<string, (p: Record<string, string>) => [string, string, un
   'peserta.cari':      (p) => [`/peserta/${p.noKartu}`, 'GET', null],
   // Cek berdasarkan NIK
   'peserta.nik':       (p) => [`/peserta/nik/${p.nik}`, 'GET', null],
-  // Referensi
+  /* ---------------------------------------------------------------
+     Referensi.
+
+     Jalur-jalur di bawah inilah asal nilai kolom `kode_pcare` pada
+     tabel ref_kesadaran, ref_status_pulang, ref_prognosa,
+     ref_subspesialis, ref_sarana, ref_alergi, dan ref_ppk. Kolom itu
+     SENGAJA dibiarkan kosong di sql/14_periksa_terstruktur.sql: kodenya
+     milik BPJS, dan menebaknya tidak menimbulkan galat apa pun — klaim
+     tetap terkirim, tetap diterima, hanya isinya keliru.
+
+     Daftar ini ditulis sekarang, selagi strukturnya masih segar, supaya
+     pada hari kredensial datang yang perlu dikerjakan hanya menekan
+     "Ambil dari PCare" di Pengaturan → Rujukan & Kode PCare.
+     ------------------------------------------------------------- */
   'ref.poli':          () => ['/poli/fktp/0/100', 'GET', null],
   'ref.dokter':        () => ['/dokter/0/100', 'GET', null],
   'ref.diagnosa':      (p) => [`/diagnosa/${encodeURIComponent(p.kata)}/0/25`, 'GET', null],
   'ref.obat':          (p) => [`/obat/${encodeURIComponent(p.kata)}/0/25`, 'GET', null],
   'ref.kesadaran':     () => ['/kesadaran', 'GET', null],
+  'ref.statuspulang':  () => ['/statuspulang', 'GET', null],
+  'ref.prognosa':      () => ['/prognosa', 'GET', null],
+  'ref.alergi':        (p) => [`/alergi/${encodeURIComponent(p.jenis)}`, 'GET', null],
+  'ref.spesialis':     () => ['/spesialis', 'GET', null],
+  'ref.subspesialis':  (p) => [`/spesialis/${encodeURIComponent(p.kdSpesialis)}/subspesialis`, 'GET', null],
+  'ref.sarana':        () => ['/sarana', 'GET', null],
+  'ref.faskes':        (p) => [`/faskes/${encodeURIComponent(p.kata)}/${p.jenis ?? '2'}`, 'GET', null],
+  'ref.tindakan':      (p) => [`/tindakan/${encodeURIComponent(p.kata)}/0/25`, 'GET', null],
   // Pendaftaran kunjungan
   'kunjungan.daftar':  (p) => ['/pendaftaran', 'POST', p.payload],
   'kunjungan.ubah':    (p) => ['/pendaftaran', 'PUT', p.payload],
   'kunjungan.hapus':   (p) => [`/pendaftaran/peserta/${p.noKartu}/tglDaftar/${p.tglDaftar}/noUrut/${p.noUrut}`, 'DELETE', null],
   // Pelayanan (kunjungan sakit)
   'pelayanan.kirim':   (p) => ['/kunjungan', 'POST', p.payload],
-  'pelayanan.ubah':    (p) => ['/kunjungan', 'PUT', p.payload]
+  'pelayanan.ubah':    (p) => ['/kunjungan', 'PUT', p.payload],
+  /* Obat dan tindakan dikirim TERPISAH setelah pelayanan tercatat dan
+     PCare memulangkan noKunjungan — bukan sebagai bagian payload
+     kunjungan. Bentuk barisnya sudah disiapkan view v_pcare_obat dan
+     v_pcare_tindakan. */
+  'obat.kirim':        (p) => ['/obat/kunjungan', 'POST', p.payload],
+  'obat.hapus':        (p) => [`/obat/kunjungan/${p.kdObatSK}`, 'DELETE', null],
+  'tindakan.kirim':    (p) => ['/tindakan', 'POST', p.payload],
+  'tindakan.hapus':    (p) => [`/tindakan/${p.kdTindakanSK}`, 'DELETE', null]
 };
 
 /* ------------------------------- Server ------------------------------ */

@@ -238,6 +238,118 @@ const DB = (() => {
     { kode:'MENINGGAL', nama:'Meninggal', urutan:6 }
   ];
 
+  /* --- Rujukan pemeriksaan terstruktur (salinan isian awal sql/14) ---
+     kode_pcare sengaja kosong, sama seperti di database sungguhan:
+     nilainya milik BPJS dan baru bisa diambil setelah klinik punya
+     kredensial. Demo memperlihatkan keadaan itu apa adanya supaya
+     halaman "Pemetaan kode PCare" bisa diuji dalam keadaan sebenarnya. */
+  const REF_PROGNOSA = [
+    { kode:'BONAM', nama:'Bonam', keterangan:'Baik — diperkirakan sembuh sempurna', kode_pcare:null, urutan:1 },
+    { kode:'DUBIA_BONAM', nama:'Dubia ad bonam', keterangan:'Ragu, cenderung membaik', kode_pcare:null, urutan:2 },
+    { kode:'DUBIA', nama:'Dubia', keterangan:'Ragu — belum dapat ditentukan', kode_pcare:null, urutan:3 },
+    { kode:'DUBIA_MALAM', nama:'Dubia ad malam', keterangan:'Ragu, cenderung memburuk', kode_pcare:null, urutan:4 },
+    { kode:'MALAM', nama:'Malam', keterangan:'Buruk', kode_pcare:null, urutan:5 }
+  ];
+  const REF_TACC = [
+    { kode:'TIDAK', nama:'Tanpa TACC', keterangan:'Rujukan biasa, atau pasien tidak dirujuk', kode_pcare:'-1', perlu_alasan:false, urutan:0 },
+    { kode:'T',  nama:'Time',         keterangan:'Perjalanan penyakit melewati waktu yang wajar ditangani FKTP', kode_pcare:'0', perlu_alasan:true, urutan:1 },
+    { kode:'A',  nama:'Age',          keterangan:'Umur pasien menjadi pertimbangan rujukan', kode_pcare:'1', perlu_alasan:true, urutan:2 },
+    { kode:'C1', nama:'Complication', keterangan:'Ada komplikasi yang tidak dapat ditangani FKTP', kode_pcare:'2', perlu_alasan:true, urutan:3 },
+    { kode:'C2', nama:'Comorbidity',  keterangan:'Ada penyakit penyerta yang memerlukan rujukan', kode_pcare:'3', perlu_alasan:true, urutan:4 }
+  ];
+  const REF_SUBSPESIALIS = [
+    { kode:'PD', nama:'Penyakit Dalam', kode_pcare:null, urutan:1 },
+    { kode:'ANAK', nama:'Anak', kode_pcare:null, urutan:2 },
+    { kode:'BEDAH', nama:'Bedah Umum', kode_pcare:null, urutan:3 },
+    { kode:'OBGYN', nama:'Kebidanan & Kandungan', kode_pcare:null, urutan:4 },
+    { kode:'MATA', nama:'Mata', kode_pcare:null, urutan:5 },
+    { kode:'THT', nama:'THT-KL', kode_pcare:null, urutan:6 },
+    { kode:'SARAF', nama:'Saraf', kode_pcare:null, urutan:7 },
+    { kode:'GIGI', nama:'Gigi & Mulut', kode_pcare:null, urutan:14 }
+  ];
+  const REF_SARANA = [
+    { kode:'TANPA', nama:'Tanpa sarana khusus', kode_pcare:null, urutan:0 },
+    { kode:'LAB', nama:'Laboratorium', kode_pcare:null, urutan:1 },
+    { kode:'RAD', nama:'Radiologi', kode_pcare:null, urutan:2 },
+    { kode:'USG', nama:'USG', kode_pcare:null, urutan:3 }
+  ];
+  const REF_PPK = [
+    { kode:'0101R001', nama:'RSUD Kota (contoh)', jenis:'RS',
+      alamat:'Jl. Contoh No. 1', sumber:'MANUAL', urutan:1 },
+    { kode:'0101R002', nama:'RS Panti Waluyo (contoh)', jenis:'RS',
+      alamat:'Jl. Contoh No. 2', sumber:'MANUAL', urutan:2 }
+  ];
+  const REF_ALERGI = [
+    { id:'ra-m0', jenis:'MAKANAN', kode:'00', nama:'Tidak ada alergi makanan', kode_pcare:null, urutan:0 },
+    { id:'ra-m1', jenis:'MAKANAN', kode:'LT', nama:'Makanan laut / seafood', kode_pcare:null, urutan:1 },
+    { id:'ra-m2', jenis:'MAKANAN', kode:'TL', nama:'Telur', kode_pcare:null, urutan:2 },
+    { id:'ra-m3', jenis:'MAKANAN', kode:'KC', nama:'Kacang-kacangan', kode_pcare:null, urutan:4 },
+    { id:'ra-u0', jenis:'UDARA', kode:'00', nama:'Tidak ada alergi udara', kode_pcare:null, urutan:0 },
+    { id:'ra-u1', jenis:'UDARA', kode:'DB', nama:'Debu', kode_pcare:null, urutan:1 },
+    { id:'ra-u2', jenis:'UDARA', kode:'DG', nama:'Udara dingin', kode_pcare:null, urutan:2 },
+    { id:'ra-o0', jenis:'OBAT', kode:'00', nama:'Tidak ada alergi obat', kode_pcare:null, urutan:0 },
+    { id:'ra-o1', jenis:'OBAT', kode:'PN', nama:'Penisilin dan turunannya', kode_pcare:null, urutan:1 },
+    { id:'ra-o2', jenis:'OBAT', kode:'SF', nama:'Sulfa', kode_pcare:null, urutan:2 },
+    { id:'ra-o3', jenis:'OBAT', kode:'NS', nama:'Antinyeri golongan NSAID', kode_pcare:null, urutan:4 }
+  ];
+  const REF_VITAL = [
+    { kode:'sistolik', nama:'Tekanan darah sistolik', satuan:'mmHg', satuan_ucum:'mm[Hg]', kode_loinc:'8480-6', urutan:1 },
+    { kode:'diastolik', nama:'Tekanan darah diastolik', satuan:'mmHg', satuan_ucum:'mm[Hg]', kode_loinc:'8462-4', urutan:2 },
+    { kode:'tekanan_darah', nama:'Tekanan darah', satuan:'mmHg', satuan_ucum:'mm[Hg]', kode_loinc:'85354-9', urutan:3 },
+    { kode:'nadi', nama:'Frekuensi nadi', satuan:'x/menit', satuan_ucum:'/min', kode_loinc:'8867-4', urutan:4 },
+    { kode:'nafas', nama:'Frekuensi napas', satuan:'x/menit', satuan_ucum:'/min', kode_loinc:'9279-1', urutan:5 },
+    { kode:'suhu', nama:'Suhu tubuh', satuan:'°C', satuan_ucum:'Cel', kode_loinc:'8310-5', urutan:6 },
+    { kode:'spo2', nama:'Saturasi oksigen', satuan:'%', satuan_ucum:'%', kode_loinc:'2708-6', urutan:7 },
+    { kode:'berat_badan', nama:'Berat badan', satuan:'kg', satuan_ucum:'kg', kode_loinc:'29463-7', urutan:8 },
+    { kode:'tinggi_badan', nama:'Tinggi badan', satuan:'cm', satuan_ucum:'cm', kode_loinc:'8302-2', urutan:9 },
+    { kode:'imt', nama:'Indeks massa tubuh', satuan:'kg/m²', satuan_ucum:'kg/m2', kode_loinc:'39156-5', urutan:10 },
+    { kode:'lingkar_perut', nama:'Lingkar perut', satuan:'cm', satuan_ucum:'cm', kode_loinc:'8280-0', urutan:11 },
+    { kode:'skala_nyeri', nama:'Skala nyeri', satuan:'0-10', satuan_ucum:'{score}', kode_loinc:'72514-3', urutan:12 }
+  ];
+  const REF_SISTEM_FISIK = [
+    { kode:'UMUM', nama:'Keadaan umum', urutan:1, bawaan_periksa:true, poli_jenis:null, kode_loinc:null,
+      normal_teks:'Tampak sakit ringan, kesadaran compos mentis, gizi cukup',
+      temuan_lazim:['Tampak sakit sedang','Tampak sakit berat','Tampak pucat','Tampak sesak','Tampak lemas','Gizi kurang'] },
+    { kode:'KEPALA', nama:'Kepala & wajah', urutan:2, bawaan_periksa:true, poli_jenis:null, kode_loinc:null,
+      normal_teks:'Normosefali, wajah simetris, tidak ada deformitas',
+      temuan_lazim:['Nyeri tekan sinus','Wajah asimetris','Edema palpebra','Jejas / luka'] },
+    { kode:'MATA', nama:'Mata', urutan:3, bawaan_periksa:true, poli_jenis:null, kode_loinc:null,
+      normal_teks:'Konjungtiva tidak anemis, sklera tidak ikterik, pupil isokor, refleks cahaya positif',
+      temuan_lazim:['Konjungtiva anemis','Sklera ikterik','Pupil anisokor','Mata cekung','Injeksi konjungtiva','Sekret mata'] },
+    { kode:'THT', nama:'Telinga, hidung, tenggorokan', urutan:4, bawaan_periksa:true, poli_jenis:null, kode_loinc:null,
+      normal_teks:'Liang telinga lapang, tidak ada sekret; hidung tidak ada sekret maupun deviasi septum; faring tidak hiperemis, tonsil T1-T1 tenang',
+      temuan_lazim:['Faring hiperemis','Tonsil T2-T2','Tonsil T3-T3 dengan detritus','Sekret hidung serosa','Konka edema','Serumen obturans','Membran timpani suram','Nyeri tekan tragus'] },
+    { kode:'MULUT', nama:'Mulut & gigi', urutan:5, bawaan_periksa:true, poli_jenis:null, kode_loinc:null,
+      normal_teks:'Mukosa mulut lembap, lidah tidak kotor, gigi geligi baik',
+      temuan_lazim:['Mukosa kering','Lidah kotor','Stomatitis','Karies gigi','Gusi berdarah'] },
+    { kode:'LEHER', nama:'Leher', urutan:6, bawaan_periksa:true, poli_jenis:null, kode_loinc:null,
+      normal_teks:'Tidak ada pembesaran kelenjar getah bening maupun tiroid, JVP tidak meningkat',
+      temuan_lazim:['Pembesaran KGB leher','Pembesaran tiroid','JVP meningkat','Kaku kuduk'] },
+    { kode:'PARU', nama:'Toraks — paru', urutan:7, bawaan_periksa:true, poli_jenis:null, kode_loinc:null,
+      normal_teks:'Gerak napas simetris, retraksi tidak ada, suara napas vesikuler, ronki tidak ada, wheezing tidak ada',
+      temuan_lazim:['Ronki basah halus','Ronki basah kasar','Wheezing ekspirasi','Suara napas melemah','Retraksi interkostal','Gerak napas asimetris','Hipersonor','Redup basal'] },
+    { kode:'JANTUNG', nama:'Toraks — jantung', urutan:8, bawaan_periksa:true, poli_jenis:null, kode_loinc:null,
+      normal_teks:'Bunyi jantung I dan II reguler, murmur tidak ada, gallop tidak ada',
+      temuan_lazim:['Murmur sistolik','Gallop','Irama tidak teratur','Takikardia','Bradikardia','Batas jantung melebar'] },
+    { kode:'ABDOMEN', nama:'Abdomen', urutan:9, bawaan_periksa:true, poli_jenis:null, kode_loinc:null,
+      normal_teks:'Datar, supel, bising usus normal, nyeri tekan tidak ada, hepar dan lien tidak teraba',
+      temuan_lazim:['Nyeri tekan epigastrium','Nyeri tekan McBurney','Nyeri ketok CVA','Distensi','Bising usus meningkat','Bising usus menurun','Hepatomegali','Splenomegali','Defans muskuler','Asites'] },
+    { kode:'EKSTREMITAS', nama:'Ekstremitas', urutan:10, bawaan_periksa:true, poli_jenis:null, kode_loinc:null,
+      normal_teks:'Akral hangat, capillary refill kurang dari 2 detik, edema tidak ada, gerak bebas',
+      temuan_lazim:['Akral dingin','Edema tungkai','CRT lebih dari 2 detik','Nyeri sendi','Keterbatasan gerak','Deformitas','Krepitasi','Luka terbuka'] },
+    { kode:'KULIT', nama:'Kulit', urutan:11, bawaan_periksa:true, poli_jenis:null, kode_loinc:null,
+      normal_teks:'Turgor baik, tidak ada ruam maupun lesi',
+      temuan_lazim:['Turgor menurun','Ruam makulopapular','Vesikel','Ikterik','Pucat','Sianosis','Ptekie','Ulkus','Gatal / ekskoriasi'] },
+    { kode:'NEURO', nama:'Neurologis', urutan:12, bawaan_periksa:true, poli_jenis:null, kode_loinc:null,
+      normal_teks:'Kesadaran compos mentis, tidak ada defisit motorik maupun sensorik, refleks fisiologis normal, refleks patologis negatif',
+      temuan_lazim:['Hemiparesis','Parese nervus kranialis','Refleks patologis positif','Rangsang meningeal positif','Tremor','Penurunan sensorik'] },
+    /* Genitourinaria SENGAJA bawaan_periksa:false. Tombol "semua normal"
+       tidak boleh menyatakan pemeriksaan yang tidak dilakukan. */
+    { kode:'GENITAL', nama:'Genitourinaria', urutan:13, bawaan_periksa:false, poli_jenis:null, kode_loinc:null,
+      normal_teks:'Tidak ada kelainan pada pemeriksaan luar',
+      temuan_lazim:['Nyeri tekan suprapubik','Sekret uretra','Pembesaran skrotum','Fluor albus'] }
+  ];
+
   const ALERGI = [
     { id: 'al-1', pasien_id: 'pas-1', jenis: 'OBAT', nama: 'Penisilin',
       reaksi: 'Bengkak wajah dan sesak', tingkat: 'BERAT', dicatat_pada: '2024-03-11' },
@@ -320,11 +432,45 @@ const DB = (() => {
 
   const PEMERIKSAAN = [
     { kunjungan_id: 'kunj-1',
-      subjective: 'Batuk berdahak warna putih sejak 3 hari, pilek, demam hilang timbul. Nafsu makan menurun. Tidak sesak.',
-      objective: 'KU baik, compos mentis. Faring hiperemis, tonsil T1-T1 tenang. Rhonki (-), wheezing (-). Retraksi (-).',
-      assessment: 'ISPA dengan demam. Tidak ada tanda pneumonia.',
-      plan: 'Terapi simptomatik. Edukasi istirahat cukup, perbanyak minum. Kontrol bila demam menetap > 3 hari atau sesak.',
-      tindak_lanjut: 'SELESAI', prognosa: 'Bonam', status_pulang: 'Sembuh', status_pulang_kode: 'SEMBUH',
+      keluhan_utama: 'Batuk berdahak sejak 3 hari',
+      anamnesis: 'Batuk berdahak sejak 3 hari. Sejak 3 hari lalu, sifat berdahak warna putih, '
+        + 'memperberat udara dingin dan malam hari, keluhan penyerta demam hilang timbul dan pilek.',
+      riwayat_penyakit_sekarang: {
+        onset: '3 hari lalu', kualitas: 'berdahak warna putih',
+        memperberat: 'udara dingin dan malam hari',
+        penyerta: 'demam hilang timbul dan pilek'
+      },
+      riwayat_penyakit_dahulu: 'Hipertensi terkontrol',
+      riwayat_pengobatan: 'Amlodipin 5 mg 1x1',
+      keadaan_umum: 'Tampak sakit ringan', kesadaran_kode: 'CM',
+      pemeriksaan_fisik: {
+        UMUM: { status: 'NORMAL', temuan: null },
+        MATA: { status: 'NORMAL', temuan: null },
+        THT:  { status: 'ABNORMAL', temuan: 'Faring hiperemis, tonsil T1-T1 tenang' },
+        LEHER: { status: 'NORMAL', temuan: null },
+        PARU: { status: 'NORMAL', temuan: null },
+        JANTUNG: { status: 'NORMAL', temuan: null },
+        ABDOMEN: { status: 'NORMAL', temuan: null },
+        EKSTREMITAS: { status: 'NORMAL', temuan: null },
+        KULIT: { status: 'NORMAL', temuan: null }
+      },
+      diagnosis_banding: [{ kode: 'J18.9', nama: 'Pneumonia' }],
+      subjective: 'Batuk berdahak sejak 3 hari. Keluhan sejak 3 hari lalu, sifat berdahak warna putih, '
+        + 'memperberat udara dingin dan malam hari, keluhan penyerta demam hilang timbul dan pilek. '
+        + 'Riwayat penyakit dahulu: Hipertensi terkontrol. Obat yang sedang diminum: Amlodipin 5 mg 1x1.',
+      objective: 'Tampak sakit ringan. Kesadaran Compos Mentis. TD 138/86 mmHg, nadi 88 x/menit, '
+        + 'napas 20 x/menit, suhu 37.8 °C, SpO₂ 98 %, BB 72.5 kg, TB 168 cm, IMT 25.69. '
+        + 'Keadaan umum: Tampak sakit ringan, kesadaran compos mentis, gizi cukup. '
+        + 'Telinga, hidung, tenggorokan: Faring hiperemis, tonsil T1-T1 tenang.',
+      assessment: 'Diagnosa kerja: ISPA (Infeksi Saluran Napas Atas) (J06.9). '
+        + 'Diagnosa sekunder: Demam (R50.9). Diagnosis banding: Pneumonia (J18.9).',
+      plan: 'Terapi obat: Parasetamol 500 mg No. 10 (3 x sehari 1 tablet). '
+        + 'Terapi non-obat: Kompres hangat, perbanyak minum air hangat. '
+        + 'Edukasi: Istirahat cukup, hindari asap rokok. Pasien dipulangkan. Prognosa Bonam.',
+      terapi_obat: 'Parasetamol 500 mg No. 10 (3 x sehari 1 tablet)',
+      terapi_non_obat: 'Kompres hangat, perbanyak minum air hangat', bmhp: null,
+      tindak_lanjut: 'SELESAI', prognosa: 'Bonam', prognosa_kode: 'BONAM',
+      status_pulang: 'Sembuh', status_pulang_kode: 'SEMBUH',
       edukasi: 'Istirahat cukup, minum air hangat, hindari asap rokok. Segera kembali bila sesak atau demam tinggi menetap.',
       final: true, final_pada: jamHariIni(8, 31), dibuat_pada: jamHariIni(8, 18) },
     { kunjungan_id: 'kunj-5', subjective: 'Nyeri lutut kanan saat berjalan jauh',
@@ -681,6 +827,156 @@ const DB = (() => {
   /* ---------------- Rujukan berkode ---------------- */
   async function refKesadaran() { await tunggu(30); return salin(REF_KESADARAN); }
   async function refStatusPulang() { await tunggu(30); return salin(REF_STATUS_PULANG); }
+
+  /* Rujukan pemeriksaan terstruktur. Isinya disalin dari isian awal
+     sql/14_periksa_terstruktur.sql — kalau salah satunya diubah tanpa
+     yang lain, test/uji_kolom_db.js yang menangkapnya. */
+  async function refPrognosa()     { await tunggu(25); return salin(REF_PROGNOSA); }
+  async function refTacc()         { await tunggu(25); return salin(REF_TACC); }
+  async function refSubspesialis() { await tunggu(25); return salin(REF_SUBSPESIALIS); }
+  async function refSarana()       { await tunggu(25); return salin(REF_SARANA); }
+  async function refAlergi()       { await tunggu(25); return salin(REF_ALERGI); }
+  async function refPpk()          { await tunggu(25); return salin(REF_PPK); }
+  async function refVitalSemua()   { await tunggu(25); return salin(REF_VITAL); }
+
+  async function refSistemFisik(poliJenis = null) {
+    await tunggu(25);
+    return salin(REF_SISTEM_FISIK.filter(s => !s.poli_jenis || s.poli_jenis === poliJenis));
+  }
+
+  async function alergiKode(pasienId) {
+    await tunggu(25);
+    const per = {};
+    ALERGI.filter(a => a.pasien_id === pasienId && a.ref_alergi_id)
+      .forEach(a => { if (!per[a.jenis]) per[a.jenis] = salin(a); });
+    return per;
+  }
+  async function setAlergiKode(pasienId, jenis, refAlergiId, nama) {
+    await tunggu(60);
+    for (let i = ALERGI.length - 1; i >= 0; i--) {
+      const a = ALERGI[i];
+      if (a.pasien_id === pasienId && a.jenis === jenis && a.ref_alergi_id) ALERGI.splice(i, 1);
+    }
+    if (!refAlergiId) return null;
+    const baris = { id: uid(), pasien_id: pasienId, jenis, nama: nama || jenis,
+                    ref_alergi_id: refAlergiId, dicatat_pada: new Date().toISOString() };
+    ALERGI.push(baris);
+    return salin(baris);
+  }
+
+  /* Pratinjau payload PCare. Di aplikasi sungguhan ini dibaca dari view
+     v_pcare_kunjungan; di demo disusun dari data memori dengan aturan
+     yang sama supaya halamannya bisa diuji. */
+  async function pcarePratinjau(kunjunganId) {
+    await tunggu(80);
+    const k = KUNJUNGAN.find(x => x.id === kunjunganId);
+    if (!k || k.cara_bayar !== 'BPJS') return { kunjungan: null, obat: [], tindakan: [] };
+    const p = PASIEN.find(x => x.id === k.pasien_id) || {};
+    const ka = KAJIAN.find(x => x.kunjungan_id === kunjunganId) || {};
+    const pm = PEMERIKSAAN.find(x => x.kunjungan_id === kunjunganId) || {};
+    const dg = DIAGNOSA.filter(x => x.kunjungan_id === kunjunganId);
+    const po = POLI.find(x => x.id === k.poli_id) || {};
+    const dr = PEGAWAI.find(x => x.id === k.dokter_id) || {};
+    const cari = (daftar, kode) => (daftar.find(x => x.kode === kode) || {}).kode_pcare || null;
+
+    return {
+      kunjungan: {
+        noKunjungan: k.pcare_no_kunjungan || null,
+        noKartu: p.no_bpjs || null,
+        tglDaftar: PeriksaCore.tglPcare(k.tanggal),
+        kdPoli: po.kode_pcare || null,
+        keluhan: pm.keluhan_utama || ka.keluhan_utama || k.keluhan_singkat || 'Tidak Ada',
+        kdSadar: cari(REF_KESADARAN, pm.kesadaran_kode || ka.kesadaran_kode),
+        sistole: ka.sistolik ?? null, diastole: ka.diastolik ?? null,
+        beratBadan: ka.berat_badan ?? null, tinggiBadan: ka.tinggi_badan ?? null,
+        respRate: ka.nafas ?? null, heartRate: ka.nadi ?? null,
+        lingkarPerut: ka.lingkar_perut ?? null,
+        suhu: PeriksaCore.suhuPcare(ka.suhu),
+        kdStatusPulang: cari(REF_STATUS_PULANG, pm.status_pulang_kode),
+        tglPulang: PeriksaCore.tglPcare(k.waktu_selesai || k.tanggal),
+        kdDokter: dr.kode_dokter_pcare || null,
+        kdDiag1: dg[0] ? dg[0].kode_icd10 : null,
+        kdDiag2: dg[1] ? dg[1].kode_icd10 : null,
+        kdDiag3: dg[2] ? dg[2].kode_icd10 : null,
+        kdPoliRujukInternal: null,
+        rujukLanjut: pm.rujuk_ppk_kode ? {
+          tglEstRujuk: PeriksaCore.tglPcare(pm.rujuk_tgl_estimasi || k.tanggal),
+          kdppk: pm.rujuk_ppk_kode,
+          subSpesialis: { kdSubSpesialis1: cari(REF_SUBSPESIALIS, pm.rujuk_subspesialis_kode),
+                          kdSarana: cari(REF_SARANA, pm.rujuk_sarana_kode) },
+          khusus: null
+        } : null,
+        kdTacc: cari(REF_TACC, pm.tacc_kode) || '-1',
+        alasanTacc: pm.tacc_alasan || null,
+        anamnesa: pm.anamnesis || pm.subjective || 'Tidak Ada',
+        alergiMakan: '00', alergiUdara: '00', alergiObat: '00',
+        kdPrognosa: cari(REF_PROGNOSA, pm.prognosa_kode),
+        terapiObat: pm.terapi_obat || 'Tidak Ada',
+        terapiNonObat: pm.terapi_non_obat || 'Tidak Ada',
+        bmhp: pm.bmhp || 'Tidak Ada'
+      },
+      obat: PeriksaCore.payloadPcareObat(
+        (RESEP.find(r => r.kunjungan_id === kunjunganId) || {}).item || [],
+        k.pcare_no_kunjungan),
+      tindakan: TINDAKAN.filter(t => t.kunjungan_id === kunjunganId).map(t => ({
+        kdTindakanSK: 0, noKunjungan: k.pcare_no_kunjungan,
+        kdTindakan: t.kode_pcare || null, biaya: 0,
+        keterangan: t.catatan || null, hasil: '0'
+      }))
+    };
+  }
+
+  async function observasiSatuSehat(kunjunganId) {
+    await tunggu(60);
+    const ka = KAJIAN.find(x => x.kunjungan_id === kunjunganId);
+    const pm = PEMERIKSAAN.find(x => x.kunjungan_id === kunjunganId);
+    return PeriksaCore.observasiSatuSehat(ka, pm, REF_VITAL, REF_SISTEM_FISIK)
+      .map(o => Object.assign({ kunjungan_id: kunjunganId }, o));
+  }
+
+  async function kesiapanKode() {
+    await tunggu(40);
+    const kurang = [];
+    const tambah = (tabel, field, daftar, kolom = 'kode_pcare') =>
+      daftar.filter(x => !x[kolom]).forEach(x =>
+        kurang.push({ tabel, field_pcare: field, kode: x.kode, nama: x.nama }));
+    tambah('ref_kesadaran', 'kdSadar', REF_KESADARAN);
+    tambah('ref_status_pulang', 'kdStatusPulang', REF_STATUS_PULANG);
+    tambah('ref_prognosa', 'kdPrognosa', REF_PROGNOSA);
+    tambah('ref_subspesialis', 'kdSubSpesialis1', REF_SUBSPESIALIS);
+    tambah('ref_sarana', 'kdSarana', REF_SARANA);
+    tambah('ref_alergi', 'alergi', REF_ALERGI);
+    tambah('ref_sistem_fisik', 'LOINC Observation', REF_SISTEM_FISIK, 'kode_loinc');
+    return kurang;
+  }
+
+  async function simpanPpk(rec) {
+    await tunggu(90);
+    const ada = REF_PPK.find(p => p.kode === rec.kode);
+    if (ada) Object.assign(ada, rec);
+    else REF_PPK.push({ ...rec, urutan: REF_PPK.length + 1 });
+    return salin(rec);
+  }
+
+  async function simpanPemetaanKode(daftar) {
+    await tunggu(120);
+    const TABEL = {
+      ref_kesadaran: [REF_KESADARAN, 'kode_pcare'],
+      ref_status_pulang: [REF_STATUS_PULANG, 'kode_pcare'],
+      ref_prognosa: [REF_PROGNOSA, 'kode_pcare'],
+      ref_subspesialis: [REF_SUBSPESIALIS, 'kode_pcare'],
+      ref_sarana: [REF_SARANA, 'kode_pcare'],
+      ref_alergi: [REF_ALERGI, 'kode_pcare'],
+      ref_sistem_fisik: [REF_SISTEM_FISIK, 'kode_loinc']
+    };
+    daftar.forEach(it => {
+      const t = TABEL[it.tabel];
+      if (!t) throw new Error(`Tabel "${it.tabel}" tidak boleh diubah dari sini.`);
+      const baris = t[0].find(x => x.kode === it.kode);
+      if (baris) baris[t[1]] = it.nilai;
+    });
+    return daftar.length;
+  }
 
   /* ---------------- Master data ---------------- */
   async function daftarObat(kata = '', ikutNonaktif = false) {
@@ -1857,6 +2153,10 @@ const DB = (() => {
            pemeriksaanGigi, simpanPemeriksaanGigi,
            cariIcd9, tindakan, simpanTindakan, tindakanTeratas,
            refKesadaran, refStatusPulang,
+           refPrognosa, refTacc, refSubspesialis, refSarana, refAlergi, refPpk,
+           refSistemFisik, refVital: refVitalSemua,
+           alergiKode, setAlergiKode,
+           pcarePratinjau, observasiSatuSehat, kesiapanKode, simpanPpk, simpanPemetaanKode,
            daftarObat, simpanObat, imporObat,
            daftarIcd10, simpanIcd10, daftarIcd9, simpanIcd9,
            kesiapanPasien, kesiapanKunjungan, ringkasanKesiapan,

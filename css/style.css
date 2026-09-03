@@ -659,3 +659,27 @@ table.tbl .muted { color: var(--ink-500); }
   .surat-isian { grid-template-columns: 1fr; }
   .surat-isian > .field { grid-column: 1 / -1 !important; }
 }
+
+/* ===================== PEMERIKSAAN FISIK PER SISTEM =====================
+   Satu baris = satu sistem tubuh. Kolom tengah sengaja lebar tetap agar
+   ketiga pilihan sejajar ke bawah: mata membaca kolom, bukan baris, dan
+   sistem yang belum ditandai jadi langsung kelihatan. */
+.sistem-baris {
+  display: grid; grid-template-columns: 1fr auto; gap: 8px 14px;
+  align-items: start; padding: 10px 0; border-bottom: 1px solid var(--ink-100);
+}
+.sistem-baris:last-child { border-bottom: none; }
+.sistem-nama { font-size: 13.5px; font-weight: 600; color: var(--ink-800); }
+.sistem-normal {
+  font-weight: 400; font-size: 12px; color: var(--ink-500);
+  margin-top: 2px; line-height: 1.45;
+}
+.sistem-pilih { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.sistem-pilih .radio-chip { padding: 5px 11px; font-size: 12.5px; }
+.sistem-temuan { grid-column: 1 / -1; }
+.sistem-temuan input { font-size: 13px; }
+
+@media (max-width: 700px) {
+  .sistem-baris { grid-template-columns: 1fr; }
+  .sistem-pilih { justify-content: flex-start; }
+}

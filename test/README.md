@@ -4,10 +4,10 @@ Empat lapis, dijalankan dengan `./test/semua.sh` dari folder `rme-imanuel`.
 
 | Lapis | Berkas | Butuh apa | Menguji apa |
 |---|---|---|---|
-| SQL | `uji_apotek.sql`, `uji_kasir.sql`, `uji_rls.sql`, `uji_impor.sql`, `uji_penunjang.sql`, `uji_surat.sql` | PostgreSQL 15+ | Mesin FEFO, penyerahan resep, pembatalan, penyusunan tagihan, trigger status bayar, impor massal, penandaan hasil lab, penguncian lembar, penomoran & pembatalan surat, dan kebijakan RLS per peran |
-| Fungsi murni | `uji_apotek_core.js`, `uji_apotek_excel.js`, `uji_struk_core.js`, `uji_lab_core.js`, `uji_surat_core.js` | Node saja | Kartu stok, pratinjau FEFO, penafsiran nilai Excel, pencocokan nama obat, mesin struk thermal, pemilihan nilai rujukan dan penandaan hasil lab, bentuk nomor surat, hitungan tanggal istirahat, dan isi tiap jenis surat — tanpa peramban, tanpa database |
+| SQL | `uji_apotek.sql`, `uji_kasir.sql`, `uji_rls.sql`, `uji_impor.sql`, `uji_penunjang.sql`, `uji_surat.sql`, `uji_periksa.sql` | PostgreSQL 15+ | Mesin FEFO, penyerahan resep, pembatalan, penyusunan tagihan, trigger status bayar, impor massal, penandaan hasil lab, penguncian lembar, penomoran & pembatalan surat, bentuk payload PCare, dan kebijakan RLS per peran |
+| Fungsi murni | `uji_apotek_core.js`, `uji_apotek_excel.js`, `uji_struk_core.js`, `uji_lab_core.js`, `uji_surat_core.js`, `uji_periksa_core.js` | Node saja | Kartu stok, pratinjau FEFO, penafsiran nilai Excel, pencocokan nama obat, mesin struk thermal, pemilihan nilai rujukan dan penandaan hasil lab, bentuk nomor surat, hitungan tanggal istirahat, isi tiap jenis surat, penyusunan narasi SOAP dari isian terstruktur, dan penguraian aturan pakai jadi signa1/signa2 — tanpa peramban, tanpa database |
 | Kontrak kolom | `uji_kolom_db.js` | Node saja | Setiap kolom yang diminta `js/db.js` benar-benar ada di berkas SQL, dan kolom yang halaman gantungkan nasibnya ikut terpilih. Menangkap kelas galat yang tidak melempar apa pun dan tidak terlihat di demo |
-| Halaman | `uji_halaman.js`, `uji_impor_halaman.js`, `uji_lab_halaman.js`, `uji_surat_halaman.js` | Node + Playwright + Chromium + SheetJS | `demo.html` dijalankan di peramban sungguhan; berkas .xlsx betulan dibuat, diunggah, dan diproses; alur lab ditelusuri dari permintaan dokter sampai lembar ditutup; surat diterbitkan, dicek nomornya, dan dibatalkan. Setiap galat console menggagalkan pengujian |
+| Halaman | `uji_halaman.js`, `uji_impor_halaman.js`, `uji_lab_halaman.js`, `uji_surat_halaman.js`, `uji_periksa_halaman.js` | Node + Playwright + Chromium + SheetJS | `demo.html` dijalankan di peramban sungguhan; berkas .xlsx betulan dibuat, diunggah, dan diproses; alur lab ditelusuri dari permintaan dokter sampai lembar ditutup; surat diterbitkan, dicek nomornya, dan dibatalkan; pemeriksaan fisik per sistem ditandai, temuan cepat diklik, dan narasi SOAP-nya diperiksa. Setiap galat console menggagalkan pengujian |
 
 ## Menyiapkan Node
 
@@ -94,3 +94,46 @@ akan terasa pada surat ke-100 tahun itu.
 meleset sehari adalah surat yang salah. Menjalankan seluruh berkas di zona itu membuat
 kelas kesalahan tersebut gagal keras, bukan lolos karena kebetulan mesin ujinya berada
 di zona yang sama dengan kliniknya.
+
+## Kenapa bentuk payload PCare diuji dua kali
+
+Yang BERLAKU saat pengiriman nanti adalah view `v_pcare_kunjungan` di
+`sql/14_periksa_terstruktur.sql` — pengiriman dijalankan Edge Function yang membaca
+database, bukan peramban. Tetapi `js/periksa_core.js` punya kembarannya
+(`payloadPcare()`) supaya dokter bisa menekan *Lihat data yang akan dikirim* dan
+langsung melihat isinya, tanpa perjalanan ke server dan tanpa bridging harus sudah
+menyala. Itu pula yang membuat kekurangan data ketahuan hari ini, bukan pada hari
+kredensial datang.
+
+Dua salinan aturan bisa berselisih diam-diam, dan di sini selisihnya berbahaya: layar
+berkata payload lengkap, database mengirim yang lain. Karena itu `uji_periksa.sql` §1
+dan `uji_periksa_core.js` §4 memakai contoh yang **sama persis** — pasien BPJS
+`0001234567890`, TD 130/85, suhu 37,8 °C, diagnosa `J06.9` / `R50.9` / `R05` — dan
+memeriksa nilai keluaran yang sama satu per satu.
+
+Dua di antaranya sengaja mudah salah dan mudah lolos:
+
+- **Suhu `37,8` bukan `37.8`.** PCare berbahasa Indonesia dan menerima suhu sebagai
+  teks berkoma. Titik desimal lolos tanpa galat lalu terbaca sebagai angka lain.
+- **Tanggal `DD-MM-YYYY`.** Bukan ISO, dan bukan hasil `new Date(iso)` — lihat bagian
+  berikutnya.
+
+## Kenapa uji pemeriksaan juga dijalankan di zona waktu lain
+
+`uji_periksa_core.js` memaksa `TZ=America/Los_Angeles` dengan alasan yang sama seperti
+`uji_surat_core.js`: seluruh tanggal di `periksa_core.js` diurai dengan tangan, bukan
+lewat `new Date('YYYY-MM-DD')` yang membaca tanggal polos sebagai UTC. Klinik ini di
+WITA (UTC+8) — persis kelas kesalahan itu. `tglDaftar` atau `tglPulang` yang meleset
+sehari adalah klaim yang salah tanggal pelayanan.
+
+## Kenapa aturan pakai tidak ditebak
+
+`uraiSigna()` memulangkan `terurai: false` untuk kalimat yang tidak berangka —
+"sesuai anjuran dokter", "oleskan tipis pada mata kanan". Ujinya memastikan nilainya
+tetap `null`, bukan diisi 1.
+
+Alasannya bukan kerapian. Menebak `signa1 = 1` berarti mengirim aturan pakai yang salah
+ke BPJS sementara kertas resep yang dipegang pasien tetap benar — kesalahan yang tidak
+menimbulkan galat, tidak terlihat di layar mana pun, dan tidak akan pernah ketahuan.
+Layar resep yang menandainya sebagai *belum terbaca sebagai angka*, bukan modul ini
+yang menutupinya.

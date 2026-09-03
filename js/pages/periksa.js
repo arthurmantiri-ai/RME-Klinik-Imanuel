@@ -1,23 +1,63 @@
-/* ===================== PEMERIKSAAN DOKTER (SOAP) ===================== */
+/* =====================================================================
+   PEMERIKSAAN DOKTER — terstruktur, siap PCare & SatuSehat
+
+   Sampai September 2026 layar ini empat kotak teks bebas (S, O, A, P).
+   Enak diketik, tetapi tak satu pun isinya bisa dikirim apa adanya:
+   PCare meminta 30 field terpisah, SatuSehat meminta tiap tanda vital
+   dan tiap temuan sebagai Observation berkode. Paragraf tidak bisa
+   dipecah mesin, dan memecahnya belakangan berarti membaca ulang ribuan
+   catatan — pekerjaan yang tidak akan pernah selesai.
+
+   Yang berubah: isian menjadi field. Yang TIDAK berubah: rekam medis
+   tetap punya narasi S/O/A/P, dan narasi itu disusun sendiri dari field
+   yang baru diisi (js/periksa_core.js). Dokter tidak mengetik dua kali,
+   dan rekam medis yang dicetak tetap berbunyi seperti tulisan dokter.
+
+   Yang dijaga betul di sini: kecepatan mengisi. Semua yang bisa diambil
+   dari kajian awal perawat sudah terisi, satu tombol menandai seluruh
+   sistem pemeriksaan fisik normal, dan temuan yang sering dipakai bisa
+   diklik. Formulir yang lengkap tetapi lambat akan diisi asal-asalan,
+   dan data asal-asalan lebih buruk daripada kolom kosong.
+   ===================================================================== */
 const Periksa = (() => {
 
   let kj = null;              // kunjungan
+  let pm = null;              // pemeriksaan tersimpan
+  let ka = null;              // kajian awal
   let daftarDiagnosa = [];    // [{kode, nama, jenis, kasus}]
-  let daftarResep = [];       // [{obat_id, nama_obat, jumlah, satuan, signa, ...}]
+  let dxBanding = [];         // [{kode, nama}]
+  let daftarResep = [];       // [{obat_id, nama_obat, jumlah, satuan, signa, frekuensi, dosis, ...}]
   let daftarTindakan = [];    // [{kode, nama, fdi, jumlah, catatan}]
   let signaCepat = [];
-  let refStatusPulang = [];
   let icdFavorit = [];
   let simpanOtomatis = null;
+
+  // Rujukan berkode
+  let refKesadaran = [], refStatusPulang = [], refPrognosa = [], refTacc = [];
+  let refSistem = [], refPpk = [], refSubspes = [], refSarana = [], refAlergi = [];
+  let daftarPoliLain = [];
+
+  // Keadaan isian yang tidak berupa <input>
+  let fisik = {};             // { KODE_SISTEM: {status, temuan} }
+  let alergiKode = {};        // { MAKANAN: baris, UDARA: baris, OBAT: baris }
+  let soapDisunting = {};     // huruf mana yang sudah diketik tangan dokter
+
   // Poli gigi
   let poliGigi = false;
-  // Penunjang: permintaan lab dan bacaan pada kunjungan ini
-  let labKunjungan = [], bacaanKunjungan = [], paketLab = [], masterLab = [];
-  let odoWidget = null;
-  let gigiRef = [], kondisiGigiRef = [];
-  let dataOdontogram = {};
-  let bacaanGigi = {};
+  let odoWidget = null, gigiRef = [], kondisiGigiRef = [];
+  let dataOdontogram = {}, bacaanGigi = {};
 
+  // Penunjang
+  let labKunjungan = [], bacaanKunjungan = [], paketLab = [], masterLab = [];
+
+  const KEADAAN_UMUM_CEPAT = [
+    'Tampak sakit ringan', 'Tampak sakit sedang', 'Tampak sakit berat',
+    'Tampak baik', 'Tampak lemas', 'Tampak sesak'
+  ];
+
+  /* =================================================================== *
+   *  MEMUAT
+   * =================================================================== */
   async function render(el, param) {
     const id = param && param[0];
     if (!id) { el.innerHTML = UI.kosong('Kunjungan tidak dipilih', 'Buka dari halaman antrian.'); return; }
@@ -25,11 +65,21 @@ const Periksa = (() => {
     kj = await DB.kunjungan(id);
     poliGigi = kj.poli?.jenis === 'GIGI';
 
-    const [alergi, ka, pm, dg, rs, sg, fav, td] = await Promise.all([
+    const [alergi, kaX, pmX, dg, rs, sg, fav, td] = await Promise.all([
       DB.alergiPasien(kj.pasien_id), DB.kajian(id), DB.pemeriksaan(id),
       DB.diagnosa(id), DB.resep(id), DB.daftarSigna(), DB.cariIcd(''), DB.tindakan(id)
     ]);
-    refStatusPulang = await DB.refStatusPulang();
+    ka = kaX; pm = pmX;
+
+    [refKesadaran, refStatusPulang, refPrognosa, refTacc, refSistem,
+     refPpk, refSubspes, refSarana, refAlergi, daftarPoliLain, alergiKode] =
+      await Promise.all([
+        DB.refKesadaran(), DB.refStatusPulang(), DB.refPrognosa(), DB.refTacc(),
+        DB.refSistemFisik(kj.poli?.jenis), DB.refPpk().catch(() => []),
+        DB.refSubspesialis(), DB.refSarana(), DB.refAlergi(),
+        DB.daftarPoli(), DB.alergiKode(kj.pasien_id).catch(() => ({}))
+      ]);
+
     [labKunjungan, bacaanKunjungan] = await Promise.all([
       DB.labKunjungan(id).catch(() => []), DB.penunjangKunjungan(id).catch(() => [])
     ]);
@@ -44,17 +94,24 @@ const Periksa = (() => {
     }
 
     daftarTindakan = (td || []).map(t => ({
-      kode: t.kode_icd9, nama: t.nama, fdi: t.fdi, jumlah: t.jumlah, catatan: t.catatan,
+      kode: t.kode_icd9, nama: t.nama, kode_pcare: t.kode_pcare,
+      fdi: t.fdi, jumlah: t.jumlah, catatan: t.catatan,
       perluGigi: !!(t.ref?.per_gigi ?? t.per_gigi)
     }));
-
     signaCepat = sg;
     icdFavorit = fav.slice(0, 14);
     daftarDiagnosa = dg.map(d => ({ kode: d.kode_icd10, nama: d.nama, jenis: d.jenis, kasus: d.kasus }));
+    dxBanding = Array.isArray(pm?.diagnosis_banding) ? pm.diagnosis_banding.slice() : [];
+    fisik = (pm && pm.pemeriksaan_fisik && typeof pm.pemeriksaan_fisik === 'object')
+      ? JSON.parse(JSON.stringify(pm.pemeriksaan_fisik)) : {};
+
     daftarResep = (rs?.item || []).map(i => ({
       obat_id: i.obat_id, nama_obat: i.nama_obat, kode_kfa: i.kode_kfa,
-      jumlah: i.jumlah, satuan: i.satuan, signa: i.signa, keterangan: i.keterangan
+      kode_pcare: i.kode_pcare, obat_dpho: !!i.obat_dpho,
+      jumlah: i.jumlah, satuan: i.satuan, signa: i.signa,
+      frekuensi: i.frekuensi, dosis: i.dosis, keterangan: i.keterangan
     }));
+    daftarResep.forEach(lengkapiSigna);
 
     /* Dua hal berbeda yang sama-sama membuat layar ini hanya bisa dibaca:
        rekam medis sudah difinalisasi, atau peran pengguna memang bukan dokter.
@@ -62,7 +119,23 @@ const Periksa = (() => {
     const bolehTulis = App.boleh(['dokter']);
     const terkunci = pm?.final === true || !bolehTulis;
 
-    el.innerHTML = `
+    el.innerHTML = kerangka(alergi, pgigi, terkunci, bolehTulis);
+
+    if (poliGigi) pasangOdontogram(terkunci);
+    pasangPeristiwa(el, terkunci, bolehTulis);
+
+    gambarDiagnosa(); gambarDxBanding(); gambarResep(); gambarTindakan();
+    gambarFisik(terkunci);
+    muatRiwayatSingkat();
+    muatKartuSurat(kj.id, bolehTulis);
+    perbaruiRingkasKirim();
+  }
+
+  /* =================================================================== *
+   *  KERANGKA HALAMAN
+   * =================================================================== */
+  function kerangka(alergi, pgigi, terkunci, bolehTulis) {
+    return `
       <a href="#/antrian" class="btn btn-ghost btn-sm mb-12 no-print">${UI.ikon('kembali',15)} Antrian</a>
       ${Komponen.bilahPasien(kj, alergi)}
 
@@ -76,171 +149,21 @@ const Periksa = (() => {
 
       <div class="split">
         <div>
-          <!-- ============ TANDA VITAL ============ -->
-          <div class="card">
-            <div class="card-head">
-              <div class="flex-1"><h2>Tanda vital &amp; kajian awal</h2>
-                <div class="sub">${ka ? 'Diisi ' + UI.jam(ka.dibuat_pada) : 'Belum diisi perawat'}</div></div>
-              ${!ka && App.boleh(['perawat','dokter'])
-                ? `<a href="#/kajian/${kj.id}" class="btn btn-secondary btn-sm">Isi kajian awal</a>` : ''}
-            </div>
-            <div class="card-body">
-              ${Komponen.kotakVital(ka)}
-              ${ka?.keluhan_utama ? `<div class="mt-16 text-sm">
-                <b>Keluhan utama:</b> ${UI.esc(ka.keluhan_utama)}
-                ${ka.riwayat_penyakit_dahulu ? `<br><b>Riwayat dahulu:</b> ${UI.esc(ka.riwayat_penyakit_dahulu)}` : ''}
-                ${ka.riwayat_alergi ? `<br><b>Alergi:</b> ${UI.esc(ka.riwayat_alergi)}` : ''}
-                ${ka.riwayat_pengobatan ? `<br><b>Obat rutin:</b> ${UI.esc(ka.riwayat_pengobatan)}` : ''}
-              </div>` : ''}
-            </div>
-          </div>
-
+          ${kartuVital(terkunci)}
           ${poliGigi ? kartuGigi(pgigi, terkunci) : ''}
-
-          <!-- ============ SOAP ============ -->
-          <div class="card">
-            <div class="card-head"><div class="flex-1"><h2>Catatan pemeriksaan (SOAP)</h2>
-              <div class="sub">Isi minimal Subjective, Objective, dan Plan</div></div></div>
-            <div class="card-body" id="formSoap">
-              <div class="field">
-                <label for="s">S — Subjective <span class="opt">apa yang dikeluhkan pasien</span></label>
-                <textarea id="s" name="subjective" rows="3" ${terkunci ? 'disabled' : ''}
-                  placeholder="Keluhan, sejak kapan, sifat, faktor memperberat/meringankan…">${UI.esc(pm?.subjective || ka?.keluhan_utama || '')}</textarea>
-              </div>
-              <div class="field">
-                <label for="o">O — Objective <span class="opt">temuan pemeriksaan fisik</span></label>
-                <textarea id="o" name="objective" rows="3" ${terkunci ? 'disabled' : ''}
-                  placeholder="Keadaan umum, kepala-leher, toraks, abdomen, ekstremitas…">${UI.esc(pm?.objective)}</textarea>
-              </div>
-              <div class="field">
-                <label for="a">A — Assessment <span class="opt">kesimpulan/penilaian klinis</span></label>
-                <textarea id="a" name="assessment" rows="2" ${terkunci ? 'disabled' : ''}
-                  placeholder="Ringkasan penilaian; kode ICD-10 diisi di bagian Diagnosa">${UI.esc(pm?.assessment)}</textarea>
-              </div>
-              <div class="field mb-0">
-                <label for="p">P — Plan <span class="opt">rencana tata laksana</span></label>
-                <textarea id="p" name="plan" rows="3" ${terkunci ? 'disabled' : ''}
-                  placeholder="Terapi, pemeriksaan penunjang, edukasi, rencana kontrol…">${UI.esc(pm?.plan)}</textarea>
-              </div>
-            </div>
-          </div>
-
-          <!-- ============ DIAGNOSA ============ -->
-          <div class="card">
-            <div class="card-head"><div class="flex-1"><h2>Diagnosa (ICD-10)</h2>
-              <div class="sub">Diagnosa pertama otomatis menjadi diagnosa primer</div></div></div>
-            <div class="card-body">
-              ${terkunci ? '' : `<div id="cariIcd" class="mb-12"></div>
-                <div class="mb-12">
-                  <div class="text-xs text-muted mb-8">Sering dipakai — klik untuk menambah:</div>
-                  <div class="chip-list" id="icdCepat">
-                    ${icdFavorit.map(d => `<button class="chip-quick" data-kode="${UI.esc(d.kode)}"
-                      data-nama="${UI.esc(d.nama_id || d.nama_en)}">${UI.esc(d.nama_id || d.nama_en)}</button>`).join('')}
-                  </div>
-                </div>`}
-              <div id="tabelDiagnosa"></div>
-            </div>
-          </div>
-
-          <!-- ============ TINDAKAN ============ -->
-          <div class="card">
-            <div class="card-head"><div class="flex-1"><h2>Tindakan (ICD-9-CM)</h2>
-              <div class="sub">${poliGigi
-                ? 'Sebutkan nomor gigi untuk tindakan pada gigi tertentu'
-                : 'Tindakan medis yang dilakukan pada kunjungan ini'}</div></div></div>
-            <div class="card-body">
-              ${terkunci ? '' : `<div id="cariTindakan" class="mb-12"></div>`}
-              <div id="tabelTindakan"></div>
-            </div>
-          </div>
-
-          <!-- ============ PEMERIKSAAN PENUNJANG ============ -->
+          ${kartuAnamnesis(terkunci)}
+          ${kartuFisik(terkunci)}
+          ${kartuDiagnosa(terkunci)}
+          ${kartuTindakan(terkunci)}
           ${kartuPenunjang(terkunci, bolehTulis)}
-
-          <!-- ============ RESEP ============ -->
-          <div class="card">
-            <div class="card-head"><div class="flex-1"><h2>Resep</h2>
-              <div class="sub">Cari obat, tentukan jumlah dan aturan pakai</div></div>
-              <button class="btn btn-secondary btn-sm no-print" id="btnCetakResep">${UI.ikon('cetak',15)} Cetak</button>
-            </div>
-            <div class="card-body">
-              ${terkunci ? '' : `<div id="cariObat" class="mb-12"></div>`}
-              <div id="tabelResep"></div>
-            </div>
-          </div>
+          ${kartuTerapi(terkunci)}
+          ${kartuSoap(terkunci)}
         </div>
 
-        <!-- ============ PANEL KANAN ============ -->
         <div>
-          <div class="card">
-            <div class="card-head"><h2>Tindak lanjut</h2></div>
-            <div class="card-body" id="formLanjut">
-              <div class="field">
-                <label for="tl">Rencana tindak lanjut</label>
-                <select id="tl" name="tindak_lanjut" ${terkunci ? 'disabled' : ''}>
-                  ${[['SELESAI','Selesai — pulang'],['KONTROL','Kontrol kembali'],
-                     ['RUJUK_INTERNAL','Rujuk poli lain'],['RUJUK_LANJUT','Rujuk ke FKRTL'],
-                     ['RUJUK_IGD','Rujuk IGD / emergensi']]
-                    .map(([v,t]) => `<option value="${v}" ${(pm?.tindak_lanjut || 'SELESAI') === v ? 'selected' : ''}>${t}</option>`).join('')}
-                </select>
-              </div>
-              <div class="field" id="wadahKontrol" style="display:none">
-                <label for="tk">Tanggal kontrol</label>
-                <input type="date" id="tk" name="tanggal_kontrol" value="${UI.esc(pm?.tanggal_kontrol)}" ${terkunci ? 'disabled' : ''}>
-              </div>
-              <div class="field" id="wadahRujuk" style="display:none">
-                <label for="rs">Dirujuk ke</label>
-                <input type="text" id="rs" name="rujuk_ke_faskes" value="${UI.esc(pm?.rujuk_ke_faskes)}"
-                  placeholder="Nama rumah sakit / poli tujuan" ${terkunci ? 'disabled' : ''}>
-                <div class="field mt-8 mb-0">
-                  <label for="rsp">Spesialis tujuan</label>
-                  <input type="text" id="rsp" name="rujuk_spesialis" value="${UI.esc(pm?.rujuk_spesialis)}"
-                    placeholder="Contoh: Penyakit Dalam" ${terkunci ? 'disabled' : ''}>
-                </div>
-                <div class="field mt-8 mb-0">
-                  <label for="rsa">Alasan rujukan</label>
-                  <textarea id="rsa" name="rujuk_alasan" rows="2" ${terkunci ? 'disabled' : ''}>${UI.esc(pm?.rujuk_alasan)}</textarea>
-                </div>
-              </div>
-              <div class="field">
-                <label for="sp">Keadaan pasien saat pulang</label>
-                <select id="sp" name="status_pulang_kode" ${terkunci ? 'disabled' : ''}>
-                  ${refStatusPulang.map(o => `<option value="${UI.esc(o.kode)}"
-                    ${(pm?.status_pulang_kode || 'SEMBUH') === o.kode ? 'selected' : ''}
-                    >${UI.esc(o.nama)}</option>`).join('')}
-                </select>
-              </div>
-              <div class="field">
-                <label for="pg">Prognosa</label>
-                <select id="pg" name="prognosa" ${terkunci ? 'disabled' : ''}>
-                  <option value="">— pilih —</option>
-                  ${['Bonam','Dubia ad bonam','Dubia','Dubia ad malam','Malam']
-                    .map(o => `<option ${pm?.prognosa === o ? 'selected' : ''}>${o}</option>`).join('')}
-                </select>
-              </div>
-              <div class="field mb-0">
-                <label for="ed">Edukasi kepada pasien</label>
-                <textarea id="ed" name="edukasi" rows="3" ${terkunci ? 'disabled' : ''}
-                  placeholder="Anjuran istirahat, pola makan, tanda bahaya yang perlu diwaspadai…">${UI.esc(pm?.edukasi)}</textarea>
-              </div>
-            </div>
-          </div>
-
-          <div class="card no-print">
-            <div class="card-body">
-              ${terkunci
-                ? `${bolehTulis && pm?.final
-                     ? `<button class="btn btn-secondary btn-block mb-8" id="btnAddendum">Tambah addendum</button>` : ''}
-                   <a href="#/rekam/${kj.id}" class="btn btn-primary btn-block">Lihat rekam medis</a>`
-                : `<button class="btn btn-secondary btn-block mb-8" id="btnSimpanDraf">
-                     Simpan sementara</button>
-                   <button class="btn btn-primary btn-block btn-lg" id="btnFinal">
-                     ${UI.ikon('cek',17)} Selesai &amp; kunci rekam medis</button>
-                   <p class="hint mt-8 mb-0">Setelah dikunci, isi rekam medis tidak dapat diubah —
-                     sesuai PMK 24/2022. Perubahan hanya lewat addendum.</p>`}
-              <div class="text-xs text-muted mt-12" id="statusSimpan"></div>
-            </div>
-          </div>
+          ${kartuTindakLanjut(terkunci)}
+          ${kartuSimpan(terkunci, bolehTulis)}
+          ${kartuKirim()}
 
           <div class="card no-print">
             <div class="card-head">
@@ -256,16 +179,563 @@ const Periksa = (() => {
           </div>
         </div>
       </div>`;
+  }
 
-    if (poliGigi) pasangOdontogram(terkunci);
+  /* ---------------- Tanda vital & kajian awal ---------------- */
+  function kartuVital(terkunci) {
+    return `
+      <div class="card">
+        <div class="card-head">
+          <div class="flex-1"><h2>Tanda vital &amp; kajian awal</h2>
+            <div class="sub">${ka ? 'Diisi ' + UI.jam(ka.dibuat_pada) : 'Belum diisi perawat'}</div></div>
+          ${!ka && App.boleh(['perawat','dokter'])
+            ? `<a href="#/kajian/${kj.id}" class="btn btn-secondary btn-sm">Isi kajian awal</a>`
+            : `<a href="#/kajian/${kj.id}" class="btn btn-ghost btn-sm no-print">Ubah</a>`}
+        </div>
+        <div class="card-body">
+          ${Komponen.kotakVital(ka)}
+          ${!ka ? `<p class="hint mt-12 mb-0">Tanda vital adalah bagian wajib
+            data PCare dan menjadi Observation di SatuSehat. Mintalah perawat
+            mengisinya sebelum rekam medis dikunci.</p>` : ''}
+        </div>
+      </div>`;
+  }
+
+  /* ---------------- S — Anamnesis ---------------- */
+  function kartuAnamnesis(terkunci) {
+    const rps = (pm && pm.riwayat_penyakit_sekarang) || {};
+    const isi = (n, v, ph, kolom) => `
+      <div class="field ${kolom || ''}">
+        <label for="rps_${n}">${ph[0]} <span class="opt">${ph[1]}</span></label>
+        <input type="text" id="rps_${n}" name="rps_${n}" value="${UI.esc(v)}"
+               placeholder="${UI.esc(ph[2])}" ${terkunci ? 'disabled' : ''}>
+      </div>`;
+
+    return `
+      <div class="card">
+        <div class="card-head"><div class="flex-1"><h2>S — Anamnesis</h2>
+          <div class="sub">Keluhan utama wajib. Butir lain diisi seperlunya —
+            yang kosong tidak ikut tercetak.</div></div></div>
+        <div class="card-body" id="formAnamnesis">
+          <div class="field">
+            <label for="ku">Keluhan utama <span class="req">*</span></label>
+            <input type="text" id="ku" name="keluhan_utama" ${terkunci ? 'disabled' : ''}
+              placeholder="Satu kalimat: apa yang membawa pasien datang"
+              value="${UI.esc(pm?.keluhan_utama || ka?.keluhan_utama || kj.keluhan_singkat || '')}">
+            <div class="hint">Dikirim ke PCare sebagai <span class="mono">keluhan</span>.</div>
+          </div>
+
+          <fieldset class="fieldset">
+            <legend>Riwayat penyakit sekarang</legend>
+            <div class="form-row c4">
+              ${isi('onset', rps.onset, ['Sejak', 'onset', '3 hari lalu'])}
+              ${isi('lokasi', rps.lokasi, ['Lokasi', 'di mana', 'dada kanan'])}
+              ${isi('kualitas', rps.kualitas, ['Sifat', 'seperti apa', 'berdahak putih'])}
+              ${isi('kuantitas', rps.kuantitas, ['Derajat', 'seberapa berat', 'mengganggu tidur'])}
+            </div>
+            <div class="form-row c4">
+              ${isi('kronologi', rps.kronologi, ['Perjalanan', 'memberat/menetap', 'makin sering malam hari'])}
+              ${isi('memperberat', rps.memperberat, ['Memperberat', 'apa yang memicu', 'udara dingin'])}
+              ${isi('memperingan', rps.memperingan, ['Meringankan', 'apa yang menolong', 'minum hangat'])}
+              ${isi('penyerta', rps.penyerta, ['Penyerta', 'keluhan lain', 'demam hilang timbul'])}
+            </div>
+          </fieldset>
+
+          <div class="form-row c2">
+            <div class="field">
+              <label for="rpd">Riwayat penyakit dahulu</label>
+              <input type="text" id="rpd" name="riwayat_penyakit_dahulu" ${terkunci ? 'disabled' : ''}
+                placeholder="Hipertensi, DM, asma, operasi…"
+                value="${UI.esc(pm?.riwayat_penyakit_dahulu || ka?.riwayat_penyakit_dahulu || '')}">
+            </div>
+            <div class="field">
+              <label for="rkl">Riwayat penyakit keluarga</label>
+              <input type="text" id="rkl" name="riwayat_keluarga" ${terkunci ? 'disabled' : ''}
+                placeholder="Penyakit serupa pada keluarga serumah"
+                value="${UI.esc(pm?.riwayat_keluarga)}">
+            </div>
+          </div>
+          <div class="form-row c2">
+            <div class="field">
+              <label for="rob">Obat yang sedang diminum</label>
+              <input type="text" id="rob" name="riwayat_pengobatan" ${terkunci ? 'disabled' : ''}
+                placeholder="Termasuk obat rutin dan jamu"
+                value="${UI.esc(pm?.riwayat_pengobatan || ka?.riwayat_pengobatan || '')}">
+            </div>
+            <div class="field">
+              <label for="rso">Riwayat sosial &amp; kebiasaan</label>
+              <input type="text" id="rso" name="riwayat_sosial" ${terkunci ? 'disabled' : ''}
+                placeholder="Merokok, pekerjaan, lingkungan"
+                value="${UI.esc(pm?.riwayat_sosial)}">
+            </div>
+          </div>
+
+          ${kotakAlergi(terkunci)}
+        </div>
+      </div>`;
+  }
+
+  /* Alergi berkode. PCare meminta SATU kode per jenis, bukan daftar —
+     karena itu bentuknya tiga pilihan, bukan tabel. Daftar alergi bebas
+     pada data pasien tetap ada dan tetap tampil di bilah merah di atas. */
+  function kotakAlergi(terkunci) {
+    const per = (jenis) => refAlergi.filter(a => a.jenis === jenis);
+    const kotak = (jenis, label) => {
+      const terpilih = alergiKode[jenis]?.ref_alergi_id || '';
+      return `
+        <div class="field">
+          <label for="al_${jenis}">${label}</label>
+          <select id="al_${jenis}" data-alergi="${jenis}" ${terkunci ? 'disabled' : ''}>
+            <option value="">— belum ditanyakan —</option>
+            ${per(jenis).map(a => `<option value="${UI.esc(a.id)}"
+              ${terpilih === a.id ? 'selected' : ''}>${UI.esc(a.nama)}</option>`).join('')}
+          </select>
+        </div>`;
+    };
+    return `
+      <fieldset class="fieldset mb-0">
+        <legend>Alergi</legend>
+        <div class="form-row c3">
+          ${kotak('OBAT', 'Alergi obat')}
+          ${kotak('MAKANAN', 'Alergi makanan')}
+          ${kotak('UDARA', 'Alergi udara / lingkungan')}
+        </div>
+        <p class="hint mb-0">Tiga jenis ini diminta terpisah oleh PCare
+          (<span class="mono">alergiObat</span>, <span class="mono">alergiMakan</span>,
+          <span class="mono">alergiUdara</span>). Alergi yang lebih rinci tetap
+          dicatat di data pasien dan tampil di bilah merah di atas layar.</p>
+      </fieldset>`;
+  }
+
+  /* ---------------- O — Pemeriksaan fisik ---------------- */
+  function kartuFisik(terkunci) {
+    const kesadaranTerpilih = pm?.kesadaran_kode || ka?.kesadaran_kode || 'CM';
+    return `
+      <div class="card">
+        <div class="card-head">
+          <div class="flex-1"><h2>O — Pemeriksaan fisik</h2>
+            <div class="sub">${terkunci
+              ? 'Temuan sebagaimana tercatat pada kunjungan ini'
+              : 'Tandai tiap sistem: normal, ada temuan, atau tidak diperiksa'}</div></div>
+          ${terkunci ? '' : `<button class="btn btn-secondary btn-sm no-print" id="btnSemuaNormal"
+            title="Menandai seluruh sistem pemeriksaan rutin sebagai dalam batas normal">
+            ${UI.ikon('cek',15)} Semua dalam batas normal</button>`}
+        </div>
+        <div class="card-body" id="formFisik">
+          <div class="form-row c2">
+            <div class="field">
+              <label for="ku2">Keadaan umum</label>
+              <input type="text" id="ku2" name="keadaan_umum" ${terkunci ? 'disabled' : ''}
+                list="opsiKeadaanUmum" value="${UI.esc(pm?.keadaan_umum)}"
+                placeholder="Tampak sakit ringan">
+              <datalist id="opsiKeadaanUmum">
+                ${KEADAAN_UMUM_CEPAT.map(o => `<option value="${UI.esc(o)}">`).join('')}
+              </datalist>
+            </div>
+            <div class="field">
+              <label for="ksd">Kesadaran <span class="opt">penilaian dokter</span></label>
+              <select id="ksd" name="kesadaran_kode" ${terkunci ? 'disabled' : ''}>
+                ${refKesadaran.map(o => `<option value="${UI.esc(o.kode)}"
+                  ${kesadaranTerpilih === o.kode ? 'selected' : ''}
+                  title="${UI.esc(o.keterangan || '')}">${UI.esc(o.nama)}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <div id="daftarSistem"></div>
+        </div>
+      </div>`;
+  }
+
+  /* Satu baris per sistem tubuh. Tiga keadaan, bukan dua: "tidak
+     diperiksa" adalah keterangan medis tersendiri dan tidak boleh
+     tercatat sebagai normal atas nama dokter. */
+  function gambarFisik(terkunci) {
+    const w = document.getElementById('daftarSistem');
+    if (!w) return;
+
+    w.innerHTML = refSistem.map(s => {
+      const isi = fisik[s.kode] || {};
+      const st = isi.status || '';
+      const temuan = isi.temuan || '';
+      const lazim = Array.isArray(s.temuan_lazim) ? s.temuan_lazim : [];
+
+      const tombol = [
+        ['NORMAL', 'Normal'], ['ABNORMAL', 'Ada temuan'], ['TIDAK_DIPERIKSA', 'Tidak diperiksa']
+      ].map(([v, t]) => terkunci
+        ? (st === v ? `<span class="badge ${v === 'NORMAL' ? 'b-ok' : v === 'ABNORMAL' ? 'b-warn' : 'b-umum'}">${t}</span>` : '')
+        : `<label class="radio-chip ${st === v ? 'on' : ''}" data-sistem="${UI.esc(s.kode)}" data-status="${v}">
+             <input type="radio" name="fs_${UI.esc(s.kode)}" ${st === v ? 'checked' : ''}>${t}</label>`
+      ).join('');
+
+      return `
+        <div class="sistem-baris" data-baris="${UI.esc(s.kode)}">
+          <div class="sistem-nama">${UI.esc(s.nama)}
+            ${st === 'NORMAL'
+              ? `<div class="sistem-normal">${UI.esc(s.normal_teks)}</div>` : ''}</div>
+          <div class="sistem-pilih">${tombol || '<span class="text-muted">—</span>'}</div>
+          <div class="sistem-temuan" ${st === 'ABNORMAL' ? '' : 'hidden'}>
+            ${terkunci
+              ? `<div class="text-sm">${UI.esc(temuan)}</div>`
+              : `<input type="text" data-temuan="${UI.esc(s.kode)}" value="${UI.esc(temuan)}"
+                        placeholder="Uraikan temuannya">
+                 ${lazim.length ? `<div class="chip-list mt-8">
+                   ${lazim.map(t => `<button type="button" class="chip-quick"
+                     data-lazim="${UI.esc(s.kode)}" data-teks="${UI.esc(t)}">${UI.esc(t)}</button>`).join('')}
+                 </div>` : ''}`}
+          </div>
+        </div>`;
+    }).join('');
+
+  }
+
+  /* Pendengar peristiwa dipasang SEKALI, bukan di dalam gambarFisik().
+     gambarFisik() dipanggil ulang setiap kali satu sistem ditandai, dan
+     kalau pendengarnya ikut dipasang ulang, satu klik berikutnya berjalan
+     dua kali: yang pertama menandai ABNORMAL, yang kedua melihat status
+     sudah sama lalu membatalkannya. Hasilnya tombol yang "tidak bereaksi"
+     — tanpa satu pun galat, dan makin parah tiap kali layar digambar. */
+  function pasangFisik() {
+    const w = document.getElementById('daftarSistem');
+    if (!w) return;
+
+    w.addEventListener('click', (e) => {
+      const chip = e.target.closest('[data-sistem]');
+      if (chip) {
+        const kode = chip.dataset.sistem, status = chip.dataset.status;
+        const lama = fisik[kode] || {};
+        /* Menekan tombol yang sudah menyala membatalkan pilihan. Tanpa ini
+           satu klik salah tidak bisa dibatalkan tanpa memuat ulang halaman. */
+        if (lama.status === status) delete fisik[kode];
+        else fisik[kode] = { status, temuan: status === 'ABNORMAL' ? (lama.temuan || '') : null };
+        gambarFisik(false);
+        if (fisik[kode]?.status === 'ABNORMAL') {
+          const inp = w.querySelector(`[data-temuan="${CSS.escape(kode)}"]`);
+          if (inp) inp.focus();
+        }
+        return;
+      }
+      const lz = e.target.closest('[data-lazim]');
+      if (lz) {
+        const kode = lz.dataset.lazim;
+        const inp = w.querySelector(`[data-temuan="${CSS.escape(kode)}"]`);
+        if (!inp) return;
+        /* Ditambahkan, bukan menimpa: satu sistem sering punya lebih dari
+           satu temuan, dan mengetik ulang yang pertama itu yang membuat
+           orang berhenti memakai daftar cepat. */
+        inp.value = inp.value.trim()
+          ? inp.value.replace(/[,;]\s*$/, '') + ', ' + lz.dataset.teks
+          : lz.dataset.teks;
+        fisik[kode] = { status: 'ABNORMAL', temuan: inp.value };
+        inp.focus();
+      }
+    });
+
+    w.addEventListener('input', (e) => {
+      const inp = e.target.closest('[data-temuan]');
+      if (!inp) return;
+      const kode = inp.dataset.temuan;
+      fisik[kode] = { status: 'ABNORMAL', temuan: inp.value };
+    });
+  }
+
+  /* ---------------- A — Diagnosa ---------------- */
+  function kartuDiagnosa(terkunci) {
+    return `
+      <div class="card">
+        <div class="card-head"><div class="flex-1"><h2>A — Diagnosa (ICD-10)</h2>
+          <div class="sub">Diagnosa pertama otomatis menjadi diagnosa primer</div></div></div>
+        <div class="card-body">
+          ${terkunci ? '' : `<div id="cariIcd" class="mb-12"></div>
+            <div class="mb-12">
+              <div class="text-xs text-muted mb-8">Sering dipakai — klik untuk menambah:</div>
+              <div class="chip-list" id="icdCepat">
+                ${icdFavorit.map(d => `<button class="chip-quick" data-kode="${UI.esc(d.kode)}"
+                  data-nama="${UI.esc(d.nama_id || d.nama_en)}">${UI.esc(d.nama_id || d.nama_en)}</button>`).join('')}
+              </div>
+            </div>`}
+          <div id="tabelDiagnosa"></div>
+
+          <div class="divider"></div>
+          <div class="flex justify-between items-center mb-8">
+            <b class="text-sm">Diagnosis banding <span class="text-muted">opsional</span></b>
+            ${terkunci ? '' : `<button class="btn btn-ghost btn-sm" id="btnDxBanding">
+              ${UI.ikon('plus',14)} Tambah</button>`}
+          </div>
+          <div id="tabelDxBanding"></div>
+          <p class="hint mb-0">Diagnosis banding tercatat di rekam medis sebagai
+            pertimbangan klinis. Tidak ikut dikirim sebagai diagnosa ke PCare
+            maupun SatuSehat — yang dikirim hanya diagnosa yang ditegakkan.</p>
+        </div>
+      </div>`;
+  }
+
+  /* ---------------- Tindakan ---------------- */
+  function kartuTindakan(terkunci) {
+    return `
+      <div class="card">
+        <div class="card-head"><div class="flex-1"><h2>Tindakan (ICD-9-CM)</h2>
+          <div class="sub">${poliGigi
+            ? 'Sebutkan nomor gigi untuk tindakan pada gigi tertentu'
+            : 'Tindakan medis yang dilakukan pada kunjungan ini'}</div></div></div>
+        <div class="card-body">
+          ${terkunci ? '' : `<div id="cariTindakan" class="mb-12"></div>`}
+          <div id="tabelTindakan"></div>
+        </div>
+      </div>`;
+  }
+
+  /* ---------------- P — Terapi ---------------- */
+  function kartuTerapi(terkunci) {
+    return `
+      <div class="card">
+        <div class="card-head"><div class="flex-1"><h2>P — Resep &amp; terapi</h2>
+          <div class="sub">Cari obat, tentukan jumlah dan aturan pakai</div></div>
+          <button class="btn btn-secondary btn-sm no-print" id="btnCetakResep">${UI.ikon('cetak',15)} Cetak</button>
+        </div>
+        <div class="card-body" id="formTerapi">
+          ${terkunci ? '' : `<div id="cariObat" class="mb-12"></div>`}
+          <div id="tabelResep"></div>
+
+          <div class="form-row c2 mt-16">
+            <div class="field mb-0">
+              <label for="tno">Terapi non-obat</label>
+              <textarea id="tno" name="terapi_non_obat" rows="2" ${terkunci ? 'disabled' : ''}
+                placeholder="Kompres hangat, fisioterapi ringan, diet rendah garam…">${UI.esc(pm?.terapi_non_obat)}</textarea>
+              <div class="hint">PCare: <span class="mono">terapiNonObat</span></div>
+            </div>
+            <div class="field mb-0">
+              <label for="bmhp">Bahan medis habis pakai (BMHP)</label>
+              <textarea id="bmhp" name="bmhp" rows="2" ${terkunci ? 'disabled' : ''}
+                placeholder="Kasa steril, spuit 3 cc, plester…">${UI.esc(pm?.bmhp)}</textarea>
+              <div class="hint">PCare: <span class="mono">bmhp</span></div>
+            </div>
+          </div>
+
+          <div class="field mt-16 mb-0">
+            <label for="edu">Edukasi kepada pasien</label>
+            <textarea id="edu" name="edukasi" rows="2" ${terkunci ? 'disabled' : ''}
+              placeholder="Anjuran istirahat, pola makan, tanda bahaya yang perlu diwaspadai…">${UI.esc(pm?.edukasi)}</textarea>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  /* ---------------- Catatan SOAP tersusun ---------------- */
+  function kartuSoap(terkunci) {
+    const kotak = (id, huruf, judul, nilai) => `
+      <div class="field ${huruf === 'P' ? 'mb-0' : ''}">
+        <label for="${id}">${huruf} — ${judul}</label>
+        <textarea id="${id}" name="${id}" rows="3" ${terkunci ? 'disabled' : ''}
+          data-soap="${id}">${UI.esc(nilai)}</textarea>
+      </div>`;
+
+    return `
+      <div class="card">
+        <div class="card-head">
+          <div class="flex-1"><h2>Catatan SOAP</h2>
+            <div class="sub">${terkunci ? 'Catatan pemeriksaan kunjungan ini'
+              : 'Tersusun sendiri dari isian di atas. Boleh disunting — yang Anda '
+                + 'ketik tidak akan ditimpa.'}</div></div>
+          ${terkunci ? '' : `<button class="btn btn-ghost btn-sm no-print" id="btnSusunSoap">
+            Susun ulang</button>`}
+        </div>
+        <div class="card-body" id="formSoap">
+          ${kotak('subjective', 'S', 'Subjective', pm?.subjective)}
+          ${kotak('objective',  'O', 'Objective',  pm?.objective)}
+          ${kotak('assessment', 'A', 'Assessment', pm?.assessment)}
+          ${kotak('plan',       'P', 'Plan',       pm?.plan)}
+        </div>
+      </div>`;
+  }
+
+  /* ---------------- Panel kanan: tindak lanjut ---------------- */
+  function kartuTindakLanjut(terkunci) {
+    const tl = pm?.tindak_lanjut || 'SELESAI';
+    return `
+      <div class="card">
+        <div class="card-head"><h2>Tindak lanjut</h2></div>
+        <div class="card-body" id="formLanjut">
+          <div class="field">
+            <label for="tl">Rencana tindak lanjut</label>
+            <select id="tl" name="tindak_lanjut" ${terkunci ? 'disabled' : ''}>
+              ${Object.entries(PeriksaCore.LABEL_LANJUT).map(([v, t]) =>
+                `<option value="${v}" ${tl === v ? 'selected' : ''}>${t}</option>`).join('')}
+            </select>
+          </div>
+
+          <div class="field" id="wadahKontrol" hidden>
+            <label for="tk">Tanggal kontrol</label>
+            <input type="date" id="tk" name="tanggal_kontrol" ${terkunci ? 'disabled' : ''}
+                   value="${UI.esc(pm?.tanggal_kontrol)}">
+          </div>
+
+          <div id="wadahInternal" hidden>
+            <div class="field">
+              <label for="rpi">Poli tujuan di klinik ini</label>
+              <select id="rpi" name="rujuk_poli_internal_id" ${terkunci ? 'disabled' : ''}>
+                <option value="">— pilih poli —</option>
+                ${daftarPoliLain.filter(p => p.id !== kj.poli_id).map(p =>
+                  `<option value="${UI.esc(p.id)}"
+                    ${pm?.rujuk_poli_internal_id === p.id ? 'selected' : ''}>${UI.esc(p.nama)}</option>`).join('')}
+              </select>
+              <div class="hint">PCare: <span class="mono">kdPoliRujukInternal</span></div>
+            </div>
+          </div>
+
+          <div id="wadahRujuk" hidden>
+            <div class="field">
+              <label for="rppk">Faskes tujuan</label>
+              <select id="rppk" name="rujuk_ppk_kode" ${terkunci ? 'disabled' : ''}>
+                <option value="">— pilih dari daftar —</option>
+                ${refPpk.map(p => `<option value="${UI.esc(p.kode)}"
+                  ${pm?.rujuk_ppk_kode === p.kode ? 'selected' : ''}
+                  >${UI.esc(p.nama)}</option>`).join('')}
+              </select>
+              ${refPpk.length ? '' : `<div class="hint" style="color:var(--warn-700)">
+                Daftar faskes rujukan masih kosong. Isi lewat
+                <b>Pengaturan → Rujukan &amp; kode PCare</b>.</div>`}
+            </div>
+            <div class="form-row c2">
+              <div class="field">
+                <label for="rsub">Sub spesialis</label>
+                <select id="rsub" name="rujuk_subspesialis_kode" ${terkunci ? 'disabled' : ''}>
+                  <option value="">— pilih —</option>
+                  ${refSubspes.map(s => `<option value="${UI.esc(s.kode)}"
+                    ${pm?.rujuk_subspesialis_kode === s.kode ? 'selected' : ''}>${UI.esc(s.nama)}</option>`).join('')}
+                </select>
+              </div>
+              <div class="field">
+                <label for="rsar">Sarana yang dibutuhkan</label>
+                <select id="rsar" name="rujuk_sarana_kode" ${terkunci ? 'disabled' : ''}>
+                  <option value="">— pilih —</option>
+                  ${refSarana.map(s => `<option value="${UI.esc(s.kode)}"
+                    ${pm?.rujuk_sarana_kode === s.kode ? 'selected' : ''}>${UI.esc(s.nama)}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+            <div class="field">
+              <label for="rtg">Perkiraan tanggal dirujuk</label>
+              <input type="date" id="rtg" name="rujuk_tgl_estimasi" ${terkunci ? 'disabled' : ''}
+                     value="${UI.esc(pm?.rujuk_tgl_estimasi)}">
+            </div>
+            <div class="field">
+              <label for="rsa">Alasan rujukan</label>
+              <textarea id="rsa" name="rujuk_alasan" rows="2" ${terkunci ? 'disabled' : ''}
+                >${UI.esc(pm?.rujuk_alasan)}</textarea>
+            </div>
+
+            <fieldset class="fieldset">
+              <legend>TACC</legend>
+              <div class="field">
+                <label for="tacc">Alasan rujukan menurut kriteria BPJS</label>
+                <select id="tacc" name="tacc_kode" ${terkunci ? 'disabled' : ''}>
+                  ${refTacc.map(t => `<option value="${UI.esc(t.kode)}"
+                    ${(pm?.tacc_kode || 'TIDAK') === t.kode ? 'selected' : ''}
+                    title="${UI.esc(t.keterangan || '')}">${UI.esc(t.nama)}</option>`).join('')}
+                </select>
+              </div>
+              <div class="field mb-0" id="wadahTacc" hidden>
+                <label for="taccAl">Uraian alasan <span class="req">*</span></label>
+                <input type="text" id="taccAl" name="tacc_alasan" ${terkunci ? 'disabled' : ''}
+                  placeholder="Contoh: komplikasi pneumonia, perlu foto toraks"
+                  value="${UI.esc(pm?.tacc_alasan)}">
+                <div class="hint">Rujukan ber-TACC tanpa alasan dikembalikan BPJS.</div>
+              </div>
+            </fieldset>
+          </div>
+
+          <div class="form-row c2">
+            <div class="field">
+              <label for="sp">Keadaan saat pulang</label>
+              <select id="sp" name="status_pulang_kode" ${terkunci ? 'disabled' : ''}>
+                ${refStatusPulang.map(o => `<option value="${UI.esc(o.kode)}"
+                  ${(pm?.status_pulang_kode || 'SEMBUH') === o.kode ? 'selected' : ''}
+                  >${UI.esc(o.nama)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="field">
+              <label for="pg">Prognosa</label>
+              <select id="pg" name="prognosa_kode" ${terkunci ? 'disabled' : ''}>
+                <option value="">— pilih —</option>
+                ${refPrognosa.map(o => `<option value="${UI.esc(o.kode)}"
+                  ${pm?.prognosa_kode === o.kode ? 'selected' : ''}
+                  title="${UI.esc(o.keterangan || '')}">${UI.esc(o.nama)}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function kartuSimpan(terkunci, bolehTulis) {
+    return `
+      <div class="card no-print">
+        <div class="card-body">
+          ${terkunci
+            ? `${bolehTulis && pm?.final
+                 ? `<button class="btn btn-secondary btn-block mb-8" id="btnAddendum">Tambah addendum</button>` : ''}
+               <a href="#/rekam/${kj.id}" class="btn btn-primary btn-block">Lihat rekam medis</a>`
+            : `<button class="btn btn-secondary btn-block mb-8" id="btnSimpanDraf">
+                 Simpan sementara</button>
+               <button class="btn btn-primary btn-block btn-lg" id="btnFinal">
+                 ${UI.ikon('cek',17)} Selesai &amp; kunci rekam medis</button>
+               <p class="hint mt-8 mb-0">Setelah dikunci, isi rekam medis tidak dapat diubah —
+                 sesuai PMK 24/2022. Perubahan hanya lewat addendum.</p>`}
+          <div class="text-xs text-muted mt-12" id="statusSimpan"></div>
+        </div>
+      </div>`;
+  }
+
+  /* Kartu kesiapan pengiriman. Ditampilkan untuk semua kunjungan BPJS,
+     juga selagi bridging belum menyala: gunanya justru memperlihatkan
+     kekurangan data hari ini, bukan pada hari kredensial datang. */
+  function kartuKirim() {
+    if (kj.cara_bayar !== 'BPJS') return '';
+    return `
+      <div class="card no-print">
+        <div class="card-head">
+          <div class="flex-1"><h2>Data untuk BPJS &amp; SatuSehat</h2>
+            <div class="sub">Yang akan terkirim dari kunjungan ini</div></div>
+        </div>
+        <div class="card-body">
+          <div id="ringkasKirim" class="text-sm"></div>
+          <button class="btn btn-ghost btn-sm btn-block mt-12" id="btnLihatPayload">
+            Lihat data yang akan dikirim</button>
+        </div>
+      </div>`;
+  }
+
+  /* =================================================================== *
+   *  PERISTIWA
+   * =================================================================== */
+  function pasangPeristiwa(el, terkunci, bolehTulis) {
     if (!terkunci) {
       pasangPencarianIcd();
       pasangPencarianObat();
       pasangPencarianTindakan();
+
       el.querySelector('#icdCepat').addEventListener('click', (e) => {
         const b = e.target.closest('[data-kode]'); if (!b) return;
         tambahDiagnosa({ kode: b.dataset.kode, nama: b.dataset.nama });
       });
+      el.querySelector('#btnDxBanding').addEventListener('click', modalDxBanding);
+      el.querySelector('#btnSemuaNormal').addEventListener('click', semuaNormal);
+      pasangFisik();
+      el.querySelector('#btnSusunSoap').addEventListener('click', () => {
+        soapDisunting = {};
+        terapkanSoap(susunSoapSekarang(), true);
+        UI.toast('Catatan SOAP disusun ulang dari isian.', 'ok', 1800);
+      });
+
+      /* Huruf yang diketik tangan tidak akan ditimpa saat disusun ulang
+         otomatis. Dokter yang menulis kalimatnya sendiri tidak boleh
+         kehilangan tulisannya karena ia menambah satu diagnosa. */
+      el.querySelectorAll('[data-soap]').forEach(t =>
+        t.addEventListener('input', () => { soapDisunting[t.dataset.soap] = true; }));
+
+      el.querySelectorAll('[data-alergi]').forEach(s =>
+        s.addEventListener('change', () => simpanAlergi(s.dataset.alergi, s.value)));
+
       const bLab = el.querySelector('#btnMintaLab');
       if (bLab) bLab.addEventListener('click', modalMintaLab);
       const bBacaan = el.querySelector('#btnTulisBacaan');
@@ -275,6 +745,7 @@ const Periksa = (() => {
           App.segarkan();
         }
       });
+
       el.querySelector('#btnSimpanDraf').addEventListener('click', () => simpan(false));
       el.querySelector('#btnFinal').addEventListener('click', () => simpan(true));
       pasangSimpanOtomatis();
@@ -285,33 +756,152 @@ const Periksa = (() => {
 
     el.querySelector('#btnCetakResep').addEventListener('click', cetakResep);
 
+    const bp = el.querySelector('#btnLihatPayload');
+    if (bp) bp.addEventListener('click', modalPayload);
+
     const selTl = el.querySelector('#tl');
+    const selTacc = el.querySelector('#tacc');
     const perbaruiTl = () => {
       const v = selTl.value;
-      el.querySelector('#wadahKontrol').style.display = v === 'KONTROL' ? '' : 'none';
-      el.querySelector('#wadahRujuk').style.display = v.startsWith('RUJUK') ? '' : 'none';
+      el.querySelector('#wadahKontrol').hidden  = v !== 'KONTROL';
+      el.querySelector('#wadahInternal').hidden = v !== 'RUJUK_INTERNAL';
+      el.querySelector('#wadahRujuk').hidden    = !(v === 'RUJUK_LANJUT' || v === 'RUJUK_IGD');
+      perbaruiTacc();
+      perbaruiRingkasKirim();
     };
-    selTl.addEventListener('change', perbaruiTl); perbaruiTl();
+    const perbaruiTacc = () => {
+      if (!selTacc) return;
+      const t = refTacc.find(x => x.kode === selTacc.value);
+      el.querySelector('#wadahTacc').hidden = !(t && t.perlu_alasan);
+    };
+    selTl.addEventListener('change', perbaruiTl);
+    if (selTacc) selTacc.addEventListener('change', perbaruiTacc);
+    perbaruiTl();
 
-    gambarDiagnosa(); gambarResep(); gambarTindakan(); muatRiwayatSingkat();
-    muatKartuSurat(kj.id, App.boleh(['dokter']));
+    /* Ringkasan kesiapan ikut berubah begitu ada yang diisi, bukan hanya
+       saat menyimpan — kalau baru muncul di akhir, dokter sudah telanjur
+       menutup kasus dan tidak akan kembali. */
+    ['#formAnamnesis', '#formFisik', '#formLanjut', '#formTerapi'].forEach(sel => {
+      const w = el.querySelector(sel);
+      if (w) w.addEventListener('change', perbaruiRingkasKirim);
+    });
   }
 
-  /* Surat keterangan kunjungan ini. Dimuat setelah kerangka digambar
-     supaya halaman pemeriksaan tidak menunggu satu permintaan tambahan
-     sebelum dokter bisa mulai mengetik. */
-  async function muatKartuSurat(kunjunganId, bolehBuat) {
-    const w = document.getElementById('kartuSurat');
-    if (!w) return;
-    try {
-      w.innerHTML = await Surat.kartuSuratKunjungan(kunjunganId, bolehBuat);
-      Surat.pasangKartuSurat(w);
-    } catch (e) {
-      w.innerHTML = `<p class="text-muted text-sm mb-0">Daftar surat tidak bisa dimuat.</p>`;
+  /* Satu klik menandai seluruh sistem pemeriksaan rutin normal. Sistem
+     yang bawaan_periksa = false (genitourinaria) sengaja TIDAK ikut:
+     menandainya normal berarti menuliskan pemeriksaan yang tidak
+     dilakukan, atas nama dokter, di dokumen hukum. */
+  async function semuaNormal() {
+    const rutin = refSistem.filter(s => s.bawaan_periksa);
+    const sudahAda = rutin.filter(s => fisik[s.kode] && fisik[s.kode].status === 'ABNORMAL');
+    if (sudahAda.length) {
+      const ya = await UI.konfirmasi('Tandai semua normal?',
+        `Ada ${sudahAda.length} sistem yang sudah Anda tandai punya temuan `
+        + `(${sudahAda.map(s => s.nama).join(', ')}). Temuan itu akan dipertahankan; `
+        + 'sisanya ditandai dalam batas normal.', 'Ya, tandai');
+      if (!ya) return;
     }
+    rutin.forEach(s => {
+      if (fisik[s.kode] && fisik[s.kode].status === 'ABNORMAL') return;
+      fisik[s.kode] = { status: 'NORMAL', temuan: null };
+    });
+    gambarFisik(false);
+    perbaruiRingkasKirim();
+    UI.toast(`${rutin.length} sistem ditandai dalam batas normal.`, 'ok', 2200);
   }
 
-  /* ---------------- Diagnosa ---------------- */
+  async function simpanAlergi(jenis, refId) {
+    try {
+      const r = refAlergi.find(a => a.id === refId);
+      await DB.setAlergiKode(kj.pasien_id, jenis, refId || null, r ? r.nama : null, null);
+      alergiKode = await DB.alergiKode(kj.pasien_id);
+      perbaruiRingkasKirim();
+    } catch (e) { UI.toast(e.message || 'Gagal menyimpan alergi.', 'err'); }
+  }
+
+  /* =================================================================== *
+   *  MENYUSUN SOAP
+   * =================================================================== */
+  function bahanSoap() {
+    const a = UI.nilaiForm(document.getElementById('formAnamnesis'));
+    const f = UI.nilaiForm(document.getElementById('formFisik'));
+    const t = UI.nilaiForm(document.getElementById('formTerapi'));
+    const l = UI.nilaiForm(document.getElementById('formLanjut'));
+
+    const rps = {};
+    PeriksaCore.BUTIR_RPS.forEach(([k]) => { if (a['rps_' + k]) rps[k] = a['rps_' + k]; });
+
+    const kes = refKesadaran.find(x => x.kode === f.kesadaran_kode);
+    const png = refPrognosa.find(x => x.kode === l.prognosa_kode);
+    const ppk = refPpk.find(x => x.kode === l.rujuk_ppk_kode);
+    const sub = refSubspes.find(x => x.kode === l.rujuk_subspesialis_kode);
+    const pol = daftarPoliLain.find(x => x.id === l.rujuk_poli_internal_id);
+
+    return {
+      anamnesis: {
+        keluhan_utama: a.keluhan_utama,
+        riwayat_penyakit_sekarang: rps,
+        riwayat_penyakit_dahulu: a.riwayat_penyakit_dahulu,
+        riwayat_keluarga: a.riwayat_keluarga,
+        riwayat_pengobatan: a.riwayat_pengobatan,
+        riwayat_sosial: a.riwayat_sosial,
+        riwayat_alergi: ringkasAlergi()
+      },
+      objektif: {
+        keadaan_umum: f.keadaan_umum,
+        kesadaran_nama: kes ? kes.nama : null,
+        pemeriksaan_fisik: fisik
+      },
+      kajian: ka, sistemRef: refSistem,
+      diagnosa: daftarDiagnosa, diagnosis_banding: dxBanding,
+      tindakan: daftarTindakan, resep: daftarResep,
+      rencana: {
+        terapi_non_obat: t.terapi_non_obat, bmhp: t.bmhp, edukasi: t.edukasi,
+        tindak_lanjut: l.tindak_lanjut, tanggal_kontrol: l.tanggal_kontrol,
+        prognosa_nama: png ? png.nama : null,
+        rujuk_nama_faskes: ppk ? ppk.nama : null,
+        rujuk_nama_subspesialis: sub ? sub.nama : null,
+        rujuk_nama_poli_internal: pol ? pol.nama : null,
+        rujuk_alasan: l.rujuk_alasan,
+        permintaan_penunjang: ringkasPenunjang()
+      }
+    };
+  }
+
+  const susunSoapSekarang = () => PeriksaCore.susunSoap(bahanSoap());
+
+  function ringkasAlergi() {
+    const isi = ['OBAT', 'MAKANAN', 'UDARA']
+      .map(j => alergiKode[j])
+      .filter(a => a && a.nama && !/^tidak ada/i.test(a.nama))
+      .map(a => a.nama);
+    return isi.length ? isi.join(', ') : null;
+  }
+
+  function ringkasPenunjang() {
+    const p = [];
+    labKunjungan.forEach(lp => {
+      const n = (lp.hasil || []).map(h => h.nama).filter(Boolean);
+      if (n.length) p.push(n.join(', '));
+    });
+    bacaanKunjungan.forEach(b => p.push(LabCore.labelJenis(b.jenis)));
+    return p.length ? p.join('; ') : null;
+  }
+
+  /* Menaruh hasil susunan ke kotak SOAP. Huruf yang sudah diketik tangan
+     dilewati, kecuali `paksa` (tombol "Susun ulang" yang ditekan sendiri
+     oleh dokter). */
+  function terapkanSoap(hasil, paksa = false) {
+    ['subjective', 'objective', 'assessment', 'plan'].forEach(k => {
+      if (!paksa && soapDisunting[k]) return;
+      const t = document.getElementById(k);
+      if (t) t.value = hasil[k] || '';
+    });
+  }
+
+  /* =================================================================== *
+   *  DIAGNOSA
+   * =================================================================== */
   function pasangPencarianIcd() {
     Komponen.comboCari({
       wadah: document.getElementById('cariIcd'),
@@ -332,7 +922,7 @@ const Periksa = (() => {
       jenis: daftarDiagnosa.length === 0 ? 'PRIMER' : 'SEKUNDER',
       kasus: 'BARU'
     });
-    gambarDiagnosa();
+    gambarDiagnosa(); perbaruiRingkasKirim();
   }
 
   function gambarDiagnosa() {
@@ -343,13 +933,18 @@ const Periksa = (() => {
         ${terkunci ? '' : 'Cari di kotak pencarian di atas atau klik salah satu diagnosa yang sering dipakai.'}</div></div>`;
       return;
     }
+    const bpjs = kj.cara_bayar === 'BPJS';
+
     w.innerHTML = `<div class="table-wrap"><table class="tbl">
       <thead><tr><th style="width:82px">Kode</th><th>Diagnosa</th>
         <th style="width:118px">Jenis</th><th style="width:104px">Kasus</th>
         ${terkunci ? '' : '<th style="width:1%"></th>'}</tr></thead>
       <tbody>${daftarDiagnosa.map((d, i) => `
-        <tr>
-          <td class="mono"><b>${UI.esc(d.kode)}</b></td>
+        <tr ${bpjs && i >= 3 ? 'style="opacity:.6"' : ''}>
+          <td class="mono"><b>${UI.esc(d.kode)}</b>
+            ${bpjs ? `<div class="text-xs ${i < 3 ? 'text-muted' : ''}"
+              style="${i >= 3 ? 'color:var(--warn-700)' : ''}">${i < 3
+                ? 'kdDiag' + (i + 1) : 'tidak terkirim'}</div>` : ''}</td>
           <td>${UI.esc(d.nama)}</td>
           <td>${terkunci
             ? `<span class="badge ${d.jenis === 'PRIMER' ? 'b-bpjs' : 'b-umum'}">${d.jenis}</span>`
@@ -365,19 +960,28 @@ const Periksa = (() => {
                </select>`}</td>
           ${terkunci ? '' : `<td><button class="btn-icon" data-hapus-dx="${i}"
             title="Hapus">${UI.ikon('x',14)}</button></td>`}
-        </tr>`).join('')}</tbody></table></div>`;
+        </tr>`).join('')}</tbody></table></div>
+      ${bpjs && daftarDiagnosa.length > 3 ? `<div class="banner warn mt-8 mb-0">
+        <div>PCare hanya menerima tiga diagnosa. Yang terkirim adalah tiga teratas
+        menurut urutan di tabel ini — ubah jenis atau hapus baris untuk mengatur
+        mana yang ikut. Seluruh diagnosa tetap tersimpan di rekam medis.</div></div>` : ''}`;
 
     if (terkunci) return;
     w.querySelectorAll('[data-hapus-dx]').forEach(b => b.addEventListener('click', () => {
       daftarDiagnosa.splice(+b.dataset.hapusDx, 1);
       if (daftarDiagnosa.length && !daftarDiagnosa.some(x => x.jenis === 'PRIMER'))
         daftarDiagnosa[0].jenis = 'PRIMER';
-      gambarDiagnosa();
+      gambarDiagnosa(); perbaruiRingkasKirim();
     }));
     w.querySelectorAll('[data-jenis]').forEach(s => s.addEventListener('change', () => {
       const i = +s.dataset.jenis;
-      if (s.value === 'PRIMER') daftarDiagnosa.forEach((d, j) => d.jenis = j === i ? 'PRIMER' : 'SEKUNDER');
-      else daftarDiagnosa[i].jenis = 'SEKUNDER';
+      if (s.value === 'PRIMER') {
+        daftarDiagnosa.forEach((d, j) => d.jenis = j === i ? 'PRIMER' : 'SEKUNDER');
+        /* Diagnosa primer harus jadi kdDiag1. Kalau hanya jenisnya yang
+           berubah tapi urutannya tidak, layar berkata "primer" sementara
+           yang terkirim ke BPJS tetap baris pertama yang lama. */
+        daftarDiagnosa.unshift(daftarDiagnosa.splice(i, 1)[0]);
+      } else daftarDiagnosa[i].jenis = 'SEKUNDER';
       gambarDiagnosa();
     }));
     w.querySelectorAll('[data-kasus]').forEach(s => s.addEventListener('change', () => {
@@ -385,7 +989,58 @@ const Periksa = (() => {
     }));
   }
 
-  /* ---------------- Resep ---------------- */
+  function gambarDxBanding() {
+    const w = document.getElementById('tabelDxBanding');
+    if (!w) return;
+    const terkunci = !document.getElementById('btnFinal');
+    if (!dxBanding.length) {
+      w.innerHTML = `<p class="text-muted text-sm">Tidak ada diagnosis banding dicatat.</p>`;
+      return;
+    }
+    w.innerHTML = `<div class="chip-list mb-8">${dxBanding.map((d, i) => `
+      <span class="chip">${UI.esc(d.nama)}${d.kode ? ` <span class="mono">${UI.esc(d.kode)}</span>` : ''}
+        ${terkunci ? '' : `<button data-hapus-db="${i}" title="Hapus">×</button>`}</span>`).join('')}</div>`;
+    if (terkunci) return;
+    w.querySelectorAll('[data-hapus-db]').forEach(b => b.addEventListener('click', () => {
+      dxBanding.splice(+b.dataset.hapusDb, 1); gambarDxBanding();
+    }));
+  }
+
+  async function modalDxBanding() {
+    let terpilih = null;
+    const hasil = await UI.modal({
+      judul: 'Tambah diagnosis banding',
+      isi: `<p class="text-sm text-muted">Diagnosis yang dipertimbangkan tetapi belum
+              ditegakkan. Tercatat di rekam medis, tidak dikirim sebagai diagnosa.</p>
+            <div id="cariDb" class="mb-12"></div>
+            <div class="field mb-0"><label>Atau tulis bebas</label>
+              <input type="text" name="bebas" placeholder="Nama diagnosis banding"></div>`,
+      siap: (b) => {
+        Komponen.comboCari({
+          wadah: b.querySelector('#cariDb'),
+          placeholder: 'Cari ICD-10…',
+          cariFn: (kata) => DB.cariIcd(kata),
+          formatFn: (d) => `<b>${UI.esc(d.nama_id || d.nama_en)}</b><span>${UI.esc(d.kode)}</span>`,
+          onPilih: (d) => {
+            terpilih = { kode: d.kode, nama: d.nama_id || d.nama_en };
+            b.querySelector('[name=bebas]').value = terpilih.nama;
+          }
+        });
+      },
+      tombol: [{ teks: 'Batal', nilai: null },
+               { teks: 'Tambah', kelas: 'btn-primary', aksi: (b) => {
+                  const bebas = b.querySelector('[name=bebas]').value.trim();
+                  if (!bebas) { UI.toast('Pilih atau tulis diagnosis bandingnya.', 'err'); return false; }
+                  return (terpilih && terpilih.nama === bebas) ? terpilih : { kode: null, nama: bebas };
+               }}]
+    });
+    if (!hasil) return;
+    dxBanding.push(hasil); gambarDxBanding();
+  }
+
+  /* =================================================================== *
+   *  RESEP
+   * =================================================================== */
   function pasangPencarianObat() {
     Komponen.comboCari({
       wadah: document.getElementById('cariObat'),
@@ -401,11 +1056,26 @@ const Periksa = (() => {
     if (daftarResep.some(x => x.obat_id === o.id)) {
       UI.toast('Obat itu sudah ada dalam resep.', 'warn'); return;
     }
-    daftarResep.push({
+    const r = {
       obat_id: o.id, nama_obat: o.nama, kode_kfa: o.kode_kfa || null,
+      kode_pcare: o.kode_pcare || null, obat_dpho: !!o.dpho,
       jumlah: 10, satuan: o.satuan, signa: '3 x sehari 1 tablet', keterangan: null
-    });
-    gambarResep();
+    };
+    lengkapiSigna(r);
+    daftarResep.push(r);
+    gambarResep(); perbaruiRingkasKirim();
+  }
+
+  /* Dua angka yang diminta PCare diambil dari kalimat aturan pakai yang
+     memang sudah diketik dokter. Yang tidak bisa diurai dibiarkan kosong
+     dan ditandai di layar — bukan ditebak. Menebak signa1 = 1 berarti
+     mengirim aturan pakai yang salah ke BPJS sementara kertas resep yang
+     dipegang pasien tetap benar; tidak ada yang akan pernah tahu. */
+  function lengkapiSigna(r) {
+    if (r.frekuensi && r.dosis) return r;
+    const s = PeriksaCore.uraiSigna(r.signa);
+    r.frekuensi = s.frekuensi; r.dosis = s.dosis;
+    return r;
   }
 
   function gambarResep() {
@@ -418,6 +1088,7 @@ const Periksa = (() => {
     }
     const opsiSigna = signaCepat.map(s =>
       `<option value="${UI.esc(s.teks)}">${UI.esc(s.teks)}</option>`).join('');
+    const bpjs = kj.cara_bayar === 'BPJS';
 
     w.innerHTML = `<div class="table-wrap"><table class="tbl">
       <thead><tr><th>Obat</th><th style="width:96px">Jumlah</th>
@@ -434,7 +1105,10 @@ const Periksa = (() => {
                  <span class="text-xs text-muted">${UI.esc(r.satuan || '')}</span></div>`}</td>
           <td>${terkunci ? UI.esc(r.signa)
             : `<input list="signaOpsi" data-signa="${i}" value="${UI.esc(r.signa)}"
-                      style="padding:5px 8px;font-size:12.5px" placeholder="3 x sehari 1 tablet">`}</td>
+                      style="padding:5px 8px;font-size:12.5px" placeholder="3 x sehari 1 tablet">`}
+            ${bpjs ? (r.frekuensi && r.dosis
+              ? `<div class="text-xs text-muted mono">signa ${r.frekuensi} × ${r.dosis}</div>`
+              : `<div class="text-xs" style="color:var(--warn-700)">belum terbaca sebagai angka</div>`) : ''}</td>
           ${terkunci ? '' : `<td><button class="btn-icon" data-hapus-obat="${i}"
             title="Hapus">${UI.ikon('x',14)}</button></td>`}
         </tr>`).join('')}</tbody></table></div>
@@ -442,21 +1116,23 @@ const Periksa = (() => {
 
     if (terkunci) return;
     w.querySelectorAll('[data-hapus-obat]').forEach(b => b.addEventListener('click', () => {
-      daftarResep.splice(+b.dataset.hapusObat, 1); gambarResep();
+      daftarResep.splice(+b.dataset.hapusObat, 1); gambarResep(); perbaruiRingkasKirim();
     }));
     w.querySelectorAll('[data-jml]').forEach(inp => inp.addEventListener('change', () => {
       daftarResep[+inp.dataset.jml].jumlah = Math.max(1, Number(inp.value) || 1);
     }));
     w.querySelectorAll('[data-signa]').forEach(inp => inp.addEventListener('change', () => {
-      daftarResep[+inp.dataset.signa].signa = inp.value;
+      const r = daftarResep[+inp.dataset.signa];
+      r.signa = inp.value;
+      r.frekuensi = null; r.dosis = null;   // dihitung ulang dari kalimat baru
+      lengkapiSigna(r);
+      gambarResep(); perbaruiRingkasKirim();
     }));
   }
 
-
-  /* ================================================================== *
-   *  POLI GIGI — odontogram, pemeriksaan gigi, dan tindakan
-   * ================================================================== */
-
+  /* =================================================================== *
+   *  POLI GIGI
+   * =================================================================== */
   const PILIHAN_GIGI = {
     wajah:            ['Simetris', 'Asimetris'],
     kelenjar_limfe:   ['Tidak teraba', 'Teraba kiri', 'Teraba kanan', 'Teraba kedua sisi'],
@@ -581,7 +1257,9 @@ const Periksa = (() => {
     });
   }
 
-  /* ---------------- Tindakan ---------------- */
+  /* =================================================================== *
+   *  TINDAKAN
+   * =================================================================== */
   function pasangPencarianTindakan() {
     const wadah = document.getElementById('cariTindakan');
     if (!wadah) return;
@@ -599,8 +1277,8 @@ const Periksa = (() => {
 
   function tambahTindakan(t) {
     daftarTindakan.push({
-      kode: t.kode, nama: t.nama_id, fdi: null, jumlah: 1,
-      perluGigi: !!t.per_gigi, catatan: null
+      kode: t.kode, nama: t.nama_id, kode_pcare: t.kode_pcare || null,
+      fdi: null, jumlah: 1, perluGigi: !!t.per_gigi, catatan: null
     });
     gambarTindakan();
   }
@@ -654,11 +1332,9 @@ const Periksa = (() => {
     }));
   }
 
-  /* ---------------- Pemeriksaan penunjang ----------------
-     Dokter meminta pemeriksaan dari sini, dan hasilnya muncul di kartu
-     yang sama begitu petugas lab mengisinya. Nilai di luar rujukan diberi
-     warna supaya tidak perlu dibandingkan satu per satu dengan kolom
-     rujukan — itulah yang tidak bisa dilakukan foto lembar hasil. */
+  /* =================================================================== *
+   *  PEMERIKSAAN PENUNJANG
+   * =================================================================== */
   function kartuPenunjang(terkunci, bolehTulis) {
     const adaLab = labKunjungan.length, adaBacaan = bacaanKunjungan.length;
 
@@ -799,24 +1475,191 @@ const Periksa = (() => {
     if (hasil === true) { labKunjungan = await DB.labKunjungan(kj.id); App.segarkan(); }
   }
 
-  /* ---------------- Simpan ---------------- */
-  function kumpulkanSoap() {
-    const soap = UI.nilaiForm(document.getElementById('formSoap'));
-    const lanjut = UI.nilaiForm(document.getElementById('formLanjut'));
-    return { ...soap, ...lanjut };
+  /* =================================================================== *
+   *  KESIAPAN & PRATINJAU PENGIRIMAN
+   * =================================================================== */
+  function keadaanSekarang() {
+    const a = UI.nilaiForm(document.getElementById('formAnamnesis'));
+    const f = UI.nilaiForm(document.getElementById('formFisik'));
+    const t = UI.nilaiForm(document.getElementById('formTerapi'));
+    const l = UI.nilaiForm(document.getElementById('formLanjut'));
+    return {
+      kunjungan: kj, kajian: ka, diagnosa: daftarDiagnosa, resep: daftarResep,
+      pemeriksaan: {
+        keluhan_utama: a.keluhan_utama,
+        kesadaran_kode: f.kesadaran_kode,
+        pemeriksaan_fisik: fisik,
+        objective: document.getElementById('objective')?.value,
+        status_pulang_kode: l.status_pulang_kode,
+        prognosa_kode: l.prognosa_kode,
+        tindak_lanjut: l.tindak_lanjut,
+        tanggal_kontrol: l.tanggal_kontrol,
+        rujuk_ppk_kode: l.rujuk_ppk_kode,
+        rujuk_poli_internal_id: l.rujuk_poli_internal_id,
+        tacc_kode: l.tacc_kode, tacc_alasan: l.tacc_alasan,
+        terapi_non_obat: t.terapi_non_obat, bmhp: t.bmhp
+      }
+    };
+  }
+
+  function perbaruiRingkasKirim() {
+    const w = document.getElementById('ringkasKirim');
+    if (!w || !document.getElementById('formAnamnesis')) return;
+    const p = PeriksaCore.periksaKelengkapan(keadaanSekarang());
+
+    if (!p.galat.length && !p.peringatan.length) {
+      w.innerHTML = `<div class="banner ok mb-0">${UI.ikon('cek',16)}
+        <div>Seluruh data yang diminta PCare sudah lengkap.</div></div>`;
+      return;
+    }
+    w.innerHTML = `
+      ${p.galat.length ? `<div class="banner err mb-8"><div>
+        <b>Belum bisa dikunci:</b> ${UI.esc(p.galat.join(', '))}.</div></div>` : ''}
+      ${p.peringatan.length ? `<div class="banner warn mb-0"><div>
+        <ul style="margin:0;padding-left:18px">
+          ${p.peringatan.map(x => `<li>${UI.esc(x)}</li>`).join('')}
+        </ul></div></div>` : ''}`;
+  }
+
+  /* Pratinjau dibaca dari view database, bukan disusun ulang di peramban.
+     Yang ditampilkan harus benar-benar yang akan dikirim; kalau layar
+     menyusun sendiri, ia bisa terlihat lengkap sementara yang terkirim
+     berbeda — persis kesalahan yang paling sulit ditemukan nanti. */
+  async function modalPayload() {
+    let isi = `<p class="text-muted text-sm">Memuat…</p>`;
+    try {
+      const pv = await DB.pcarePratinjau(kj.id);
+      const kn = pv.kunjungan;
+      if (!kn) {
+        isi = `<div class="banner info mb-0"><div>Data kunjungan ini belum tersimpan.
+          Simpan dulu, lalu buka kembali pratinjau.</div></div>`;
+      } else {
+        const baris = (k, v) => {
+          const kosong = v === null || v === undefined || v === '';
+          return `<tr>
+            <td class="mono" style="width:170px">${UI.esc(k)}</td>
+            <td ${kosong ? 'style="color:var(--warn-700)"' : ''}>${kosong
+              ? 'belum terisi'
+              : UI.esc(typeof v === 'object' ? JSON.stringify(v) : String(v))}</td></tr>`;
+        };
+        const urut = ['noKartu','tglDaftar','kdPoli','keluhan','kdSadar','sistole','diastole',
+          'beratBadan','tinggiBadan','respRate','heartRate','lingkarPerut','suhu',
+          'kdStatusPulang','tglPulang','kdDokter','kdDiag1','kdDiag2','kdDiag3',
+          'kdPoliRujukInternal','rujukLanjut','kdTacc','alasanTacc','anamnesa',
+          'alergiMakan','alergiUdara','alergiObat','kdPrognosa','terapiObat',
+          'terapiNonObat','bmhp'];
+        isi = `
+          <p class="text-sm text-muted">Isi persis seperti yang akan dikirim ke
+            <b>PCare /kunjungan</b>. Baris berwarna belum terisi — sebagian karena
+            datanya kurang, sebagian karena pemetaan kode PCare belum diisi di
+            Pengaturan.</p>
+          <div class="table-wrap" style="max-height:340px;overflow-y:auto">
+            <table class="tbl">${urut.map(k => baris(k, kn[k])).join('')}</table></div>
+          ${pv.obat.length ? `<h3 class="mt-16 mb-8">Obat (${pv.obat.length})</h3>
+            <div class="table-wrap"><table class="tbl">
+              <thead><tr><th>kdObat / nama</th><th>signa1</th><th>signa2</th><th>jmlObat</th></tr></thead>
+              <tbody>${pv.obat.map(o => `<tr>
+                <td>${UI.esc(o.kdObat || o.nmObatNonDPHO)}</td>
+                <td>${UI.esc(o.signa1)}</td><td>${UI.esc(o.signa2)}</td>
+                <td>${UI.esc(o.jmlObat)}</td></tr>`).join('')}</tbody></table></div>` : ''}
+          ${pv.tindakan.length ? `<h3 class="mt-16 mb-8">Tindakan (${pv.tindakan.length})</h3>
+            <div class="table-wrap"><table class="tbl">
+              <tbody>${pv.tindakan.map(t => `<tr>
+                <td class="mono">${UI.esc(t.kdTindakan || 'kode PCare belum diisi')}</td>
+                <td>${UI.esc(t.keterangan || '')}</td></tr>`).join('')}</tbody></table></div>` : ''}`;
+      }
+    } catch (e) {
+      isi = `<div class="banner err mb-0"><div>Pratinjau tidak bisa dimuat:
+        ${UI.esc(e.message || '')}</div></div>`;
+    }
+    await UI.modal({
+      judul: 'Data yang akan dikirim ke PCare', lebar: true, isi,
+      tombol: [{ teks: 'Tutup', nilai: null }]
+    });
+  }
+
+  /* =================================================================== *
+   *  SIMPAN
+   * =================================================================== */
+  function kumpulkan() {
+    const a = UI.nilaiForm(document.getElementById('formAnamnesis'));
+    const f = UI.nilaiForm(document.getElementById('formFisik'));
+    const t = UI.nilaiForm(document.getElementById('formTerapi'));
+    const l = UI.nilaiForm(document.getElementById('formLanjut'));
+    const s = UI.nilaiForm(document.getElementById('formSoap'));
+
+    const rps = {};
+    PeriksaCore.BUTIR_RPS.forEach(([k]) => { if (a['rps_' + k]) rps[k] = a['rps_' + k]; });
+
+    const rujuk = l.tindak_lanjut === 'RUJUK_LANJUT' || l.tindak_lanjut === 'RUJUK_IGD';
+    const ppk = refPpk.find(x => x.kode === l.rujuk_ppk_kode);
+    const sub = refSubspes.find(x => x.kode === l.rujuk_subspesialis_kode);
+    const tacc = refTacc.find(x => x.kode === l.tacc_kode);
+
+    return {
+      // Anamnesis
+      keluhan_utama: a.keluhan_utama,
+      riwayat_penyakit_sekarang: rps,
+      riwayat_penyakit_dahulu: a.riwayat_penyakit_dahulu,
+      riwayat_keluarga: a.riwayat_keluarga,
+      riwayat_pengobatan: a.riwayat_pengobatan,
+      riwayat_sosial: a.riwayat_sosial,
+      // Objektif
+      keadaan_umum: f.keadaan_umum,
+      kesadaran_kode: f.kesadaran_kode || null,
+      pemeriksaan_fisik: fisik,
+      // Penilaian
+      diagnosis_banding: dxBanding,
+      // Rencana
+      terapi_non_obat: t.terapi_non_obat,
+      bmhp: t.bmhp,
+      edukasi: t.edukasi,
+      prognosa_kode: l.prognosa_kode || null,
+      status_pulang_kode: l.status_pulang_kode || null,
+      tindak_lanjut: l.tindak_lanjut || 'SELESAI',
+      tanggal_kontrol: l.tindak_lanjut === 'KONTROL' ? l.tanggal_kontrol : null,
+      /* Isian rujukan yang tidak dipakai sengaja dikosongkan, bukan
+         dibiarkan menempel dari pilihan sebelumnya. Kolom kdppk yang
+         tertinggal dari percobaan "rujuk" yang batal akan ikut terkirim
+         ke BPJS sebagai rujukan yang tidak pernah terjadi. */
+      rujuk_poli_internal_id: l.tindak_lanjut === 'RUJUK_INTERNAL' ? (l.rujuk_poli_internal_id || null) : null,
+      rujuk_ppk_kode:          rujuk ? (l.rujuk_ppk_kode || null) : null,
+      rujuk_subspesialis_kode: rujuk ? (l.rujuk_subspesialis_kode || null) : null,
+      rujuk_sarana_kode:       rujuk ? (l.rujuk_sarana_kode || null) : null,
+      rujuk_tgl_estimasi:      rujuk ? (l.rujuk_tgl_estimasi || null) : null,
+      rujuk_alasan:            rujuk ? l.rujuk_alasan : null,
+      rujuk_ke_faskes:         rujuk && ppk ? ppk.nama : null,
+      rujuk_spesialis:         rujuk && sub ? sub.nama : null,
+      /* TACC yang perlu alasan tetapi alasannya belum diketik sengaja
+         BELUM dikirim ke database: triggernya menolak, dan penolakan itu
+         akan menggagalkan seluruh penyimpanan sementara — termasuk
+         catatan yang sudah panjang diketik. Yang menahan penguncian
+         adalah periksaKelengkapan(), yang menyebutnya sebagai galat dan
+         menolak tombol "Selesai & kunci". */
+      tacc_kode: (rujuk && tacc && (!tacc.perlu_alasan || (l.tacc_alasan || '').trim()))
+        ? tacc.kode : (rujuk ? 'TIDAK' : null),
+      tacc_alasan: rujuk && tacc && tacc.perlu_alasan ? l.tacc_alasan : null,
+      // Narasi
+      subjective: s.subjective, objective: s.objective,
+      assessment: s.assessment, plan: s.plan
+    };
   }
 
   async function simpan(final) {
-    const d = kumpulkanSoap();
+    /* Narasi disusun ulang sebelum dikumpulkan, supaya yang tersimpan
+       selalu mencerminkan isian terstruktur — kecuali huruf yang memang
+       diketik tangan dokter. */
+    const susunan = susunSoapSekarang();
+    terapkanSoap(susunan);
+
+    const d = kumpulkan();
+    d.anamnesis = susunan.anamnesis;
+    d.terapi_obat = susunan.terapi_obat;
 
     if (final) {
-      const kurang = [];
-      if (!d.subjective) kurang.push('Subjective');
-      if (!d.objective) kurang.push('Objective');
-      if (!d.plan) kurang.push('Plan');
-      if (!daftarDiagnosa.length) kurang.push('minimal satu diagnosa ICD-10');
-      if (kurang.length) {
-        UI.toast('Belum lengkap: ' + kurang.join(', ') + '.', 'err', 5000);
+      const p = PeriksaCore.periksaKelengkapan(keadaanSekarang());
+      if (!p.boleh) {
+        UI.toast('Belum lengkap: ' + p.galat.join(', ') + '.', 'err', 6000);
         return;
       }
       const tanpaGigi = daftarTindakan.filter(t => t.perluGigi && !t.fdi);
@@ -826,8 +1669,12 @@ const Periksa = (() => {
         return;
       }
       const ya = await UI.konfirmasi('Kunci rekam medis kunjungan ini?',
-        'Setelah dikunci, catatan tidak dapat diubah lagi. Perubahan hanya bisa ditambahkan '
-        + 'sebagai addendum. Pastikan semua isian sudah benar.', 'Ya, kunci sekarang');
+        (p.peringatan.length
+          ? 'Catatan: ' + p.peringatan.join(' ') + '\n\n'
+          : '')
+        + 'Setelah dikunci, catatan tidak dapat diubah lagi. Perubahan hanya bisa '
+        + 'ditambahkan sebagai addendum. Pastikan semua isian sudah benar.',
+        'Ya, kunci sekarang');
       if (!ya) return;
     }
 
@@ -835,18 +1682,7 @@ const Periksa = (() => {
     if (tombol) { tombol.disabled = true; tombol.textContent = 'Menyimpan…'; }
 
     try {
-      const sp = refStatusPulang.find(x => x.kode === d.status_pulang_kode);
-      await DB.simpanPemeriksaan(kj.id, {
-        subjective: d.subjective, objective: d.objective,
-        assessment: d.assessment, plan: d.plan,
-        prognosa: d.prognosa, edukasi: d.edukasi,
-        status_pulang_kode: d.status_pulang_kode || null,
-        status_pulang: sp ? sp.nama : null,
-        tindak_lanjut: d.tindak_lanjut || 'SELESAI',
-        tanggal_kontrol: d.tindak_lanjut === 'KONTROL' ? d.tanggal_kontrol : null,
-        rujuk_ke_faskes: d.rujuk_ke_faskes, rujuk_spesialis: d.rujuk_spesialis,
-        rujuk_alasan: d.rujuk_alasan
-      });
+      await DB.simpanPemeriksaan(kj.id, d);
       await DB.simpanDiagnosa(kj.id, daftarDiagnosa);
       await DB.simpanResep(kj.id, daftarResep);
       await DB.simpanTindakan(kj.id, daftarTindakan);
@@ -878,9 +1714,10 @@ const Periksa = (() => {
         UI.toast('Tersimpan sementara.', 'ok', 1800);
         const st = document.getElementById('statusSimpan');
         if (st) st.textContent = 'Terakhir disimpan ' + UI.jam(new Date());
+        perbaruiRingkasKirim();
       }
     } catch (e) {
-      UI.toast(e.message || 'Gagal menyimpan.', 'err', 5000);
+      UI.toast(e.message || 'Gagal menyimpan.', 'err', 6000);
     } finally {
       if (tombol && !final) { tombol.disabled = false; tombol.textContent = 'Simpan sementara'; }
       if (tombol && final)  { tombol.disabled = false; tombol.innerHTML = `${UI.ikon('cek',17)} Selesai &amp; kunci rekam medis`; }
@@ -892,21 +1729,24 @@ const Periksa = (() => {
     clearInterval(simpanOtomatis);
     simpanOtomatis = setInterval(async () => {
       if (!document.getElementById('btnSimpanDraf')) { clearInterval(simpanOtomatis); return; }
-      const d = kumpulkanSoap();
-      if (!d.subjective && !d.objective && !d.plan && !daftarDiagnosa.length) return;
+      const a = UI.nilaiForm(document.getElementById('formAnamnesis'));
+      if (!a.keluhan_utama && !Object.keys(fisik).length && !daftarDiagnosa.length) return;
       try {
-        await DB.simpanPemeriksaan(kj.id, {
-          subjective: d.subjective, objective: d.objective,
-          assessment: d.assessment, plan: d.plan,
-          tindak_lanjut: d.tindak_lanjut || 'SELESAI'
-        });
+        const susunan = susunSoapSekarang();
+        terapkanSoap(susunan);
+        const d = kumpulkan();
+        d.anamnesis = susunan.anamnesis;
+        d.terapi_obat = susunan.terapi_obat;
+        await DB.simpanPemeriksaan(kj.id, d);
         const st = document.getElementById('statusSimpan');
         if (st) st.textContent = 'Tersimpan otomatis ' + UI.jam(new Date());
       } catch (e) { /* diam saja, dokter tetap bisa simpan manual */ }
     }, 90000);
   }
 
-  /* ---------------- Addendum ---------------- */
+  /* =================================================================== *
+   *  ADDENDUM, RIWAYAT, CETAK
+   * =================================================================== */
   async function modalAddendum() {
     const hasil = await UI.modal({
       judul: 'Tambah addendum',
@@ -931,7 +1771,17 @@ const Periksa = (() => {
     } catch (e) { UI.toast(e.message || 'Gagal menyimpan addendum.', 'err'); }
   }
 
-  /* ---------------- Riwayat singkat pasien ---------------- */
+  async function muatKartuSurat(kunjunganId, bolehBuat) {
+    const w = document.getElementById('kartuSurat');
+    if (!w) return;
+    try {
+      w.innerHTML = await Surat.kartuSuratKunjungan(kunjunganId, bolehBuat);
+      Surat.pasangKartuSurat(w);
+    } catch (e) {
+      w.innerHTML = `<p class="text-muted text-sm mb-0">Daftar surat tidak bisa dimuat.</p>`;
+    }
+  }
+
   async function muatRiwayatSingkat() {
     const w = document.getElementById('riwayatSingkat');
     if (!w) return;
@@ -952,7 +1802,6 @@ const Periksa = (() => {
     } catch (e) { w.innerHTML = ''; }
   }
 
-  /* ---------------- Cetak resep ---------------- */
   async function cetakResep() {
     if (!daftarResep.length) { UI.toast('Belum ada obat untuk dicetak.', 'warn'); return; }
     const f = await DB.faskes().catch(() => ({ nama: CONFIG.NAMA_KLINIK }));
