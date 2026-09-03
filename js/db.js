@@ -155,9 +155,17 @@ const DB = (() => {
     const { data, error } = await sb.from('kunjungan').insert(rec).select().single();
     if (error) throw error; return data;
   }
+  /* `poli.jenis` WAJIB ikut terpilih di sini. Seluruh modul poli gigi —
+     odontogram, pemeriksaan gigi & mulut, dan kolom nomor gigi pada daftar
+     tindakan — dinyalakan oleh `kunjungan.poli.jenis === 'GIGI'` di
+     pages/periksa.js dan pages/rekam.js. Kalau kolomnya tidak diminta,
+     nilainya undefined, perbandingannya bernilai false, dan ketiga bagian itu
+     hilang dari layar tanpa satu pun galat — halaman tetap tampil rapi,
+     hanya saja poli gigi berubah jadi poli umum. Dijaga oleh
+     test/uji_kolom_db.js. */
   async function kunjungan(id) {
     const { data, error } = await sb.from('kunjungan')
-      .select(`*, pasien:pasien_id(*), poli:poli_id(id,nama,kode), dokter:dokter_id(id,nama,no_sip)`)
+      .select(`*, pasien:pasien_id(*), poli:poli_id(id,nama,kode,jenis), dokter:dokter_id(id,nama,no_sip)`)
       .eq('id', id).single();
     if (error) throw error; return data;
   }

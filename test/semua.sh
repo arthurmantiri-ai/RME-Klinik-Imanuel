@@ -11,7 +11,13 @@ printf 'apotek_excel  '; node test/uji_apotek_excel.js | tail -1
 printf 'struk_core    '; node test/uji_struk_core.js   | tail -1
 printf 'lab_core      '; node test/uji_lab_core.js     | tail -1
 echo
-echo "════ 3. Halaman (Chromium sungguhan) ════"
+echo "════ 3. Kolom db.js vs skema SQL ════"
+# Uji halaman semuanya berjalan di demo.html, yang memakai demo-data.js dan
+# mengembalikan baris utuh. Kolom yang lupa diminta di .select() aplikasi
+# sungguhan tidak akan pernah ketahuan di sana — uji ini yang menangkapnya.
+printf 'kontrak kolom '; node test/uji_kolom_db.js | tail -1
+echo
+echo "════ 4. Halaman (Chromium sungguhan) ════"
 printf 'alur apotek & kasir  '; node test/uji_halaman.js       | tail -1
 printf 'impor & ekspor Excel '; node test/uji_impor_halaman.js | tail -1
 printf 'lab & penunjang      '; node test/uji_lab_halaman.js  | tail -1
