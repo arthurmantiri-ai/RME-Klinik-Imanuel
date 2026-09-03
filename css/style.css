@@ -600,3 +600,62 @@ table.tbl .muted { color: var(--ink-500); }
   .odo-palet, .odo-tampilan { display: none !important; }
   .odo-bagan { border-color: #999; }
 }
+
+/* =====================================================================
+   SURAT KETERANGAN
+   ===================================================================== */
+/* Formulir di kiri, pratinjau di kanan. Pratinjaunya lebih lebar dari
+   .split (340px) karena isinya halaman A4 yang dikecilkan — di bawah
+   ±420px huruf 12pt jadi tidak terbaca dan pratinjaunya berhenti
+   berguna. */
+.surat-layar {
+  display: grid; grid-template-columns: minmax(0,1fr) 460px;
+  gap: 16px; align-items: start;
+}
+.sticky-atas { position: sticky; top: 16px; }
+
+/* Isian surat memakai kisi 12 kolom; lebar tiap kolom ditentukan oleh
+   `kolom` pada daftar isian di js/surat_core.js. */
+.surat-isian { display: grid; grid-template-columns: repeat(12, minmax(0,1fr)); gap: 14px; }
+.surat-isian > .field { margin-bottom: 0; }
+
+/* Pratinjau: iframe selebar A4 sungguhan (794px pada 96dpi) yang
+   dikecilkan dengan transform, supaya pemenggalan barisnya sama persis
+   dengan hasil cetak. Wadahnya yang dipotong, bukan isinya yang
+   dialirkan ulang. */
+.surat-pratinjau-wrap {
+  position: relative; width: 100%; overflow: hidden; background: var(--ink-100);
+  border: 1px solid var(--ink-200); border-radius: var(--radius);
+}
+.surat-pratinjau {
+  position: absolute; top: 0; left: 0; width: 794px; height: 1123px;
+  border: 0; transform-origin: top left; background: #fff;
+}
+
+.nomor-jadi {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 15px; font-weight: 650; letter-spacing: .01em;
+  padding: 9px 11px; border: 1px dashed var(--ink-300); border-radius: var(--radius-sm);
+  background: var(--brand-50); color: var(--brand-800); overflow-wrap: anywhere;
+}
+
+.surat-baris {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 0; border-bottom: 1px solid var(--ink-100);
+}
+.surat-baris:last-of-type { border-bottom: none; }
+
+.kop-pratinjau {
+  width: 100%; max-width: 460px; border: 1px solid var(--ink-200);
+  border-radius: var(--radius-sm); background: #fff; display: block;
+}
+
+@media (max-width: 1240px) {
+  .surat-layar { grid-template-columns: 1fr; }
+  .sticky-atas { position: static; }
+  .surat-pratinjau-wrap { max-width: 560px; }
+}
+@media (max-width: 820px) {
+  .surat-isian { grid-template-columns: 1fr; }
+  .surat-isian > .field { grid-column: 1 / -1 !important; }
+}

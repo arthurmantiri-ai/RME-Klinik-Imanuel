@@ -57,6 +57,9 @@ const Rekam = (() => {
             ${UI.ikon('cetak',15)} Cetak rekam medis</button>
           ${App.boleh(['dokter']) && !rm.pemeriksaan?.final
             ? `<a href="#/periksa/${k.id}" class="btn btn-primary btn-sm">Lanjutkan pemeriksaan</a>` : ''}
+          ${App.boleh(['dokter'])
+            ? `<a href="#/surat/baru/${k.id}" class="btn btn-secondary btn-sm">
+                 ${UI.ikon('surat',15)} Buat surat</a>` : ''}
         </div>
       </div>
 
@@ -216,7 +219,29 @@ const Rekam = (() => {
         </div>
       </div>
 
+      <div class="card no-print">
+        <div class="card-head">
+          <div class="flex-1"><h2>Surat keterangan</h2>
+            <div class="sub">Surat yang terbit dari kunjungan ini</div></div>
+        </div>
+        <div class="card-body" id="kartuSuratRekam">${UI.memuat(1)}</div>
+      </div>
+
       ${statusBridging(k)}`;
+
+    /* Daftar surat dimuat setelah rekam medis tergambar. Rekam medis
+       adalah yang dicari orang saat membuka halaman ini; ia tidak boleh
+       menunggu satu permintaan tambahan yang isinya sering kosong. */
+    (async () => {
+      const w = document.getElementById('kartuSuratRekam');
+      if (!w) return;
+      try {
+        w.innerHTML = await Surat.kartuSuratKunjungan(k.id, App.boleh(['dokter']));
+        Surat.pasangKartuSurat(w);
+      } catch (e) {
+        w.innerHTML = `<p class="text-muted text-sm mb-0">Daftar surat tidak bisa dimuat.</p>`;
+      }
+    })();
 
     if (poliGigi) {
       const w = document.getElementById('odoRekam');

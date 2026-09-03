@@ -14,7 +14,8 @@ const Pengaturan = (() => {
       <div class="mb-16"><h1>Pengaturan</h1>
         <p class="text-muted mb-0">Profil klinik, poli, pengguna, dan status bridging.</p></div>
       <div class="tabs" id="tabs">
-        ${[['klinik','Profil Klinik'],['poli','Poli'],['pengguna','Pengguna'],['bridging','Bridging']]
+        ${[['klinik','Profil Klinik'],['poli','Poli'],['pengguna','Pengguna'],
+           ['surat','Kop &amp; Surat'],['bridging','Bridging']]
           .map(([k, t]) => `<button class="tab ${tabAktif === k ? 'on' : ''}" data-t="${k}">${t}</button>`).join('')}
       </div>
       <div id="isiTab">${UI.memuat(3)}</div>`;
@@ -36,6 +37,7 @@ const Pengaturan = (() => {
       if (tabAktif === 'klinik')   return await tabKlinik(w);
       if (tabAktif === 'poli')     return await tabPoli(w);
       if (tabAktif === 'pengguna') return await tabPengguna(w);
+      if (tabAktif === 'surat')    return await tabSurat(w);
       if (tabAktif === 'bridging') return await tabBridging(w);
     } catch (e) {
       w.innerHTML = `<div class="banner err">${UI.esc(e.message)}</div>`;
@@ -239,6 +241,173 @@ const Pengaturan = (() => {
   }
 
   /* ---------------- Bridging ---------------- */
+  /* ---------------- Kop & Surat ----------------
+     Kop surat disimpan sebagai data URI di satu baris jsonb, BUKAN di
+     Supabase Storage. Alasannya sama dengan keputusan 2 September untuk
+     gambar rontgen: kuota Storage paket gratis habis diam-diam dan
+     gagalnya selalu di saat paling buruk. Lagi pula pdfmake tidak bisa
+     mengambil gambar dari URL sama sekali — ia hanya menerima data URI.
+
+     Gambarnya dikecilkan DI PERAMBAN sebelum disimpan. Tanpa itu, satu
+     hasil pindaian 300 dpi berukuran 8 MB akan masuk ke database dan
+     ikut terunduh setiap kali halaman Surat dibuka. */
+  const LEBAR_KOP_MAKS = 1500;   // ±220 dpi pada lebar cetak 17 cm
+  const UKURAN_KOP_MAKS = 700 * 1024;
+
+  function kecilkanGambar(berkas, lebarMaks = LEBAR_KOP_MAKS, mutu = 0.85) {
+    return new Promise((selesai, gagal) => {
+      const baca = new FileReader();
+      baca.onerror = () => gagal(new Error('Berkas tidak bisa dibaca.'));
+      baca.onload = () => {
+        const img = new Image();
+        img.onerror = () => gagal(new Error('Berkas ini bukan gambar yang bisa dibaca peramban.'));
+        img.onload = () => {
+          const skala = Math.min(1, lebarMaks / img.naturalWidth);
+          const l = Math.round(img.naturalWidth * skala);
+          const t = Math.round(img.naturalHeight * skala);
+          const kanvas = document.createElement('canvas');
+          kanvas.width = l; kanvas.height = t;
+          const ctx = kanvas.getContext('2d');
+          /* Latar putih dulu: kop PNG berlatar tembus pandang akan jadi
+             kotak hitam kalau langsung disandikan sebagai JPEG. */
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, l, t);
+          ctx.drawImage(img, 0, 0, l, t);
+          selesai({ dataUri: kanvas.toDataURL('image/jpeg', mutu), lebar: l, tinggi: t });
+        };
+        img.src = baca.result;
+      };
+      baca.readAsDataURL(berkas);
+    });
+  }
+
+  async function tabSurat(w) {
+    const p = await DB.suratPengaturan(true);
+    let kopBaru = null;          // { dataUri, lebar, tinggi } bila diganti
+
+    const gambarKop = () => p.kop_data_uri || KopKlinik.BAWAAN;
+
+    w.innerHTML = `
+      <div class="card">
+        <div class="card-head"><div class="flex-1"><h2>Kop surat</h2>
+          <div class="sub">Dipakai pada semua surat keterangan, baik yang dicetak
+            maupun yang diunduh sebagai PDF</div></div></div>
+        <div class="card-body">
+          <img class="kop-pratinjau mb-12" id="pratinjauKop" src="${gambarKop()}"
+               alt="Kop surat yang sedang dipakai">
+          <div class="text-xs text-muted mb-12" id="asalKop">
+            ${p.kop_data_uri ? 'Kop unggahan klinik.' : 'Kop bawaan yang disertakan bersama aplikasi.'}
+          </div>
+          <div class="form-row c2">
+            <div class="field mb-0">
+              <label for="fileKop">Ganti kop (JPG atau PNG)</label>
+              <input type="file" id="fileKop" accept="image/png,image/jpeg">
+              <div class="hint">Gambarnya dikecilkan otomatis ke lebar
+                ${LEBAR_KOP_MAKS} piksel. Pakai gambar memanjang seperti kop di atas —
+                lebar penuh, tinggi rendah.</div>
+            </div>
+            <div class="field mb-0">
+              <label>&nbsp;</label>
+              <button class="btn btn-ghost btn-block" id="btnKopBawaan"
+                ${p.kop_data_uri ? '' : 'disabled'}>Kembalikan ke kop bawaan</button>
+            </div>
+          </div>
+          <label class="check mt-12"><input type="checkbox" id="cTampilKop"
+            ${p.tampilkan_kop === false ? '' : 'checked'}>
+            <span>Cetak kop pada surat. Matikan bila klinik memakai kertas
+              berkop yang sudah tercetak.</span></label>
+          <label class="check mt-8"><input type="checkbox" id="cGarisKop"
+            ${p.garis_bawah_kop === true ? 'checked' : ''}>
+            <span>Tambahkan garis hitam di bawah kop. Kop bawaan sudah punya
+              garis hijau sendiri, jadi ini biasanya dibiarkan mati.</span></label>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="flex-1"><h2>Isi tetap surat</h2>
+          <div class="sub">Bagian yang sama pada setiap surat</div></div></div>
+        <div class="card-body">
+          <div class="field">
+            <label for="fKota">Kota pada baris tanggal</label>
+            <input type="text" id="fKota" value="${UI.esc(p.kota || '')}" placeholder="Manado">
+            <div class="hint">Tercetak sebagai "Manado, ${UI.tglIndo(UI.hariIni())}"
+              di atas tanda tangan.</div>
+          </div>
+          <div class="field mb-0">
+            <label for="fKaki">Catatan kaki</label>
+            <textarea id="fKaki" rows="2">${UI.esc(p.catatan_kaki || '')}</textarea>
+            <div class="hint">Tercetak kecil di bagian bawah surat. Kosongkan bila
+              tidak diperlukan.</div>
+          </div>
+        </div>
+        <div class="card-foot">
+          <button class="btn btn-primary" id="btnSimpanSurat">Simpan pengaturan</button>
+        </div>
+      </div>
+
+      <div class="banner info"><div>
+        <b>Tanda tangan tidak disimpan di sistem.</b> Surat selalu tercetak dengan
+        ruang tanda tangan kosong, nama dokter, dan nomor SIP; dokter menandatangani
+        dengan pulpen lalu klinik membubuhkan stempel. Spesimen tanda tangan digital
+        sengaja tidak dibuat — begitu gambar tanda tangan dokter tersimpan, surat
+        keterangan sakit bertanda tangan dokter bisa terbit tanpa dokter itu pernah
+        melihat pasiennya.
+      </div></div>`;
+
+    w.querySelector('#fileKop').addEventListener('change', async (e) => {
+      const berkas = e.target.files && e.target.files[0];
+      if (!berkas) return;
+      try {
+        const hasil = await kecilkanGambar(berkas);
+        if (hasil.dataUri.length > UKURAN_KOP_MAKS * 1.4) {
+          UI.toast('Gambar kop terlalu besar setelah dikecilkan. Pakai gambar ' +
+                   'yang lebih sederhana atau potong bagian kosongnya.', 'err');
+          return;
+        }
+        kopBaru = hasil;
+        w.querySelector('#pratinjauKop').src = hasil.dataUri;
+        w.querySelector('#asalKop').textContent =
+          `Kop baru — ${hasil.lebar}×${hasil.tinggi} piksel, ` +
+          `${Math.round(hasil.dataUri.length / 1024)} KB. Belum tersimpan.`;
+        w.querySelector('#btnKopBawaan').disabled = false;
+      } catch (err) {
+        UI.toast(err.message || 'Gambar gagal dibaca.', 'err');
+      }
+    });
+
+    w.querySelector('#btnKopBawaan').addEventListener('click', () => {
+      kopBaru = { dataUri: null, lebar: null, tinggi: null };
+      w.querySelector('#pratinjauKop').src = KopKlinik.BAWAAN;
+      w.querySelector('#asalKop').textContent =
+        'Akan kembali ke kop bawaan. Belum tersimpan.';
+      w.querySelector('#fileKop').value = '';
+    });
+
+    w.querySelector('#btnSimpanSurat').addEventListener('click', async (e) => {
+      const b = e.currentTarget;
+      b.disabled = true;
+      try {
+        const baru = {
+          kota: w.querySelector('#fKota').value.trim(),
+          catatan_kaki: w.querySelector('#fKaki').value.trim(),
+          tampilkan_kop: w.querySelector('#cTampilKop').checked,
+          garis_bawah_kop: w.querySelector('#cGarisKop').checked
+        };
+        if (kopBaru) {
+          baru.kop_data_uri = kopBaru.dataUri;
+          baru.kop_rasio = kopBaru.dataUri ? kopBaru.lebar / kopBaru.tinggi : null;
+        }
+        const simpan = Object.assign({}, p, baru);
+        await DB.simpanSuratPengaturan(simpan);
+        KopKlinik.pasang(simpan.kop_data_uri, simpan.kop_rasio);
+        UI.toast('Pengaturan surat tersimpan.', 'ok');
+        await gambarTab(w);
+      } catch (err) {
+        UI.toast('Gagal menyimpan: ' + (err.message || err), 'err');
+      } finally { b.disabled = false; }
+    });
+  }
+
   async function tabBridging(w) {
     w.innerHTML = `
       <div class="banner info">

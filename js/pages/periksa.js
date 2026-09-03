@@ -243,6 +243,14 @@ const Periksa = (() => {
           </div>
 
           <div class="card no-print">
+            <div class="card-head">
+              <div class="flex-1"><h2>Surat keterangan</h2>
+                <div class="sub">Surat sakit, rujukan, kontrol, keterangan sehat</div></div>
+            </div>
+            <div class="card-body" id="kartuSurat">${UI.memuat(1)}</div>
+          </div>
+
+          <div class="card no-print">
             <div class="card-head"><h2>Riwayat sebelumnya</h2></div>
             <div class="card-body tight" id="riwayatSingkat">${UI.memuat(2)}</div>
           </div>
@@ -286,6 +294,21 @@ const Periksa = (() => {
     selTl.addEventListener('change', perbaruiTl); perbaruiTl();
 
     gambarDiagnosa(); gambarResep(); gambarTindakan(); muatRiwayatSingkat();
+    muatKartuSurat(kj.id, App.boleh(['dokter']));
+  }
+
+  /* Surat keterangan kunjungan ini. Dimuat setelah kerangka digambar
+     supaya halaman pemeriksaan tidak menunggu satu permintaan tambahan
+     sebelum dokter bisa mulai mengetik. */
+  async function muatKartuSurat(kunjunganId, bolehBuat) {
+    const w = document.getElementById('kartuSurat');
+    if (!w) return;
+    try {
+      w.innerHTML = await Surat.kartuSuratKunjungan(kunjunganId, bolehBuat);
+      Surat.pasangKartuSurat(w);
+    } catch (e) {
+      w.innerHTML = `<p class="text-muted text-sm mb-0">Daftar surat tidak bisa dimuat.</p>`;
+    }
   }
 
   /* ---------------- Diagnosa ---------------- */

@@ -1706,6 +1706,143 @@ const DB = (() => {
   }
   async function hapusLampiran(id) { LAMPIRAN = LAMPIRAN.filter(l => l.id !== id); }
 
+  /* ====================== SURAT KETERANGAN ====================== */
+  const REF_JENIS_SURAT = [
+    { kode: 'SKS',  nama: 'Surat Keterangan Sakit',
+      judul_cetak: 'SURAT KETERANGAN SAKIT', perlu_kunjungan: true, urutan: 1, aktif: true },
+    { kode: 'SR',   nama: 'Surat Rujukan',
+      judul_cetak: 'SURAT RUJUKAN', perlu_kunjungan: true, urutan: 2, aktif: true },
+    { kode: 'SK',   nama: 'Surat Kontrol',
+      judul_cetak: 'SURAT KONTROL', perlu_kunjungan: true, urutan: 3, aktif: true },
+    { kode: 'SKBS', nama: 'Surat Keterangan Berbadan Sehat',
+      judul_cetak: 'SURAT KETERANGAN BERBADAN SEHAT', perlu_kunjungan: true, urutan: 4, aktif: true },
+    { kode: 'RM',   nama: 'Resume Medis',
+      judul_cetak: 'RESUME MEDIS', perlu_kunjungan: true, urutan: 5, aktif: true },
+    { kode: 'SKL',  nama: 'Surat Keterangan',
+      judul_cetak: 'SURAT KETERANGAN', perlu_kunjungan: false, urutan: 9, aktif: true }
+  ];
+
+  const SETELAN_SURAT = {
+    kota: 'Manado',
+    catatan_kaki: 'Keaslian surat ini dapat diperiksa dengan menyebutkan nomor surat ' +
+                  'kepada Klinik Pratama Imanuel.',
+    tampilkan_kop: true, garis_bawah_kop: false, kop_data_uri: null, kop_rasio: null
+  };
+
+  const ROMAWI_DEMO = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
+  const noSuratDemo = (s) =>
+    `${String(s.nomor_urut).padStart(2,'0')}/${s.jenis_kode}/YAKIM/` +
+    `${ROMAWI_DEMO[s.bulan - 1]}/${s.tahun}`;
+
+  const SURAT = [
+    { id: 'srt-1', jenis_kode: 'SKS', nomor_urut: 12,
+      bulan: Number(hariIni.slice(5, 7)), tahun: Number(hariIni.slice(0, 4)),
+      tanggal_surat: hariIni, pasien_id: 'pas-1', kunjungan_id: 'kunj-1',
+      perihal: 'Istirahat 2 hari', status: 'AKTIF', jml_cetak: 1,
+      data: { mulai: hariIni, lama: 2, keperluan: 'Keperluan tempat bekerja',
+              cantumkan_diagnosa: false, diagnosa_teks: 'ISPA', catatan: '' },
+      dokter_id: 'peg-1', ttd_nama: 'dr. Arthur Mantiri',
+      ttd_jabatan: 'Dokter Pemeriksa', ttd_sip: '446/SIP/2024/0091',
+      dibuat_oleh: 'peg-1', dibuat_pada: new Date().toISOString() }
+  ];
+
+  function lengkapiSurat(s) {
+    const p = PASIEN.find(x => x.id === s.pasien_id) || {};
+    const k = KUNJUNGAN.find(x => x.id === s.kunjungan_id);
+    const j = REF_JENIS_SURAT.find(x => x.kode === s.jenis_kode) || {};
+    const pb = PEGAWAI.find(x => x.id === s.dibuat_oleh);
+    return Object.assign(salin(s), {
+      nomor_surat: noSuratDemo(s),
+      jenis_nama: j.nama, judul_cetak: j.judul_cetak,
+      no_rm: p.no_rm, nama_pasien: p.nama,
+      jenis_kelamin: p.jenis_kelamin, tanggal_lahir: p.tanggal_lahir,
+      no_kunjungan: k ? k.no_kunjungan : null,
+      tanggal_kunjungan: k ? k.tanggal : null,
+      cara_bayar: k ? k.cara_bayar : null,
+      nama_poli: k ? (POLI.find(x => x.id === k.poli_id) || {}).nama : null,
+      nama_pembuat: pb ? pb.nama : 'Demo'
+    });
+  }
+
+  async function refJenisSurat() { await tunggu(20); return salin(REF_JENIS_SURAT); }
+  async function suratPengaturan() { await tunggu(20); return salin(SETELAN_SURAT); }
+  async function simpanSuratPengaturan(k) { Object.assign(SETELAN_SURAT, k); return salin(SETELAN_SURAT); }
+
+  async function suratNomorBerikutnya(jenis, tahun) {
+    await tunggu(20);
+    const dipakai = SURAT.filter(s => s.jenis_kode === jenis && s.tahun === tahun)
+      .map(s => s.nomor_urut);
+    return dipakai.length ? Math.max.apply(null, dipakai) + 1 : 1;
+  }
+  async function suratNomorTerpakai(jenis, tahun, nomor) {
+    await tunggu(20);
+    const s = SURAT.find(x => x.jenis_kode === jenis && x.tahun === tahun
+                              && x.nomor_urut === Number(nomor));
+    return s ? noSuratDemo(s) + (s.status === 'BATAL' ? ' (dibatalkan)' : '') : null;
+  }
+  async function buatSurat(rec) {
+    await tunggu(60);
+    const bentrok = SURAT.find(x => x.jenis_kode === rec.jenis_kode
+      && x.tahun === rec.tahun && x.nomor_urut === Number(rec.nomor_urut));
+    if (bentrok) throw new Error('duplicate key value violates unique constraint "uq_surat_nomor"');
+    const baru = Object.assign({ id: uid(), status: 'AKTIF', jml_cetak: 0,
+      dibuat_oleh: PROFIL.id, dibuat_pada: new Date().toISOString() }, rec);
+    baru.nomor_surat = noSuratDemo(baru);
+    SURAT.push(baru);
+    return salin(baru);
+  }
+  async function ubahSurat(id, patch) {
+    await tunggu(50);
+    const s = SURAT.find(x => x.id === id);
+    if (!s) throw new Error('Surat tidak ditemukan.');
+    Object.assign(s, patch);
+    s.nomor_surat = noSuratDemo(s);
+    return salin(s);
+  }
+  async function surat(id) {
+    await tunggu(30);
+    const s = SURAT.find(x => x.id === id);
+    return s ? lengkapiSurat(s) : null;
+  }
+  async function daftarSurat(f = {}) {
+    await tunggu(40);
+    const kata = (f.kata || '').toLowerCase();
+    return SURAT.map(lengkapiSurat).filter(s => {
+      if (f.dari && s.tanggal_surat < f.dari) return false;
+      if (f.sampai && s.tanggal_surat > f.sampai) return false;
+      if (f.jenis && s.jenis_kode !== f.jenis) return false;
+      if (f.status && s.status !== f.status) return false;
+      if (f.pasien_id && s.pasien_id !== f.pasien_id) return false;
+      if (kata) {
+        const gabung = [s.nomor_surat, s.nama_pasien, s.perihal, s.no_rm]
+          .filter(Boolean).join(' ').toLowerCase();
+        if (!gabung.includes(kata)) return false;
+      }
+      return true;
+    }).sort((a, b) => String(b.tanggal_surat).localeCompare(String(a.tanggal_surat)));
+  }
+  async function suratKunjungan(kunjunganId) {
+    await tunggu(30);
+    return SURAT.filter(s => s.kunjungan_id === kunjunganId).map(lengkapiSurat);
+  }
+  async function suratPasien(pasienId) {
+    await tunggu(30);
+    return SURAT.filter(s => s.pasien_id === pasienId).map(lengkapiSurat);
+  }
+  async function suratBatalkan(id, alasan) {
+    await tunggu(50);
+    const s = SURAT.find(x => x.id === id);
+    if (!s) throw new Error('Surat tidak ditemukan.');
+    if (!alasan) throw new Error('Alasan pembatalan wajib diisi.');
+    s.status = 'BATAL'; s.alasan_batal = alasan;
+    s.dibatalkan_oleh = PROFIL.id; s.dibatalkan_pada = new Date().toISOString();
+    return lengkapiSurat(s);
+  }
+  async function suratCatatCetak(id) {
+    const s = SURAT.find(x => x.id === id);
+    if (s) { s.jml_cetak = (s.jml_cetak || 0) + 1; s.cetak_terakhir = new Date().toISOString(); }
+  }
+
   async function ambilSemua(f) { return []; }
 
   return { sb, masuk, keluar, sesi, saya, bolehTulis, faskes, simpanFaskes,
@@ -1740,5 +1877,9 @@ const DB = (() => {
            labTren, labBelumSelesai,
            penunjangSimpan, penunjangPasien, penunjangKunjungan, gigiBerbacaan, hapusPenunjang,
            lampiranPasien, lampiranKunjungan, simpanLampiran, hapusLampiran,
+           suratPengaturan, simpanSuratPengaturan, refJenisSurat,
+           suratNomorBerikutnya, suratNomorTerpakai,
+           buatSurat, ubahSurat, surat, daftarSurat, suratKunjungan, suratPasien,
+           suratBatalkan, suratCatatCetak,
            gantiPeranDemo, peranDemoSekarang, PERAN_DEMO };
 })();

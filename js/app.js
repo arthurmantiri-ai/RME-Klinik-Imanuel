@@ -15,6 +15,7 @@ const App = (() => {
     { rute: '#/lab',         label: 'Lab & Penunjang', ikon: 'stetoskop', peran: '*' },
     { rute: '#/apotek',      label: 'Apotek',        ikon: 'pil',       peran: '*' },
     { rute: '#/kasir',       label: 'Kasir',         ikon: 'jantung',   peran: ['admin','kasir','pendaftaran'] },
+    { rute: '#/surat',       label: 'Surat Keterangan', ikon: 'surat',  peran: '*' },
     { grup: 'Data' },
     { rute: '#/pasien',      label: 'Data Pasien',   ikon: 'pasien',    peran: '*' },
     { rute: '#/riwayat',     label: 'Riwayat Kunjungan', ikon: 'rekam', peran: '*' },
@@ -38,6 +39,7 @@ const App = (() => {
     'lab':         (p) => Lab.render(view(), p),
     'apotek':      (p) => Apotek.render(view(), p),
     'kasir':       (p) => Kasir.render(view(), p),
+    'surat':       (p) => Surat.render(view(), p),
     'tarif':       (p) => Tarif.render(view(), p),
     'master':      (p) => Master.render(view(), p),
     'pengaturan':  (p) => Pengaturan.render(view(), p)
@@ -48,7 +50,8 @@ const App = (() => {
     pasien: 'Data Pasien', riwayat: 'Riwayat Kunjungan', kajian: 'Kajian Awal',
     periksa: 'Pemeriksaan Dokter', rekam: 'Rekam Medis', laporan: 'Laporan',
     lab: 'Lab & Pemeriksaan Penunjang',
-    apotek: 'Apotek', kasir: 'Kasir', tarif: 'Tarif & Tampilan Invoice',
+    apotek: 'Apotek', kasir: 'Kasir', surat: 'Surat Keterangan',
+    tarif: 'Tarif & Tampilan Invoice',
     master: 'Master Data', pengaturan: 'Pengaturan'
   };
 

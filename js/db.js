@@ -1091,6 +1091,137 @@ const DB = (() => {
   }
 
 
+  /* ======================================================================
+     SURAT-SURAT KETERANGAN
+     ====================================================================== */
+
+  /* Nilai bawaan pengaturan surat. Pola yang sama dengan
+     invoice_template.js: bawaan di JavaScript, isi database ditumpuk di
+     atasnya. Menambah pengaturan baru nanti tidak butuh migrasi SQL —
+     cukup satu kunci di sini, dan klinik yang belum menyimpannya tetap
+     jalan. */
+  const BAWAAN_SURAT = {
+    /* Kota pada baris tanggal ("Manado, 3 September 2026"). Diambil dari
+       kop klinik; boleh diganti lewat Pengaturan. */
+    kota: 'Manado',
+    catatan_kaki: 'Keaslian surat ini dapat diperiksa dengan menyebutkan nomor surat ' +
+                  'kepada Klinik Pratama Imanuel.',
+    tampilkan_kop: true,
+    /* Garis di bawah kop. Bawaannya MATI karena gambar kop Klinik Imanuel
+       sudah berakhir dengan garis hijau sendiri; garis hitam tepat di
+       bawahnya terbaca seperti kesalahan cetak. Klinik yang mengunggah
+       kop tanpa garis bisa menyalakannya. */
+    garis_bawah_kop: false,
+    /* Kop pengganti, bila klinik mengunggah yang baru. Kosong = memakai
+       kop bawaan yang tertanam di js/kop_klinik.js. */
+    kop_data_uri: null,
+    kop_rasio: null
+  };
+
+  let _suratSetelan = null;
+
+  async function suratPengaturan(paksaMuat = false) {
+    if (_suratSetelan && !paksaMuat) return _suratSetelan;
+    let simpanan = {};
+    try {
+      const { data, error } = await sb.from('sys_surat_pengaturan')
+        .select('konfigurasi').eq('id', 1).maybeSingle();
+      if (!error && data && data.konfigurasi) simpanan = data.konfigurasi;
+    } catch (e) { /* pengaturan hilang bukan alasan surat gagal dicetak */ }
+    _suratSetelan = Object.assign({}, BAWAAN_SURAT, simpanan);
+    return _suratSetelan;
+  }
+
+  async function simpanSuratPengaturan(konfigurasi) {
+    const { data, error } = await sb.from('sys_surat_pengaturan')
+      .update({ konfigurasi, updated_by: _saya?.id }).eq('id', 1)
+      .select('konfigurasi').single();
+    if (error) throw error;
+    _suratSetelan = Object.assign({}, BAWAAN_SURAT, data.konfigurasi || {});
+    return _suratSetelan;
+  }
+
+  async function refJenisSurat(hanyaAktif = true) {
+    let q = sb.from('ref_jenis_surat').select('*').order('urutan');
+    if (hanyaAktif) q = q.eq('aktif', true);
+    const { data, error } = await q;
+    if (error) throw error; return data;
+  }
+
+  async function suratNomorBerikutnya(jenis, tahun) {
+    const { data, error } = await sb.rpc('surat_nomor_berikutnya',
+      { p_jenis: jenis, p_tahun: tahun });
+    if (error) throw error; return data;
+  }
+
+  async function suratNomorTerpakai(jenis, tahun, nomor) {
+    const { data, error } = await sb.rpc('surat_nomor_terpakai',
+      { p_jenis: jenis, p_tahun: tahun, p_nomor: nomor });
+    if (error) throw error; return data || null;
+  }
+
+  async function buatSurat(rec) {
+    const { data, error } = await sb.from('surat')
+      .insert({ ...rec, dibuat_oleh: _saya?.id }).select().single();
+    if (error) throw error; return data;
+  }
+
+  async function ubahSurat(id, patch) {
+    const { data, error } = await sb.from('surat')
+      .update(patch).eq('id', id).select().single();
+    if (error) throw error; return data;
+  }
+
+  async function surat(id) {
+    const { data, error } = await sb.from('v_surat').select('*').eq('id', id).maybeSingle();
+    if (error) throw error; return data;
+  }
+
+  async function daftarSurat(filter = {}) {
+    let q = sb.from('v_surat').select('*')
+      .order('tanggal_surat', { ascending: false })
+      .order('dibuat_pada', { ascending: false })
+      .limit(filter.batas || 300);
+    if (filter.dari)      q = q.gte('tanggal_surat', filter.dari);
+    if (filter.sampai)    q = q.lte('tanggal_surat', filter.sampai);
+    if (filter.jenis)     q = q.eq('jenis_kode', filter.jenis);
+    if (filter.status)    q = q.eq('status', filter.status);
+    if (filter.pasien_id) q = q.eq('pasien_id', filter.pasien_id);
+    if (filter.kata) {
+      /* Satu kotak cari untuk tiga kolom. Koma adalah pemisah pada sintaks
+         or() PostgREST, jadi ia dibuang dari kata kunci — kalau tidak,
+         mengetik "Sitorus, Maria" menghasilkan galat sintaks, bukan hasil
+         kosong, dan pengguna tidak akan pernah menebak sebabnya. */
+      const k = String(filter.kata).replace(/[,()]/g, ' ').trim();
+      if (k) q = q.or(`nomor_surat.ilike.%${k}%,nama_pasien.ilike.%${k}%,` +
+                      `perihal.ilike.%${k}%,no_rm.ilike.%${k}%`);
+    }
+    const { data, error } = await q;
+    if (error) throw error; return data;
+  }
+
+  async function suratKunjungan(kunjunganId) {
+    const { data, error } = await sb.from('v_surat').select('*')
+      .eq('kunjungan_id', kunjunganId).order('dibuat_pada');
+    if (error) throw error; return data;
+  }
+
+  async function suratPasien(pasienId, batas = 40) {
+    const { data, error } = await sb.from('v_surat').select('*')
+      .eq('pasien_id', pasienId).order('tanggal_surat', { ascending: false }).limit(batas);
+    if (error) throw error; return data;
+  }
+
+  async function suratBatalkan(id, alasan) {
+    const { data, error } = await sb.rpc('surat_batalkan', { p_id: id, p_alasan: alasan });
+    if (error) throw error; return data;
+  }
+
+  async function suratCatatCetak(id) {
+    const { error } = await sb.rpc('surat_catat_cetak', { p_id: id });
+    if (error) throw error;
+  }
+
   /* --------------------------- Bridging --------------------------------- */
   /* Aplikasi TIDAK pernah memegang kredensial. Ia hanya memanggil Edge
      Function, dan Edge Function-lah yang menyimpan rahasia serta berbicara
@@ -1141,6 +1272,10 @@ const DB = (() => {
     labTren, labBelumSelesai,
     penunjangSimpan, penunjangPasien, penunjangKunjungan, gigiBerbacaan, hapusPenunjang,
     lampiranPasien, lampiranKunjungan, simpanLampiran, hapusLampiran,
+    suratPengaturan, simpanSuratPengaturan, refJenisSurat,
+    suratNomorBerikutnya, suratNomorTerpakai,
+    buatSurat, ubahSurat, surat, daftarSurat, suratKunjungan, suratPasien,
+    suratBatalkan, suratCatatCetak,
     panggilBridging, riwayatBridging
   };
 })();

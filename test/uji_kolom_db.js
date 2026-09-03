@@ -202,6 +202,16 @@ const KONTRAK = [
     fungsi: 'kunjungan',
     wajib: ['poli:poli_id', 'nama'],
     alasan: 'nama poli tercetak di kepala rekam medis dan antrean farmasi'
+  },
+  {
+    /* Kontrak berkolom tunggal: kolom yang harus ada di daftar .select()
+       teratas fungsinya, bukan di dalam sumber tersemat. */
+    fungsi: 'daftarDokter',
+    wajib: ['no_sip'],
+    alasan: 'nomor SIP tercetak di bawah nama dokter pada SETIAP surat keterangan ' +
+            '(pages/surat.js memakainya untuk ttd_sip). Tanpa kolom ini surat keluar ' +
+            'tanpa nomor SIP — tetap rapi, tetap tercetak, dan tidak sah sebagai ' +
+            'keterangan dokter. Tidak ada galat apa pun yang muncul.'
   }
 ];
 
@@ -211,18 +221,34 @@ function badanFungsi(nama) {
   return DB.slice(i, i + 900);
 }
 
+const punyaKolom = (daftar, kolom) =>
+  daftar !== null &&
+  belahTingkatAtas(daftar).some(b => b.replace(/^[a-z0-9_]+:/i, '').trim() === kolom ||
+                                     b.trim() === '*');
+
 KONTRAK.forEach(k => {
   const badan = badanFungsi(k.fungsi);
+
+  /* Kontrak berkolom tunggal: kolomnya ada di daftar .select() teratas. */
+  if (k.wajib.length === 1) {
+    const kolom = k.wajib[0];
+    const nama = `DB.${k.fungsi}() meminta ${kolom}`;
+    if (!badan) { cek(nama, false, `fungsi ${k.fungsi} tidak ditemukan di db.js`); return; }
+    const pos = badan.indexOf('.select(');
+    if (pos < 0) { cek(nama, false, 'tidak ada .select() di fungsi ini'); return; }
+    const isi = isiKurung(badan, pos + '.select'.length);
+    cek(nama, punyaKolom(isi === null ? null : isi.replace(/^[`'"]|[`'"]$/g, ''), kolom),
+        'tanpa kolom ini: ' + k.alasan);
+    return;
+  }
+
   const [semat, kolom] = k.wajib;
   const nama = `DB.${k.fungsi}() meminta ${semat.split(':')[0]}.${kolom}`;
   if (!badan) { cek(nama, false, `fungsi ${k.fungsi} tidak ditemukan di db.js`); return; }
   const pos = badan.indexOf(semat + '(');
   if (pos < 0) { cek(nama, false, `sumber tersemat ${semat} tidak ada`); return; }
   const isi = isiKurung(badan, pos + semat.length);
-  const ada = isi !== null &&
-              belahTingkatAtas(isi).some(b => b.replace(/^[a-z0-9_]+:/i, '').trim() === kolom ||
-                                              b.trim() === '*');
-  cek(nama, ada, 'tanpa kolom ini: ' + k.alasan);
+  cek(nama, punyaKolom(isi, kolom), 'tanpa kolom ini: ' + k.alasan);
 });
 
 /* Sisi lain kontrak yang sama: halaman memang masih membacanya.
@@ -239,6 +265,39 @@ cek('pages/periksa.js dan pages/rekam.js masih menyalakan poli gigi lewat poli.j
 const DEMO = fs.readFileSync(path.join(AKAR, 'js', 'demo-data.js'), 'utf8');
 const poliGigiDemo = /kode:\s*'GIGI'[^}]*jenis:\s*'GIGI'|jenis:\s*'GIGI'[^}]*kode:\s*'GIGI'/.test(DEMO);
 cek('demo-data.js memberi poli gigi kolom jenis seperti database', poliGigiDemo);
+
+const SURAT_JS = fs.readFileSync(path.join(AKAR, 'js', 'pages', 'surat.js'), 'utf8');
+cek('pages/surat.js masih memakai no_sip dokter untuk tanda tangan',
+    /no_sip/.test(SURAT_JS), 'kontrak daftarDokter.no_sip di atas perlu diperbarui');
+
+/* ------------------------------------------------------------------ */
+/* 5. Kode jenis surat harus sama di tiga tempat                       */
+/*                                                                     */
+/*    Kode jenis surat ikut tercetak di nomor surat DAN menjadi kunci  */
+/*    asing ke ref_jenis_surat. Kalau js/surat_core.js menawarkan jenis */
+/*    yang belum ada di sql/13_surat.sql, dokter mengisi seluruh        */
+/*    formulir lalu tombol Simpan gagal dengan galat kunci asing —      */
+/*    setelah pasiennya menunggu.                                       */
+/* ------------------------------------------------------------------ */
+const CORE = fs.readFileSync(path.join(AKAR, 'js', 'surat_core.js'), 'utf8');
+
+const urut = CORE.match(/const urutJenis = \[([^\]]*)\]/);
+const kodeJs = urut ? urut[1].split(',').map(s => s.trim().replace(/['"]/g, '')).filter(Boolean) : [];
+cek('daftar jenis surat terbaca dari surat_core.js', kodeJs.length > 0);
+
+const seed = SQL.match(/insert into ref_jenis_surat[\s\S]*?on conflict/i);
+const kodeSql = seed ? [...seed[0].matchAll(/\(\s*'([A-Z]+)'\s*,/g)].map(m => m[1]) : [];
+cek('daftar jenis surat terbaca dari sql/13_surat.sql', kodeSql.length > 0);
+
+kodeJs.forEach(k => cek(`jenis surat ${k} ada di ref_jenis_surat`, kodeSql.includes(k),
+  'formulirnya bisa dibuka, tetapi menyimpannya gagal dengan galat kunci asing'));
+kodeSql.forEach(k => cek(`jenis surat ${k} punya bentuk di surat_core.js`, kodeJs.includes(k),
+  'ada di database tetapi tidak bisa dipilih dokter mana pun'));
+
+const kodeDemo = [...DEMO.matchAll(/\{\s*kode:\s*'([A-Z]+)',\s*nama:\s*'Surat|\{\s*kode:\s*'(RM)',/g)]
+  .map(m => m[1] || m[2]);
+kodeJs.forEach(k => cek(`demo-data.js mengenal jenis surat ${k}`, kodeDemo.includes(k),
+  'halaman demo menguji dunia yang tidak sama dengan aplikasi'));
 
 /* ------------------------------------------------------------------ */
 console.log(`\n${lulus} lulus, ${gagal} gagal.`);

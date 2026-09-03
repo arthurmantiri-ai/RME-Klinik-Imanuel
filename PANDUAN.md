@@ -10,7 +10,7 @@ Biaya: **Rp 0** (Supabase free tier + Netlify free tier).
 1. [Apa yang sudah jadi](#1-apa-yang-sudah-jadi)
 2. [Yang perlu Anda siapkan](#2-yang-perlu-anda-siapkan)
 3. [Langkah 1 — Buat database Supabase](#langkah-1--buat-database-supabase)
-4. [Langkah 2 — Jalankan dua belas berkas SQL](#langkah-2--jalankan-dua-belas-berkas-sql)
+4. [Langkah 2 — Jalankan tiga belas berkas SQL](#langkah-2--jalankan-tiga-belas-berkas-sql)
 5. [Langkah 3 — Buat akun admin pertama](#langkah-3--buat-akun-admin-pertama)
 6. [Langkah 4 — Hubungkan aplikasi ke database](#langkah-4--hubungkan-aplikasi-ke-database)
 7. [Langkah 5 — Unggah ke Netlify](#langkah-5--unggah-ke-netlify)
@@ -18,12 +18,13 @@ Biaya: **Rp 0** (Supabase free tier + Netlify free tier).
 9. [Alur pemakaian harian](#alur-pemakaian-harian)
 10. [Poli gigi](#poli-gigi)
 11. [Lab & pemeriksaan penunjang](#lab--pemeriksaan-penunjang)
-12. [Master data](#master-data)
-13. [Bridging PCare & SatuSehat](#bridging-pcare--satusehat)
-14. [Keamanan dan kepatuhan PMK 24/2022](#keamanan-dan-kepatuhan-pmk-242022)
-15. [Batas paket gratis](#batas-paket-gratis)
-16. [Rencana penggabungan dengan portal klinik](#rencana-penggabungan-dengan-portal-klinik)
-17. [Yang belum ada](#yang-belum-ada)
+12. [Surat keterangan](#surat-keterangan)
+13. [Master data](#master-data)
+14. [Bridging PCare & SatuSehat](#bridging-pcare--satusehat)
+15. [Keamanan dan kepatuhan PMK 24/2022](#keamanan-dan-kepatuhan-pmk-242022)
+16. [Batas paket gratis](#batas-paket-gratis)
+17. [Rencana penggabungan dengan portal klinik](#rencana-penggabungan-dengan-portal-klinik)
+18. [Yang belum ada](#yang-belum-ada)
 
 ---
 
@@ -31,12 +32,13 @@ Biaya: **Rp 0** (Supabase free tier + Netlify free tier).
 
 | Bagian | Isi |
 |---|---|
-| **Database** | 36 tabel, 12 view, 73 kebijakan RLS, penomoran RM & antrian otomatis, audit trail, penguncian rekam medis, Row Level Security per peran |
+| **Database** | 48 tabel, 18 view, 99 kebijakan RLS, penomoran RM & antrian otomatis, audit trail, penguncian rekam medis, Row Level Security per peran |
 | **Aplikasi** | Login, beranda, pendaftaran, antrian, kajian awal perawat, SOAP dokter, diagnosa ICD-10, tindakan ICD-9-CM, resep, rekam medis, riwayat, laporan, pengaturan |
 | **Poli gigi** | Odontogram per bidang gigi (gigi tetap dan sulung), pemeriksaan ekstra/intra oral, indeks DMF-T dan def-t, tindakan gigi ICD-9-CM |
 | **Master data** | Kelola sendiri daftar obat (termasuk impor/ekspor CSV), diagnosa ICD-10, dan tindakan ICD-9-CM tanpa membuka dasbor Supabase |
 | **Apotek** | Stok per batch dengan urutan keluar FEFO, antrean resep dari dokter, kartu stok harian, laporan bulanan, impor & ekspor Excel |
 | **Kasir** | Tagihan disusun otomatis dari tindakan dokter dan obat yang diserahkan apotek, pembayaran, kwitansi PDF, struk thermal 58/80 mm |
+| **Surat keterangan** | Surat sakit, rujukan bentuk BPJS, surat kontrol, keterangan berbadan sehat, resume medis, dan surat keterangan bebas isi — berkop klinik, bernomor otomatis, lengkap dengan riwayat dan cetak ulang |
 | **Kesiapan bridging** | Penanda otomatis untuk data yang nanti dibutuhkan PCare dan SatuSehat tapi belum terisi |
 | **Master data** | 178 kode ICD-10, 43 kode tindakan ICD-9-CM, 52 gigi FDI, 27 kondisi odontogram, 70 obat generik Fornas, 3 poli |
 | **Bridging** | Dua Edge Function siap pakai (PCare & SatuSehat) — tinggal diisi kredensial |
@@ -64,6 +66,9 @@ rme-imanuel/
 │   ├── struk_printer.js    Bluetooth / USB / dialog cetak
 │   ├── invoice_template.js Pengaturan tampilan invoice
 │   ├── lab_core.js         Nilai rujukan & penandaan hasil lab (fungsi murni)
+│   ├── kop_klinik.js       Gambar kop surat, tertanam sebagai data URI
+│   ├── surat_core.js       Bentuk & isi tiap jenis surat (fungsi murni)
+│   ├── surat_cetak.js      Penyaji surat: halaman cetak dan PDF
 │   ├── demo-data.js        Data contoh untuk demo.html
 │   └── pages/              Satu berkas per halaman
 ├── sql/
@@ -78,7 +83,8 @@ rme-imanuel/
 │   ├── 09_kasir.sql        Tarif, tagihan, pembayaran, template invoice
 │   ├── 10_apotek_impor.sql Impor stok dari Excel (saldo awal & pembelian)
 │   ├── 11_penunjang.sql    Lab, bacaan rontgen, register arsip berkas
-│   └── 12_kasir_penunjang.sql Lab & penunjang masuk ke tagihan
+│   ├── 12_kasir_penunjang.sql Lab & penunjang masuk ke tagihan
+│   └── 13_surat.sql        Surat keterangan, penomoran, dan riwayatnya
 └── supabase/functions/
     ├── pcare-proxy/        Jembatan ke PCare BPJS
     └── satusehat-proxy/    Jembatan ke SatuSehat (FHIR R4)
@@ -109,7 +115,7 @@ Tidak perlu memasang apa pun di komputer. Tidak perlu kartu kredit.
 
 ---
 
-## Langkah 2 — Jalankan dua belas berkas SQL
+## Langkah 2 — Jalankan tiga belas berkas SQL
 
 Di dasbor Supabase, buka **SQL Editor** (ikon terminal di bilah kiri).
 
@@ -129,6 +135,7 @@ Jalankan **berurutan**, satu per satu. Untuk tiap berkas: buka isinya, salin sel
 | 10 | `sql/10_apotek_impor.sql` | Impor stok dari Excel |
 | 11 | `sql/11_penunjang.sql` | Laboratorium, bacaan rontgen/EKG/USG, register arsip berkas |
 | 12 | `sql/12_kasir_penunjang.sql` | Lab & penunjang ikut masuk tagihan |
+| 13 | `sql/13_surat.sql` | Surat keterangan: jenis surat, penomoran, riwayat, pengaturan kop |
 
 > **Berkas 7 harus dijalankan sendirian.** Isinya hanya satu baris, tetapi
 > PostgreSQL melarang nilai enum yang baru ditambahkan dipakai di dalam
@@ -148,10 +155,11 @@ select
   (select count(*) from obat)    as obat,
   (select count(*) from ref_gigi) as gigi,
   (select count(*) from poli)    as poli,
-  (select count(*) from kasir_tarif) as tarif;
+  (select count(*) from kasir_tarif) as tarif,
+  (select count(*) from ref_jenis_surat) as jenis_surat;
 ```
 
-Harus muncul: 178 ICD-10, 43 tindakan, 70 obat, 52 gigi, 3 poli, 1 tarif.
+Harus muncul: 178 ICD-10, 43 tindakan, 70 obat, 52 gigi, 3 poli, 1 tarif, 6 jenis surat.
 
 ---
 
@@ -280,6 +288,14 @@ Hal-hal yang bekerja otomatis:
   yang ditulis di resep
 - Kunjungan BPJS tetap dicatat nilainya untuk laporan, tetapi tidak ditagihkan
   ke pasien
+- **Surat keterangan** yang dibuat dari layar dokter mengambil sendiri diagnosa,
+  tanda vital, terapi, dan rencana tindak lanjut dari kunjungan yang sama — nomornya
+  pun disarankan otomatis. Lihat [Surat keterangan](#surat-keterangan)
+
+> **Kapan suratnya dibuat.** Tombol **Buat surat** ada di layar Pemeriksaan Dokter dan
+> di Rekam Medis, jadi surat sakit atau rujukan bisa langsung dicetak begitu pemeriksaan
+> selesai — pasien tidak perlu antre ke loket lagi untuk itu. Surat tetap bisa dibuat
+> belakangan lewat menu Surat Keterangan; datanya diambil dari kunjungan yang dipilih.
 
 ---
 
@@ -650,6 +666,116 @@ menulisnya. Batasan ini ditegakkan di database (RLS), bukan hanya disembunyikan 
 
 ---
 
+## Surat keterangan
+
+Menu **Surat Keterangan** menerbitkan enam jenis surat, semuanya berkop klinik dan
+bernomor otomatis. Yang menerbitkan hanya **dokter dan admin**; peran lain tetap bisa
+membuka tab Riwayat surat untuk mencetak ulang — itu memang pekerjaan loket.
+
+| Kode | Surat | Isinya terisi otomatis dari |
+|---|---|---|
+| `SKS` | Surat Keterangan Sakit | Tanggal kunjungan; lama istirahat diketik dokter |
+| `SR` | Surat Rujukan (bentuk BPJS) | Diagnosa + ICD-10, anamnesa, tanda vital, terapi, rencana rujukan dokter |
+| `SK` | Surat Kontrol | Tanggal kontrol dari rencana tindak lanjut dokter |
+| `SKBS` | Surat Keterangan Berbadan Sehat | Tinggi, berat, tekanan darah, nadi, napas, suhu dari kajian awal |
+| `RM` | Resume Medis | Seluruh SOAP, diagnosa, tindakan, dan resep kunjungan |
+| `SKL` | Surat Keterangan (isi bebas) | — judul dan isinya diketik sendiri |
+
+### Nomor surat
+
+Bentuknya ditetapkan Yayasan Kesehatan Imanuel dan disusun oleh sistem:
+
+```
+07/SKS/YAKIM/IX/2026
+^^ ^^^ ^^^^^ ^^ ^^^^
+|  |   |     |  +-- tahun
+|  |   |     +----- bulan dalam angka Romawi
+|  |   +----------- singkatan yayasan, tetap
+|  +--------------- kode jenis surat
++------------------ nomor urut, minimal dua digit
+```
+
+**Yang Anda ketik hanya angka nomor urutnya.** Sisanya disusun sendiri, jadi tidak ada
+surat yang bisa keluar dengan bentuk nomor berbeda karena salah ketik garis miring.
+
+- Deretnya **terpisah per jenis surat** dan **diulang tiap tahun**. Surat sakit punya
+  deret sendiri, surat rujukan punya deret sendiri.
+- Sistem menyodorkan **nomor terbesar + 1**. Sarannya boleh diganti — klinik yang sudah
+  punya buku agenda berjalan bisa memasukkan nomor yang mendahului.
+- Kalau nomornya sudah dipakai, peringatannya muncul **saat Anda mengetik**, bukan
+  setelah tombol Simpan ditekan.
+- **Nomor yang sudah dipakai tidak pernah dipakai ulang**, termasuk milik surat yang
+  dibatalkan. Surat yang batal hampir selalu sudah tercetak dan mungkin sudah dipegang
+  pasien; kalau nomornya dilepas kembali, satu nomor di buku agenda menunjuk dua lembar
+  berbeda dan tidak ada cara memisahkannya lagi.
+
+Bulan dan tahun pada nomor mengikuti **tanggal surat**, bukan tanggal hari ini. Surat
+yang dibuat 2 Oktober untuk melengkapi agenda September tetap bernomor `.../IX/2026`.
+
+### Cara membuatnya
+
+1. Buka menu **Surat Keterangan** → tab **Buat surat**, cari pasiennya, lalu pilih
+   kunjungan yang menjadi dasar surat. Lebih cepat lagi: dari layar **Pemeriksaan
+   Dokter** atau **Rekam Medis** ada tombol **Buat surat** yang langsung membawa data
+   kunjungannya.
+2. Pilih jenis suratnya. Kolomnya berganti mengikuti jenis, dan yang bisa diambil dari
+   rekam medis sudah terisi — boleh diubah.
+3. Periksa nomornya. Lihat kotak **Nomor surat yang akan tercetak**.
+4. Lihat **pratinjau** di sebelah kanan. Itu bukan tiruan: yang tampil di layar adalah
+   berkas yang sama persis dengan yang dikirim ke printer.
+5. **Simpan & cetak** atau **Simpan & unduh PDF**. Boleh juga **Simpan saja** dan
+   dicetak nanti dari tab Riwayat.
+
+### Tanda tangan
+
+Surat tercetak dengan **ruang tanda tangan kosong**, nama dokter, dan nomor SIP.
+Dokter menandatangani dengan pulpen, klinik membubuhkan stempel — itu yang membuat
+suratnya sah.
+
+Spesimen tanda tangan digital **sengaja tidak disimpan**. Alasannya bukan ukuran berkas
+(satu spesimen PNG cuma puluhan kilobyte), melainkan siapa yang bisa membubuhkannya:
+begitu gambar tanda tangan dokter ada di dalam sistem, surat keterangan sakit bertanda
+tangan dokter bisa terbit tanpa dokter itu pernah melihat pasiennya.
+
+### Peringatan yang tidak menghalangi
+
+Beberapa hal diingatkan tanpa menolak penyimpanan — keputusan medisnya tetap milik dokter:
+
+- Kesimpulan **"berbadan sehat"** sementara angka yang ikut tercetak menunjukkan demam,
+  tekanan darah tinggi, atau nadi di luar batas. Surat yang membantah dirinya sendiri
+  biasanya lahir dari angka yang terisi otomatis lalu tidak dibaca ulang.
+- **Rujukan pasien BPJS** yang nomor rujukan PCare-nya belum diisi. Lembar ini tetap
+  boleh dicetak untuk dibawa pasien, tetapi rujukannya baru sah setelah dientri di
+  aplikasi PCare — bridging PCare belum aktif di RME ini.
+- **Tanggal kontrol** yang lebih awal daripada tanggal surat.
+- **Istirahat delapan hari atau lebih**.
+
+### Riwayat surat
+
+Tab **Riwayat surat** memuat semua surat yang pernah terbit. Bisa disaring per tanggal,
+jenis, dan status, dan dicari dengan satu kotak (nomor surat, nama pasien, No. RM, atau
+perihal). Dari sana surat bisa **dibuka, dicetak ulang, diunduh sebagai PDF**, dan —
+oleh admin atau dokter yang menerbitkannya — **diubah** atau **dibatalkan dengan alasan**.
+
+Cetak ulang memulangkan lembar yang sama persis dengan yang dulu ditandatangani: isi
+surat dibaca dari yang tersimpan, bukan disusun ulang dari rekam medis. Nama dan SIP
+penanda tangan pun ikut disalin ke barisnya, jadi surat tahun ini tidak berubah kalau
+nomor SIP dokter diperbarui tahun depan.
+
+### Mengganti kop surat
+
+**Pengaturan → Kop & Surat** (admin). Di sana bisa diatur:
+
+- **Kop surat** — unggah JPG/PNG yang baru. Gambarnya dikecilkan otomatis di peramban ke
+  lebar 1500 piksel lalu disimpan di database sebagai satu baris, **bukan** di Supabase
+  Storage — jadi tidak memakan kuota berkas. Kop bawaannya sudah tertanam di aplikasi.
+- **Cetak kop pada surat** — matikan bila klinik memakai kertas berkop yang sudah tercetak.
+- **Garis hitam di bawah kop** — bawaannya mati; kop Klinik Imanuel sudah punya garis
+  hijau sendiri.
+- **Kota pada baris tanggal** dan **catatan kaki**.
+
+---
+
 ## Master data
 
 Menu **Master Data** (hanya admin) berisi empat daftar yang muncul saat dokter memeriksa
@@ -897,7 +1023,6 @@ Yang belum dibuat:
 - Ubah atau batalkan pendaftaran yang salah (sementara lewat dasbor Supabase)
 - "Lupa kata sandi" di halaman login
 - Koreksi stok opname berkala lewat Excel (sengaja ditunda)
-- Surat keterangan sakit, surat rujukan format BPJS, surat kontrol
 - **Unggah gambar** (foto rontgen, pindaian lembar hasil) — sengaja tidak dibuat selama
   klinik memakai paket gratis. Struktur tabelnya sudah disiapkan; lihat
   [Lab & pemeriksaan penunjang](#lab--pemeriksaan-penunjang)

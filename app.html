@@ -60,6 +60,15 @@
 <script src="js/struk_printer.js"></script>
 <script src="js/invoice_template.js"></script>
 <script src="js/lab_core.js"></script>
+<!-- Modul surat. kop_klinik.js berisi gambar kop sebagai data URI —
+     dimuat di sini, bukan diambil saat dibutuhkan, karena halaman cetak
+     dan pdfmake dua-duanya butuh gambarnya ADA saat itu juga; kop yang
+     baru selesai diunduh setelah dialog cetak terbuka menghasilkan surat
+     tanpa kop. surat_core.js murni: bisa diuji dengan
+     `node test/uji_surat_core.js`. -->
+<script src="js/kop_klinik.js"></script>
+<script src="js/surat_core.js"></script>
+<script src="js/surat_cetak.js"></script>
 <script src="js/pages/beranda.js"></script>
 <script src="js/pages/pendaftaran.js"></script>
 <script src="js/pages/antrian.js"></script>
@@ -73,6 +82,7 @@
 <script src="js/pages/tarif.js"></script>
 <script src="js/pages/master.js"></script>
 <script src="js/pages/lab.js"></script>
+<script src="js/pages/surat.js"></script>
 <script src="js/pages/pengaturan.js"></script>
 <script src="js/app.js"></script>
 </body>

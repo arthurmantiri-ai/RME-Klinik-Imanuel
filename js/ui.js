@@ -211,7 +211,8 @@ const UI = (() => {
     unduh:    '<path d="M10 3v9M6.5 9L10 12.5 13.5 9M4 16h12"/>',
     peringatan:'<path d="M10 3l7 13H3l7-13z"/><path d="M10 8v3.5M10 13.6v.1"/>',
     jantung:  '<path d="M10 16S3.5 12 3.5 7.8A3.3 3.3 0 0 1 10 6a3.3 3.3 0 0 1 6.5 1.8C16.5 12 10 16 10 16z"/>',
-    jam:      '<circle cx="10" cy="10" r="7"/><path d="M10 6v4l2.5 2"/>'
+    jam:      '<circle cx="10" cy="10" r="7"/><path d="M10 6v4l2.5 2"/>',
+    surat:    '<rect x="3.5" y="4" width="13" height="12" rx="1.2"/><path d="M6.5 8h7M6.5 11h7M6.5 14h4"/>'
   };
   function ikon(nama, ukuran = 18) {
     const d = PATH[nama] || PATH.cek;
