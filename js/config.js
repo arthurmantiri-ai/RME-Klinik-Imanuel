@@ -9,8 +9,8 @@
    ===================================================================== */
 
 const CONFIG = {
-  SUPABASE_URL: 'https://GANTI-DENGAN-PROJECT-ANDA.supabase.co',
-  SUPABASE_ANON_KEY: 'GANTI-DENGAN-ANON-KEY-ANDA',
+  SUPABASE_URL: 'https://mvszcxjlcdutjidfoccu.supabase.co',
+  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im12c3pjeGpsY2R1dGppZGZvY2N1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxNTkzOTksImV4cCI6MjEwMzczNTM5OX0.N6M7vl-pqOD1oTcV2qMSzTMA9pOP3EHR-oDTckhRXUU',
 
   // Identitas yang tampil di aplikasi (bisa juga diambil dari tabel `faskes`)
   NAMA_KLINIK: 'Klinik Pratama Imanuel',
