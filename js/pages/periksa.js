@@ -134,9 +134,51 @@ const Periksa = (() => {
   /* =================================================================== *
    *  KERANGKA HALAMAN
    * =================================================================== */
+  /* Bilah panggilan.
+     Diletakkan di paling atas halaman pemeriksaan dengan sengaja: dokter
+     memanggil pasien berikutnya dari ruang periksa, bukan dari papan
+     antrean di loket. Kalau tombolnya hanya ada di halaman antrean,
+     yang terjadi di klinik adalah dokter membuka pintu dan berteriak —
+     dan layar tunggu tidak pernah menunjukkan nomor yang benar. */
+  function bilahPanggil(bolehTulis) {
+    if (!kj.antrean_id || !bolehTulis) return '';
+    return `
+      <div class="card mb-12 no-print" id="bilahPanggil">
+        <div class="card-body" style="padding:10px 14px">
+          <div class="flex items-center gap-12 flex-wrap">
+            <div class="queue-no" style="width:auto;padding:0 12px;height:34px">
+              ${UI.esc(kj.no_antrian != null ? String(kj.no_antrian) : '—')}</div>
+            <div class="flex-1" style="min-width:150px">
+              <b class="text-sm">Panggilan ke ruang periksa</b>
+              <div class="text-xs text-muted" id="statusPanggil">
+                Nomor pasien ini akan muncul di layar ruang tunggu dan dibacakan suara.</div>
+            </div>
+            <button class="btn btn-primary btn-sm" id="btnPanggilPasien">
+              ${UI.ikon('jam',15)} Panggil pasien</button>
+            <button class="btn btn-secondary btn-sm" id="btnMulaiLayan">Mulai periksa</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  async function panggilPasien(ulang) {
+    const info = document.getElementById('statusPanggil');
+    try {
+      const a = await DB.antreanPanggil(kj.antrean_id, kj.poli?.nama || null);
+      UI.toast(`Nomor ${a.nomor} dipanggil ke ${kj.poli?.nama || 'ruang periksa'}.`, 'ok');
+      if (info) info.innerHTML = `Dipanggil ${a.jumlah_panggil}× · terakhir pukul ${UI.jam(a.waktu_panggil)}`;
+      const b = document.getElementById('btnPanggilPasien');
+      if (b) b.innerHTML = `${UI.ikon('jam',15)} Panggil ulang`;
+    } catch (e) {
+      UI.toast(e.message || 'Gagal memanggil.', 'err');
+      if (info) info.textContent = e.message || 'Gagal memanggil.';
+    }
+  }
+
   function kerangka(alergi, pgigi, terkunci, bolehTulis) {
     return `
-      <a href="#/antrian" class="btn btn-ghost btn-sm mb-12 no-print">${UI.ikon('kembali',15)} Antrian</a>
+      <a href="#/antrian" class="btn btn-ghost btn-sm mb-12 no-print">${UI.ikon('kembali',15)} Antrean</a>
+      ${bilahPanggil(bolehTulis)}
       ${Komponen.bilahPasien(kj, alergi)}
 
       ${!bolehTulis ? `<div class="banner info">${UI.ikon('peringatan',16)}
@@ -709,6 +751,26 @@ const Periksa = (() => {
    *  PERISTIWA
    * =================================================================== */
   function pasangPeristiwa(el, terkunci, bolehTulis) {
+    /* Di luar blok `if (!terkunci)` dengan sengaja: memanggil pasien bukan
+       menulis rekam medis. Rekam medis yang sudah dikunci pun kadang perlu
+       pasiennya dipanggil kembali — misalnya untuk menyerahkan surat. */
+    const bPanggil = el.querySelector('#btnPanggilPasien');
+    if (bPanggil) bPanggil.addEventListener('click', async () => {
+      bPanggil.disabled = true;
+      try { await panggilPasien(); } finally { bPanggil.disabled = false; }
+    });
+    const bLayan = el.querySelector('#btnMulaiLayan');
+    if (bLayan) bLayan.addEventListener('click', async () => {
+      bLayan.disabled = true;
+      try {
+        await DB.antreanMulaiLayan(kj.antrean_id);
+        UI.toast('Pasien ditandai sedang diperiksa.', 'ok');
+        const info = document.getElementById('statusPanggil');
+        if (info) info.textContent = 'Sedang diperiksa — nomor ini tidak lagi dihitung sebagai antrean menunggu.';
+      } catch (e) { UI.toast(e.message || 'Gagal.', 'err'); }
+      finally { bLayan.disabled = false; }
+    });
+
     if (!terkunci) {
       pasangPencarianIcd();
       pasangPencarianObat();

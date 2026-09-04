@@ -1380,6 +1380,148 @@ const DB = (() => {
     if (error) throw error;
   }
 
+  /* --------------------------- Antrean ---------------------------------- */
+
+  async function antreanHariIni() {
+    const { data, error } = await sb.from('v_antrean_hari_ini').select('*');
+    if (error) throw error; return data;
+  }
+
+  /* Kuota & jam buka hari ini per poli. Dipakai papan antrean dan
+     halaman jadwal; poli yang tutup pun ikut terbawa (kolom `buka`)
+     supaya petugas tahu bedanya "sepi" dan "libur". */
+  async function antreanKuota() {
+    const { data, error } = await sb.from('v_antrean_kuota').select('*');
+    if (error) throw error; return data;
+  }
+
+  /* Nomor antrean baru dari loket, TANPA membuat kunjungan.
+     Dipakai untuk pasien yang datang tetapi berkasnya belum lengkap —
+     ia tetap mendapat nomor dan tidak perlu mengantre dua kali. */
+  async function antreanAmbilLoket(rec) {
+    const { data, error } = await sb.from('antrean')
+      .insert({ ...rec, sumber: rec.sumber || 'LOKET', dibuat_oleh: _saya?.id })
+      .select().single();
+    if (error) throw error; return data;
+  }
+
+  async function antreanPanggil(id, tujuan = null) {
+    const { data, error } = await sb.rpc('antrean_panggil',
+      { p_antrean: id, p_tujuan: tujuan });
+    if (error) throw error; return data;
+  }
+  async function antreanCheckin(id, { pasien_id, dokter_id = null,
+                                      cara_bayar = 'BPJS', keluhan = null } = {}) {
+    const { data, error } = await sb.rpc('antrean_checkin', {
+      p_antrean: id, p_pasien: pasien_id, p_dokter: dokter_id,
+      p_cara_bayar: cara_bayar, p_keluhan: keluhan
+    });
+    if (error) throw error; return data;
+  }
+  async function antreanMulaiLayan(id) {
+    const { data, error } = await sb.rpc('antrean_mulai_layan', { p_antrean: id });
+    if (error) throw error; return data;
+  }
+  async function antreanLewat(id, alasan = null) {
+    const { data, error } = await sb.rpc('antrean_lewat', { p_antrean: id, p_alasan: alasan });
+    if (error) throw error; return data;
+  }
+  async function antreanBatal(id, alasan = null) {
+    const { data, error } = await sb.rpc('antrean_batal', { p_antrean: id, p_alasan: alasan });
+    if (error) throw error; return data;
+  }
+  async function antreanUbah(id, patch) {
+    const { data, error } = await sb.from('antrean').update(patch).eq('id', id).select().single();
+    if (error) throw error; return data;
+  }
+
+  /* Riwayat panggilan hari ini — dipakai papan antrean untuk menampilkan
+     "terakhir dipanggil" tanpa menunggu layar tunggu. */
+  async function antreanPanggilanHariIni(batas = 20) {
+    const { data, error } = await sb.from('antrean_panggilan')
+      .select('id, waktu, tahap, tujuan, urutan, antrean:antrean_id(nomor, poli_id)')
+      .order('id', { ascending: false }).limit(batas);
+    if (error) throw error; return data;
+  }
+
+  /* ---- Jadwal & kuota ---- */
+  async function poliJadwal() {
+    const { data, error } = await sb.from('poli_jadwal')
+      .select('*').order('hari').order('sesi');
+    if (error) throw error; return data;
+  }
+  async function simpanJadwal(rec, id = null) {
+    const q = id ? sb.from('poli_jadwal').update(rec).eq('id', id)
+                 : sb.from('poli_jadwal').insert(rec);
+    const { data, error } = await q.select().single();
+    if (error) throw error; return data;
+  }
+  async function hapusJadwal(id) {
+    const { error } = await sb.from('poli_jadwal').delete().eq('id', id);
+    if (error) throw error;
+  }
+  async function poliLibur(dari = null) {
+    let q = sb.from('poli_libur').select('*, poli:poli_id(nama)').order('tanggal');
+    if (dari) q = q.gte('tanggal', dari);
+    const { data, error } = await q;
+    if (error) throw error; return data;
+  }
+  async function simpanLibur(rec) {
+    const { data, error } = await sb.from('poli_libur')
+      .insert({ ...rec, dibuat_oleh: _saya?.id }).select().single();
+    if (error) throw error; return data;
+  }
+  async function hapusLibur(id) {
+    const { error } = await sb.from('poli_libur').delete().eq('id', id);
+    if (error) throw error;
+  }
+
+  /* ---- Pengaturan antrean & layar ---- */
+  async function antreanPengaturan() {
+    const { data, error } = await sb.from('sys_antrean_pengaturan')
+      .select('konfigurasi, token_layar').eq('id', 1).maybeSingle();
+    if (error) throw error;
+    return data || { konfigurasi: {}, token_layar: null };
+  }
+  async function simpanAntreanPengaturan(konfigurasi) {
+    const { data, error } = await sb.from('sys_antrean_pengaturan')
+      .update({ konfigurasi, updated_at: new Date().toISOString(), updated_by: _saya?.id })
+      .eq('id', 1).select().single();
+    if (error) throw error; return data;
+  }
+  async function antreanTokenBaru(token) {
+    const { data, error } = await sb.rpc('antrean_token_baru', { p_token: token });
+    if (error) throw error; return data;
+  }
+
+  /* Layar tunggu memanggil ini TANPA login. Dipakai display.html.
+     Fungsinya security definer dan hanya memulangkan nomor — tidak ada
+     nama, nomor rekam medis, atau data medis apa pun di dalamnya. */
+  async function antreanLayar(token) {
+    const { data, error } = await sb.rpc('antrean_layar', { p_token: token });
+    if (error) throw error; return data;
+  }
+
+  /* ---- Akun web service Antrol ---- */
+  async function antrolAkun() {
+    const { data, error } = await sb.from('v_antrol_akun').select('*').order('username');
+    if (error) throw error; return data;
+  }
+  async function antrolAkunSimpan(username, sandi, keterangan = null) {
+    const { data, error } = await sb.rpc('antrol_akun_simpan',
+      { p_username: username, p_sandi: sandi, p_keterangan: keterangan });
+    if (error) throw error; return data;
+  }
+  async function antrolAkunHapus(username) {
+    const { data, error } = await sb.rpc('antrol_akun_hapus', { p_username: username });
+    if (error) throw error; return data;
+  }
+  async function antrolLog(batas = 50) {
+    const { data, error } = await sb.from('antrol_log').select('*')
+      .order('waktu', { ascending: false }).limit(batas);
+    if (error) throw error; return data;
+  }
+
   /* --------------------------- Bridging --------------------------------- */
   /* Aplikasi TIDAK pernah memegang kredensial. Ia hanya memanggil Edge
      Function, dan Edge Function-lah yang menyimpan rahasia serta berbicara
@@ -1438,6 +1580,12 @@ const DB = (() => {
     suratNomorBerikutnya, suratNomorTerpakai,
     buatSurat, ubahSurat, surat, daftarSurat, suratKunjungan, suratPasien,
     suratBatalkan, suratCatatCetak,
+    antreanHariIni, antreanKuota, antreanAmbilLoket, antreanPanggil,
+    antreanCheckin, antreanMulaiLayan, antreanLewat, antreanBatal, antreanUbah,
+    antreanPanggilanHariIni,
+    poliJadwal, simpanJadwal, hapusJadwal, poliLibur, simpanLibur, hapusLibur,
+    antreanPengaturan, simpanAntreanPengaturan, antreanTokenBaru, antreanLayar,
+    antrolAkun, antrolAkunSimpan, antrolAkunHapus, antrolLog,
     panggilBridging, riwayatBridging
   };
 })();

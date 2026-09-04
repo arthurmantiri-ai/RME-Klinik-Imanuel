@@ -256,6 +256,21 @@ const KONTRAK = [
     alasan: 'kode LOINC tiap tanda vital. Tanpa kolom ini pratinjau Observation ' +
             'SatuSehat tampil lengkap tetapi tanpa kode, dan yang menandatangani ' +
             'kesiapan bridging tidak punya cara tahu bahwa kodenya hilang.'
+  },
+  {
+    fungsi: 'antreanPengaturan',
+    wajib: ['token_layar'],
+    alasan: 'token yang menjadi alamat layar ruang tunggu. Tanpa kolom ini halaman ' +
+            'Antrean & Layar mengira token belum pernah dibuat, menawarkan tombol ' +
+            '"Buat tautan layar", dan token baru yang diterbitkan MEMATIKAN tautan ' +
+            'yang sedang terpasang di TV — tanpa satu pun galat.'
+  },
+  {
+    fungsi: 'antreanPengaturan',
+    wajib: ['konfigurasi'],
+    alasan: 'judul layar, teks berjalan, dan kalimat yang dikirim ke Mobile JKN. ' +
+            'Tanpa kolom ini seluruh pengaturan layar tampak kosong dan menyimpannya ' +
+            'akan menimpa isi yang sudah ada dengan objek kosong.'
   }
 ];
 

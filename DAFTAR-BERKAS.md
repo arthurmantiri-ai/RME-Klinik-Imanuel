@@ -1,148 +1,194 @@
-# Modul Pemeriksaan Terstruktur — daftar berkas untuk diunggah
+# Modul Antrean Online (Antrol) & Layar Tunggu — daftar berkas untuk diunggah
 
-Paket ini berisi **5 berkas baru** dan **15 berkas yang diubah**.
+Paket ini berisi **9 berkas baru** dan **12 berkas yang diubah**.
 
-Semuanya sudah diuji, seluruh `./test/semua.sh` hijau:
-20 uji SQL pemeriksaan (di atas 103 uji SQL yang sudah ada),
-67 pemeriksaan fungsi murni `periksa_core`, 36 kontrak kolom `db.js` ↔ skema,
-dan 59 alur halaman di Chromium sungguhan — nol galat console, nol regresi
-pada empat modul yang sudah jalan.
+Disusun di atas commit **`61e07c9`** (repo terbaru — modul pemeriksaan terstruktur
+sudah di dalamnya). `perubahan.patch` sudah diuji `git apply --check` bersih pada
+klon segar, dan seluruh `./test/semua.sh` hijau di klon yang sudah dipatch:
+
+| Lapis uji | Hasil |
+|---|---|
+| SQL — 40 uji antrean baru | lulus, di atas 124 uji SQL yang sudah ada |
+| `antrean_core.js` — 61 pemeriksaan fungsi murni | lulus |
+| Kontrak kolom `db.js` ↔ skema | 38 lulus |
+| Halaman antrean & layar di Chromium | 58 lulus, **0 galat console** |
+| Empat modul lama (apotek, kasir, lab, surat, periksa) | **nol regresi** |
 
 Salin berkas-berkas di bawah ke repo `arthurmantiri-ai/RME-Klinik-Imanuel`
-**pada jalur yang sama persis**, lalu commit.
+**pada jalur yang sama persis**, lalu commit — atau terapkan `perubahan.patch`.
 
-> `js/config.js` **tidak ikut** dalam paket ini. Berkas itu sudah berisi URL
-> dan kunci anon Anda di repo, dan tidak ada satu pun perubahan yang
-> membutuhkannya.
+> `js/config.js` **tidak ikut** dalam paket ini. Berkas itu sudah berisi URL dan
+> kunci anon Anda di repo, dan tidak ada satu pun perubahan yang membutuhkannya.
 
 ---
 
 ## Apa yang berubah, dalam satu paragraf
 
-Layar pemeriksaan dokter tidak lagi empat kotak teks bebas. Setiap hal yang
-diminta PCare (30 field) dan SatuSehat (Observation berkode) kini punya
-kolomnya sendiri, dan catatan **S/O/A/P tetap ada** — tersusun sendiri dari
-field itu, masih bisa disunting. Database mendapat tujuh tabel rujukan berkode
-dan empat view yang menyusun payload PCare & SatuSehat **persis** seperti bentuk
-yang diminta, sehingga saat bridging dinyalakan tidak ada lagi yang perlu
-disesuaikan — kecuali memasangkan kode milik BPJS lewat halaman baru
-**Pengaturan → Rujukan & Kode PCare**.
+Nomor antrean sekarang punya tabelnya sendiri, terpisah dari kunjungan. Alasannya:
+antrean online lahir sehari sebelumnya, dari orang yang belum tentu datang, yang
+mungkin belum pernah berobat di sini, dan yang boleh membatalkan lewat ponselnya —
+tiga hal yang tidak muat di tabel kunjungan tanpa merusak rekam medis. Di atas
+tabel itu dibangun papan antrean dua tahap (loket → poli) dengan tombol panggil di
+loket **dan** di ruang periksa dokter, layar TV ruang tunggu yang berdiri sendiri
+tanpa login, serta enam web service Antrean FKTP yang diminta BPJS — lengkap dengan
+jadwal, kuota, akun, dan log — siap dinyalakan begitu kredensial datang.
 
 ---
 
-## A. Berkas baru (5)
+## Arah panggilannya terbalik dari PCare — ini yang paling penting
+
+```
+pcare-proxy    RME  ──panggil──▶  server BPJS
+antrol         BPJS ──panggil──▶  server KITA      ← modul ini
+```
+
+Untuk antrean FKTP, **kliniklah yang jadi server**. Yang diserahkan ke BPJS bukan
+permohonan kredensial melainkan **alamat web service klinik + username + password
+yang Anda buat sendiri**. Konsekuensinya menentukan seluruh bentuk modul ini:
+
+- Edge Function `antrol` harus dipasang dengan **`--no-verify-jwt`**. BPJS tidak
+  punya akun Supabase; tanpa itu setiap permintaan mereka dijawab 401 oleh Supabase
+  sebelum kode kita sempat berjalan.
+- Yang menjaga pintunya bukan RLS melainkan tabel `antrol_akun` (hash + salt).
+- **Seluruh aturan hidup di database, bukan di Deno.** Kuota, jadwal, duplikat,
+  format nomor kartu — semuanya fungsi SQL `antrol_*`, karena aturan yang ditulis
+  di Edge Function hanya bisa diuji dengan menjalankan Deno, yang berarti tidak akan
+  pernah diuji. Semuanya diuji di `test/uji_antrean.sql` dengan kode metadata yang
+  persis akan dilihat BPJS saat UAT.
+
+---
+
+## Berkas BARU (9)
 
 | Jalur | Isi |
 |---|---|
-| `sql/14_periksa_terstruktur.sql` | 7 tabel rujukan berkode (`ref_prognosa`, `ref_tacc`, `ref_tkp`, `ref_alergi`, `ref_ppk`, `ref_subspesialis`, `ref_sarana`, `ref_sistem_fisik`, `ref_vital`), 20 kolom baru pada `pemeriksaan`, kolom PCare pada `resep_item`/`tindakan`/`obat`/`icd9cm`, 2 trigger penjaga isi, 4 view payload (`v_pcare_kunjungan`, `v_pcare_obat`, `v_pcare_tindakan`, `v_satusehat_observasi`), 2 view kesiapan, RLS + GRANT |
-| `js/periksa_core.js` | Fungsi murni: menyusun narasi S/O/A/P dari isian terstruktur, mengurai aturan pakai jadi `signa1`/`signa2`, membangun payload PCare untuk pratinjau, menyusun Observation SatuSehat, memeriksa kelengkapan sebelum rekam medis dikunci |
-| `test/uji_periksa.sql` | 20 uji SQL: bentuk payload, urutan `kdDiag1..3`, TACC wajib beralasan, nama menyusul kode, alergi satu kode per jenis, Observation LOINC, GRANT view, RLS master |
-| `test/uji_periksa_core.js` | 67 pemeriksaan fungsi murni, dijalankan di `TZ=America/Los_Angeles` agar salah-tanggal gagal keras |
-| `test/uji_periksa_halaman.js` | 59 pemeriksaan alur halaman di Chromium sungguhan — dokter, perawat, dan admin |
+| `sql/15_antrean.sql` | Tabel `antrean`, `antrean_panggilan`, `poli_jadwal`, `poli_libur`, `antrol_akun`, `antrol_log`, `sys_antrean_pengaturan`; fungsi tindakan petugas; enam fungsi `antrol_*`; fungsi layar `antrean_layar()`; view `v_antrean_hari_ini` & `v_antrean_kuota`; RLS + GRANT |
+| `supabase/functions/antrol/index.ts` | Edge Function publik: enam endpoint Antrean FKTP. Tipis dengan sengaja — hanya auth, routing, log, dan HTTP |
+| `js/antrean_core.js` | Fungsi murni: bentuk nomor, kalimat panggilan, pemeriksaan kartu/NIK/tanggal, jadwal, estimasi, token layar |
+| `js/pages/jadwal.js` | Halaman **Antrean & Layar** (admin): jadwal & kuota, hari libur, layar tunggu, Antrol + panel uji coba + log |
+| `display.html` | Layar TV ruang tunggu — halaman berdiri sendiri, CSS sendiri |
+| `js/display.js` | Logikanya: penyegaran 3 detik, bel WebAudio, suara Indonesia, penanda panggilan baru, tahan putus jaringan |
+| `test/uji_antrean.sql` | 40 uji: kontrak Antrol lengkap dengan kode 200/201/202, kuota, jadwal, duplikat antar-jalur, hak akses `anon` |
+| `test/uji_antrean_core.js` | 61 pemeriksaan fungsi murni, contohnya sama persis dengan uji SQL |
+| `test/uji_antrean_halaman.js` | 58 alur di Chromium: papan antrean, panggil dari dokter, halaman admin, dan layar tunggu |
 
-## B. Berkas yang diubah (15)
+## Berkas yang DIUBAH (12)
 
-| Jalur | Apa yang berubah |
+| Jalur | Perubahan |
 |---|---|
-| `js/pages/periksa.js` | **Ditulis ulang.** Anamnesis terstruktur (8 butir riwayat penyakit sekarang), pemeriksaan fisik 13 sistem dengan tombol "Semua dalam batas normal", diagnosis banding, terapi non-obat & BMHP, prognosa & TACC berkode, blok rujukan terstruktur, kartu kesiapan BPJS + pratinjau payload, kartu SOAP yang tersusun sendiri |
-| `js/db.js` | Pemuat 8 tabel rujukan baru (dengan cache), alergi berkode per jenis, pratinjau payload PCare, observasi SatuSehat, kesiapan kode, `simpanPpk`, `simpanPemetaanKode`; `cariObat` kini meminta `kode_pcare` & `dpho`, `cariIcd9` meminta `kode_pcare`; `simpanResep` & `simpanTindakan` menyimpan kolom PCare |
-| `js/pages/rekam.js` | Tabel pemeriksaan fisik per sistem (yang normal ikut tercetak), diagnosis banding, terapi non-obat, BMHP, tanggal estimasi rujukan, kriteria TACC |
-| `js/pages/pengaturan.js` | Tab baru **Rujukan & Kode PCare**: kelola daftar faskes tujuan rujukan (`kdppk`) dan isi pemetaan kode PCare yang masih kosong |
-| `js/pages/master.js` | Centang **Ada di DPHO BPJS** pada obat, kolom **Kode tindakan PCare** pada ICD-9-CM, `dpho` masuk kolom ekspor/impor CSV |
-| `js/demo-data.js` | Data contoh 8 tabel rujukan baru + 12 fungsi tiruan, pemeriksaan contoh berisi field terstruktur — supaya `demo.html` tetap bisa dipakai tanpa database |
-| `css/style.css` | Gaya baris pemeriksaan fisik per sistem (`.sistem-baris` dan turunannya) |
-| `app.html` | 1 tag `<script>` baru (`js/periksa_core.js`) |
-| `demo.html` | 1 tag `<script>` baru (`js/periksa_core.js`) |
-| `supabase/functions/pcare-proxy/index.ts` | 8 jalur referensi baru (`ref.statuspulang`, `ref.prognosa`, `ref.alergi`, `ref.spesialis`, `ref.subspesialis`, `ref.sarana`, `ref.faskes`, `ref.tindakan`) dan 4 operasi obat/tindakan — inilah asal nilai `kode_pcare` nanti |
-| `test/jalankan.sh` | `uji_periksa` masuk daftar uji SQL |
-| `test/semua.sh` | `uji_periksa_core` dan `uji_periksa_halaman` masuk daftar |
-| `test/uji_kolom_db.js` | 5 kontrak kolom baru: `refSistemFisik.normal_teks`/`temuan_lazim`/`bawaan_periksa`, `refVitalSemua.kode_loinc`, `cariObat.dpho`/`kode_pcare` |
-| `test/README.md` | Kenapa payload PCare diuji dua kali, kenapa ujinya di zona waktu barat, kenapa aturan pakai tidak ditebak |
-| `PANDUAN.md` | Bab **Layar pemeriksaan dokter** (±70 baris), bab bridging diperluas, berkas SQL ke-14, pohon berkas, daftar isi |
-| `README.md` | Ringkasan pemeriksaan berfield dan kesiapan bridging |
+| `js/pages/antrian.js` | **Ditulis ulang** menjadi papan antrean dua tahap: kartu kuota per poli, tab loket/poli/selesai, panggil, panggil ulang, check-in, tidak hadir, batal, ambil nomor loket |
+| `js/pages/periksa.js` | Bilah panggilan di paling atas halaman dokter: **Panggil pasien** dan **Mulai periksa** |
+| `js/db.js` | 24 fungsi antrean baru; kontraknya dijaga `uji_kolom_db.js` |
+| `js/app.js` | Menu **Antrean & Layar**, rute `#/jadwal`, dan lencana antrean kini dihitung dari tabel antrean (bukan kunjungan) supaya pemesanan Mobile JKN yang belum hadir ikut terlihat |
+| `js/demo-data.js` | Antrean, jadwal, kuota, akun Antrol, dan tiruan `antrean_layar()` untuk demo & uji halaman |
+| `app.html`, `demo.html` | Dua tag skrip baru |
+| `test/uji_kolom_db.js` | Dua kontrak baru (`token_layar`, `konfigurasi`) |
+| `test/jalankan.sh`, `test/semua.sh` | Menjalankan uji antrean |
+| `PANDUAN.md` | Bab baru **Antrean, layar tunggu, dan antrean online Mobile JKN**; berkas SQL jadi lima belas |
+| `README.md` | Ringkasan modul antrean & Antrol |
 
 ---
 
 ## Yang harus Anda lakukan setelah mengunggah
 
-### 1. Jalankan `sql/14_periksa_terstruktur.sql` di Supabase
+### 1. Jalankan `sql/15_antrean.sql` di Supabase
 
-Sekali saja, **setelah** berkas 13. Aman dijalankan di database yang sudah
-berisi data — seluruhnya `add column if not exists` dan `create table if not
-exists`, tidak ada satu pun kolom yang dibuang. Rekam medis yang sudah ada
-tetap terbaca persis seperti semula.
+Setelah berkas 14. **Aman di database berisi data** — seluruhnya
+`create ... if not exists` dan `add column if not exists`.
 
-### 2. Isi daftar faskes tujuan rujukan
+Berkas ini juga **memperbaiki dua bug lama** pada `gen_no_kunjungan()`; keduanya
+dijelaskan di bawah.
 
-**Pengaturan → Rujukan & Kode PCare → Tambah faskes.** Cukup rumah sakit yang
-biasa dituju pasien klinik — sekali saja.
+### 2. Pasang Edge Function `antrol`
 
-Selama daftarnya kosong, dokter tidak bisa memilih faskes tujuan dan rujukan
-tidak bisa dikunci. Kode `kdppk` yang Anda ketik sendiri ditandai *diketik
-sendiri* sampai dicocokkan dengan daftar resmi BPJS.
+```bash
+supabase functions deploy antrol --no-verify-jwt
+```
 
-### 3. Tandai obat yang ada di DPHO
+`--no-verify-jwt` **wajib**, alasannya di atas.
 
-**Master Data → Obat → Ubah → centang "Ada di DPHO BPJS"**, dan isi kolom
-**Kode obat PCare**-nya. Obat bertanda DPHO dikirim memakai `kdObat`; yang
-tidak bertanda dikirim sebagai `nmObatNonDPHO` dengan namanya. Bisa dikerjakan
-bertahap — obat yang belum ditandai tetap bisa diresepkan seperti biasa.
+### 3. Buat tautan layar tunggu
 
-### 4. (Nanti) Isi pemetaan kode PCare
+**Pengaturan → Antrean & Layar → Layar Tunggu → Buat tautan layar**, lalu buka
+tautannya di TV atau tablet ruang tunggu. Ini **sudah bisa dipakai hari ini** —
+tidak menunggu BPJS sama sekali.
 
-**Pengaturan → Rujukan & Kode PCare** mendaftar setiap nilai berkode yang belum
-punya pasangan kode BPJS, lengkap dengan nama field PCare-nya. Isi setelah
-kredensial datang.
+### 4. Sesuaikan jadwal & kuota
 
----
+Isian bawaan: Senin–Sabtu pagi 08.00–12.00, Senin–Jumat sore 16.00–20.00,
+kuota 40/20 pagi dan 30/15 sore. Sesuaikan dengan jam praktek klinik.
 
-## Kenapa kolom `kode_pcare` sengaja dibiarkan kosong
+### 5. Isi kode PCare tiap poli
 
-Ini keputusan, bukan pekerjaan yang belum selesai.
+**Pengaturan → Poli.** Mobile JKN mengirim `kdPoli` milik BPJS, bukan kode klinik.
+Selama kosong, pemesanan ke poli itu selalu dijawab *"Poli tidak ditemukan"*.
 
-Kode untuk kesadaran, keadaan pulang, prognosa, sub spesialis, sarana, dan
-alergi **milik BPJS**. Menebaknya tidak menimbulkan galat apa pun: `kdStatusPulang`
-yang salah tetap membuat klaim terkirim, tetap diterima, dan tetap keliru
-isinya — tanpa satu pun tanda di layar. Kesalahan seperti itu baru ketahuan
-berbulan-bulan kemudian, lewat klaim yang dikembalikan, dan tidak bisa
-ditelusuri lagi ke keputusan yang membuatnya.
+### 6. Baru setelah itu: hubungi BPJS
 
-Yang bisa dibangun sekarang justru sudah dibangun, dan itulah bagian yang mahal
-kalau ditunda: **strukturnya**. Tempat kodenya ada, halaman pemetaannya ada,
-daftar apa yang masih kosong ada, jalur mengambilnya dari PCare ada, dan
-view payload-nya sudah menyusun 30 field itu dari data yang benar-benar
-tersimpan. Yang tersisa hanya mengetik kode di satu halaman.
-
-Yang **memang diisi** sekarang hanya nilai yang baku dan tidak berubah:
-kode LOINC tanda vital (dari profil FHIR *vitalsigns*, sama di semua negara)
-dan `kdTkp`/`kdTacc` yang nilainya tetap sejak PCare v1.
+Buat akun web service di tab **Antrean Online (Antrol)**, jalankan panel **Uji
+coba**, lalu serahkan base URL + username + password ke Kantor Cabang.
 
 ---
 
-## Dua bug yang ditemukan saat mengerjakan ini
+## Tiga bug lama yang ditemukan dan diperbaiki
 
-Keduanya sudah diperbaiki dan sudah ada ujinya.
+Ketiganya tidak pernah bisa terjadi selama semua nomor antrean lahir di loket.
+Ketiganya menjadi pasti terjadi begitu ada antrean online.
 
-**1. Pendengar peristiwa bertumpuk di daftar pemeriksaan fisik.** `gambarFisik()`
-memasang pendengar klik setiap kali dipanggil, sementara ia dipanggil ulang tiap
-kali satu sistem ditandai. Setelah dua kali penggambaran, satu klik berjalan dua
-kali: yang pertama menandai ABNORMAL, yang kedua melihat statusnya sudah sama
-lalu membatalkannya. Gejalanya adalah tombol yang "tidak bereaksi" — tanpa galat,
-tanpa pesan, dan makin parah tiap kali layar digambar. Pendengarnya kini dipasang
-sekali di `pasangFisik()`.
+**1. Nomor antrean bertabrakan.** `gen_no_kunjungan()` menghitung `no_antrian` dari
+tabel *kunjungan*: `max(no_antrian) + 1`. Lima pemesanan Mobile JKN untuk hari ini
+sudah memegang nomor 1–5 tetapi belum satu pun punya kunjungan — jadi pasien pertama
+yang datang ke loket diberi nomor 1, nomor yang sudah dipegang orang lain, dan
+pendaftarannya gagal dengan `unique_violation` mentah di tengah jam sibuk. Sekarang
+`no_antrian` tidak dihitung di sana lagi; pemiliknya tabel `antrean`, yang memegang
+kunci serialisasinya.
 
-**2. TACC tanpa alasan menggagalkan simpan sementara.** Trigger `cek_tacc()` di
-database menolak TACC yang perlu alasan tetapi alasannya kosong — dan penolakan
-itu menggagalkan **seluruh** penyimpanan, termasuk catatan pemeriksaan yang sudah
-panjang diketik. Sekarang TACC yang belum beralasan tidak ikut dikirim saat
-menyimpan sementara; yang menahan adalah pemeriksaan kelengkapan pada tombol
-**Selesai & kunci rekam medis**, dan itu memang tempatnya.
+**2. Satu nomor kunjungan cacat mematikan pendaftaran sehari penuh.**
+`substring(no_kunjungan from 10)::int` mengandaikan **setiap** baris hari itu
+bernomor `YYYYMMDD-NNNN`. Satu baris bernomor lain — hasil impor, perbaikan manual
+lewat dasbor Supabase, atau penggabungan dengan portal sipantau nanti — membuat
+seluruh pendaftaran hari itu gagal dengan *"invalid input syntax for type integer"*.
+Baris yang tidak berbentuk sekarang dilewati.
+
+**3. `INSERT` banyak baris sekaligus menghasilkan nomor kembar.** Trigger `AFTER ROW`
+di PostgreSQL diantrikan sampai seluruh statement selesai. Pada
+`insert into kunjungan values (...), (...)` kedua baris menghitung nomor antrean
+**sebelum** satu pun antrean tertulis, lalu sama-sama meminta nomor yang sama.
+Ditemukan oleh `test/uji_kasir.sql` yang memang menulis dua kunjungan dalam satu
+perintah. Penerbitan nomor dipindahkan ke trigger `BEFORE INSERT`.
 
 ---
 
-## Catatan tentang `test/jalankan.sh` dan `test/semua.sh`
+## Keputusan yang perlu Anda ketahui
 
-Kedua berkas ini ikut berubah mode jadi dapat dieksekusi (`chmod +x`). Kalau
-Anda menyalin berkasnya lewat antarmuka web GitHub, mode itu tidak ikut dan
-Anda perlu menjalankannya dengan `bash test/semua.sh`. Kalau lewat `git`,
-patch-nya sudah membawa perubahan mode.
+| Hal | Keputusan | Alasan |
+|---|---|---|
+| **Nama di layar tunggu** | **Tidak ada sama sekali.** Nomor saja | Pilihan Anda. Efek sampingnya besar: fungsi `antrean_layar()` secara struktural tidak menyentuh tabel pasien, sehingga tautan layar yang tercecer tidak membocorkan apa pun — isinya kalimat yang memang diteriakkan petugas |
+| **Akses layar** | Tautan bertoken, **tanpa login** | TV yang ditinggalkan menyala tidak bisa dipakai membuka rekam medis. Kalau layar login pakai akun pegawai, sesi menganggur di TV berarti RME terbuka bagi siapa pun yang menyentuhnya |
+| **Alur panggil** | **Dua tahap**: loket lalu poli | Admin memanggil untuk verifikasi kartu, dokter memanggil ke ruang periksa. Pasien tahu ia sedang menunggu tahap yang mana |
+| **Suara** | Bel WebAudio + pembaca suara bawaan peramban (id-ID) | Tanpa berkas audio yang harus diunduh: panggilan pertama pagi hari sering jatuh saat jaringan paling sibuk, dan bel yang belum selesai diunduh berarti pasien pertama tidak terpanggil |
+| **Loket tidak pernah terhalang** | Aturan duplikat & kuota online **hanya** untuk jalur Mobile JKN | Sistem yang menolak mendaftarkan pasien yang sedang berdiri di depan petugas akan disiasati dengan mengosongkan nomor BPJS — dan yang rusak kemudian adalah data klaim, bukan antreannya |
+| **Kode 202** | Nomor **tetap terbit** untuk peserta yang belum jadi pasien | Pasien yang sudah berangkat tidak boleh disuruh pulang. Kode 202 memberi tahu Mobile JKN agar mengirim data dirinya; papan antrean menandainya *belum jadi pasien klinik* |
+| **`POST /peserta`** | **Tidak** membuat rekam medis otomatis | Nomor RM adalah identitas seumur hidup. Menerbitkannya dari data yang belum dilihat petugas adalah cara tercepat melahirkan pasien kembar — satu dari Mobile JKN, satu lagi saat orangnya datang dan ejaan namanya beda sedikit |
+| **Nomor batal** | **Tidak pernah dipakai ulang**; kuotanya kembali | Pasien mungkin sudah memotret nomornya. Dua orang bernomor sama di ruang tunggu tidak bisa dibereskan lagi |
+| **Password web service** | Dibuat acak sistem, disimpan sebagai hash bersalt, **ditampilkan sekali** | Ia disalin sekali ke formulir BPJS dan tidak pernah diketik ulang manusia, jadi tidak ada alasan membuatnya bisa dihafal — sementara pintunya menghadap internet terbuka |
+| **`ANJUNGAN` di enum sumber** | Dimasukkan sekarang meski mesin anjungan belum dibuat | Menambah nilai enum kemudian memaksa satu migrasi yang harus dijalankan sendirian di luar transaksi — pelajaran dari `07_peran_kasir.sql`. Nilai yang belum terpakai tidak memakan apa pun |
+| **Layar saat jaringan putus** | Nomor terakhir **tetap terpampang**; hanya titik pojok berubah merah | Pasien yang melihat layar kosong mengira antreannya hilang dan berbondong ke loket — tepat ketika petugas sedang menghadapi gangguan jaringan |
+
+---
+
+## Aturan yang ditulis dua kali, dijaga contoh uji yang sama persis
+
+Pola yang sama dengan penandaan lab, nomor surat, dan payload PCare:
+
+| Aturan | Di database | Di JavaScript |
+|---|---|---|
+| Bentuk nomor antrean | kolom `antrean.nomor` | `AntreanCore.formatNomor()` |
+| Pemeriksaan nomor kartu | `antrol_periksa_kartu()` | `AntreanCore.periksaKartu()` |
+| Pemeriksaan NIK | `antrol_periksa_nik()` | `AntreanCore.periksaNik()` |
+
+`test/uji_antrean.sql` dan `test/uji_antrean_core.js` memakai nomor, kartu, dan
+tanggal yang **sama persis** — termasuk contoh nomor 1000 yang membuktikan
+`lpad` PostgreSQL (yang **memotong**) dan `padStart` JavaScript (yang tidak)
+memulangkan hasil yang sama. Kalau salah satu diubah, salah satu uji gagal —
+bukan hasilnya yang berselisih diam-diam di klinik.

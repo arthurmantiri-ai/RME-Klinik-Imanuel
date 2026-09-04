@@ -579,6 +579,12 @@ const DB = (() => {
 
   const lengkapiKunjungan = (k) => ({
     ...k,
+    /* antrean_id dicari balik dari tabel antrean, sama seperti kolomnya di
+       database. Tanpa ini bilah panggilan di halaman pemeriksaan tidak
+       pernah tergambar di demo — dan bug itu hanya kelihatan di klinik. */
+    antrean_id: k.antrean_id ||
+      (typeof ANTREAN !== 'undefined'
+        ? (ANTREAN.find(a => a.kunjungan_id === k.id) || {}).id : null) || null,
     pasien: salin(PASIEN.find(p => p.id === k.pasien_id)),
     poli: salin(POLI.find(p => p.id === k.poli_id)),
     dokter: salin(PEGAWAI.find(p => p.id === k.dokter_id))
@@ -601,6 +607,353 @@ const DB = (() => {
       };
     }).sort((a, b) => a.no_antrian - b.no_antrian);
   }
+
+
+  /* ===================== ANTREAN & LAYAR TUNGGU =====================
+     Data antrean demo sengaja memuat DUA hal yang tidak akan pernah
+     muncul kalau semua nomor lahir di loket:
+       * pemesanan Mobile JKN yang pasiennya BELUM datang, dan
+       * pemesanan dari peserta yang belum pernah berobat di sini —
+         satu-satunya keadaan yang memaksa petugas mencocokkan sendiri.
+     Keduanya adalah bagian yang paling mudah rusak tanpa disadari. */
+
+  const PREFIX = { 'poli-1': 'A', 'poli-2': 'B', 'poli-3': 'C' };
+  const nomorAntrean = (poliId, urut) =>
+    `${PREFIX[poliId] || 'A'}-${String(urut).padStart(3, '0')}`;
+
+  let seqPanggilan = 100;
+  const PANGGILAN = [];
+
+  const ANTREAN = KUNJUNGAN.filter(k => k.tanggal === hariIni).map((k, i) => ({
+    id: 'ant-k' + (i + 1),
+    tanggal: hariIni, poli_id: k.poli_id, no_urut: k.no_antrian,
+    prefix: PREFIX[k.poli_id] || 'A', nomor: nomorAntrean(k.poli_id, k.no_antrian),
+    kode_booking: 'ANT-' + hariIni.replace(/-/g, '') + '-K' + (i + 1),
+    sumber: 'LOKET', tahap: k.status === 'SELESAI' ? 'SELESAI' : 'POLI',
+    status: k.status === 'SELESAI' ? 'SELESAI' : 'MENUNGGU',
+    pasien_id: k.pasien_id, kunjungan_id: k.id,
+    no_kartu: null, nik: null, nama_snapshot: null,
+    waktu_ambil: k.waktu_daftar, waktu_hadir: k.waktu_daftar,
+    waktu_panggil: null, waktu_mulai_layan: null,
+    waktu_selesai: k.waktu_selesai || null,
+    jumlah_panggil: 0, tujuan_terakhir: null, alasan_batal: null, catatan: null
+  }));
+
+  /* Dua pemesanan Mobile JKN yang belum hadir. */
+  ANTREAN.push({
+    id: 'ant-o1', tanggal: hariIni, poli_id: 'poli-1', no_urut: 8, prefix: 'A',
+    nomor: 'A-008', kode_booking: 'ANT-' + hariIni.replace(/-/g,'') + '-ONL001',
+    sumber: 'ONLINE', tahap: 'LOKET', status: 'BELUM_HADIR',
+    pasien_id: 'pas-3', kunjungan_id: null,
+    no_kartu: '0001234567893', nik: '3374010101010003', nama_snapshot: null,
+    waktu_ambil: jamHariIni(6, 12), waktu_hadir: null, waktu_panggil: null,
+    waktu_mulai_layan: null, waktu_selesai: null,
+    jumlah_panggil: 0, tujuan_terakhir: null, alasan_batal: null, catatan: null
+  });
+  ANTREAN.push({
+    id: 'ant-o2', tanggal: hariIni, poli_id: 'poli-2', no_urut: 6, prefix: 'B',
+    nomor: 'B-006', kode_booking: 'ANT-' + hariIni.replace(/-/g,'') + '-ONL002',
+    sumber: 'ONLINE', tahap: 'LOKET', status: 'MENUNGGU',
+    pasien_id: null, kunjungan_id: null,
+    no_kartu: '0009988776655', nik: '3374020202020009',
+    nama_snapshot: 'Bagas Nurcahyo',
+    waktu_ambil: jamHariIni(6, 40), waktu_hadir: jamHariIni(8, 12), waktu_panggil: null,
+    waktu_mulai_layan: null, waktu_selesai: null,
+    jumlah_panggil: 0, tujuan_terakhir: null, alasan_batal: null,
+    catatan: 'Data peserta dari Mobile JKN: Bagas Nurcahyo, L, 1994-02-02. Jl. Melati No. 7'
+  });
+
+  const JADWAL = [];
+  POLI.forEach(p => {
+    for (let hari = 1; hari <= 6; hari++) {
+      JADWAL.push({ id: `jad-${p.id}-${hari}-1`, poli_id: p.id, hari, sesi: 1,
+        jam_buka: '08:00', jam_tutup: '12:00', jam_tutup_online: '11:00',
+        kuota: 40, kuota_online: 20, aktif: true });
+      if (hari <= 5)
+        JADWAL.push({ id: `jad-${p.id}-${hari}-2`, poli_id: p.id, hari, sesi: 2,
+          jam_buka: '16:00', jam_tutup: '20:00', jam_tutup_online: '19:00',
+          kuota: 30, kuota_online: 15, aktif: true });
+    }
+  });
+
+  const LIBUR = [];
+
+  let ANTREAN_SET = {
+    konfigurasi: {
+      judul_layar: 'Antrean Pasien',
+      teks_berjalan: 'Selamat datang di Klinik Pratama Imanuel. Mohon menunggu nomor antrean Anda dipanggil.',
+      keterangan_antrol: 'Harap datang 30 menit sebelum jam praktek.',
+      suara_aktif: true, menit_per_pasien: 10, tampilkan_estimasi: true
+    },
+    token_layar: 'demo-token-layar-yang-panjang-sekali-0001'
+  };
+
+  const AKUN_ANTROL = [
+    { username: 'bpjs-antrol', keterangan: 'Akun UAT BPJS', aktif: true,
+      dibuat_pada: jamHariIni(7, 0), terakhir_dipakai: null, jumlah_dipakai: 0 }
+  ];
+  const LOG_ANTROL = [];
+
+  const barisAntrean = (a) => {
+    const p = PASIEN.find(x => x.id === a.pasien_id);
+    const k = KUNJUNGAN.find(x => x.id === a.kunjungan_id);
+    const dasar = new Date(a.waktu_hadir || a.waktu_ambil);
+    return {
+      ...a,
+      nama_poli: POLI.find(x => x.id === a.poli_id)?.nama,
+      kode_poli: POLI.find(x => x.id === a.poli_id)?.kode,
+      jenis_poli: POLI.find(x => x.id === a.poli_id)?.jenis,
+      nama_pasien: p ? p.nama : a.nama_snapshot,
+      no_rm: p ? p.no_rm : null,
+      tanggal_lahir: p ? p.tanggal_lahir : null,
+      jenis_kelamin: p ? p.jenis_kelamin : null,
+      no_kartu: (p && p.no_bpjs) || a.no_kartu,
+      nik: (p && p.nik) || a.nik,
+      cara_bayar: k ? k.cara_bayar : null,
+      status_kunjungan: k ? k.status : null,
+      dokter_id: k ? k.dokter_id : null,
+      nama_dokter: k ? PEGAWAI.find(x => x.id === k.dokter_id)?.nama : null,
+      sudah_checkin: !!a.kunjungan_id,
+      sudah_kajian: k ? KAJIAN.some(x => x.kunjungan_id === k.id) : false,
+      menit_menunggu: Math.max(0, Math.round((Date.now() - dasar.getTime()) / 60000))
+    };
+  };
+
+  async function antreanHariIni() {
+    await tunggu(50);
+    return ANTREAN.filter(a => a.tanggal === hariIni).map(barisAntrean)
+      .sort((a, b) => (a.nama_poli || '').localeCompare(b.nama_poli || '') || a.no_urut - b.no_urut);
+  }
+
+  async function antreanKuota() {
+    await tunggu(40);
+    const hari = new Date().getDay();
+    return POLI.filter(p => p.aktif).map(p => {
+      const sesi = JADWAL.filter(j => j.poli_id === p.id && j.hari === hari && j.aktif);
+      const libur = LIBUR.some(l => l.tanggal === hariIni && (!l.poli_id || l.poli_id === p.id));
+      const buka = sesi.length > 0 && !libur;
+      const hidup = ANTREAN.filter(a => a.poli_id === p.id && a.tanggal === hariIni &&
+        !['BATAL','TIDAK_HADIR'].includes(a.status));
+      const kuota = buka ? sesi.reduce((s, j) => s + j.kuota, 0) : 0;
+      const kuotaOnline = buka ? sesi.reduce((s, j) => s + j.kuota_online, 0) : 0;
+      const online = hidup.filter(a => a.sumber === 'ONLINE').length;
+      return {
+        poli_id: p.id, nama_poli: p.nama, kode_poli: p.kode, kode_pcare: p.kode_pcare,
+        prefix_antrean: PREFIX[p.id] || 'A', urutan: p.urutan, tanggal: hariIni, buka,
+        jam_buka: buka ? sesi[0].jam_buka : null,
+        jam_tutup: buka ? sesi[sesi.length - 1].jam_tutup : null,
+        jam_tutup_online: buka ? sesi[sesi.length - 1].jam_tutup_online : null,
+        kuota, kuota_online: kuotaOnline,
+        terpakai: hidup.length, terpakai_online: online,
+        sisa_kuota: Math.max(0, kuota - hidup.length),
+        sisa_kuota_online: Math.max(0, kuotaOnline - online)
+      };
+    });
+  }
+
+  async function antreanAmbilLoket(rec) {
+    await tunggu(80);
+    const urut = Math.max(0, ...ANTREAN
+      .filter(a => a.poli_id === rec.poli_id && a.tanggal === hariIni)
+      .map(a => a.no_urut)) + 1;
+    const baru = {
+      id: uid(), tanggal: hariIni, poli_id: rec.poli_id, no_urut: urut,
+      prefix: PREFIX[rec.poli_id] || 'A', nomor: nomorAntrean(rec.poli_id, urut),
+      kode_booking: 'ANT-' + hariIni.replace(/-/g,'') + '-' + urut,
+      sumber: rec.sumber || 'LOKET', tahap: rec.tahap || 'LOKET',
+      status: rec.status || 'MENUNGGU',
+      pasien_id: rec.pasien_id || null, kunjungan_id: null,
+      no_kartu: rec.no_kartu || null, nik: rec.nik || null,
+      nama_snapshot: rec.nama_snapshot || null,
+      waktu_ambil: new Date().toISOString(), waktu_hadir: new Date().toISOString(),
+      waktu_panggil: null, waktu_mulai_layan: null, waktu_selesai: null,
+      jumlah_panggil: 0, tujuan_terakhir: null, alasan_batal: null, catatan: null
+    };
+    ANTREAN.push(baru);
+    return baru;
+  }
+
+  async function antreanPanggil(id, tujuan = null) {
+    await tunggu(60);
+    const a = ANTREAN.find(x => x.id === id);
+    if (!a) throw new Error('Nomor antrean tidak ditemukan.');
+    if (['SELESAI','BATAL'].includes(a.status))
+      throw new Error(`Nomor ${a.nomor} sudah ${a.status.toLowerCase()} dan tidak bisa dipanggil lagi.`);
+    a.jumlah_panggil += 1;
+    a.status = 'DIPANGGIL';
+    a.waktu_panggil = new Date().toISOString();
+    a.waktu_hadir = a.waktu_hadir || a.waktu_panggil;
+    a.tujuan_terakhir = tujuan ||
+      (a.tahap === 'LOKET' ? 'Loket Pendaftaran' : POLI.find(p => p.id === a.poli_id)?.nama);
+    PANGGILAN.unshift({ id: ++seqPanggilan, antrean_id: a.id, tanggal: hariIni,
+      tahap: a.tahap, tujuan: a.tujuan_terakhir, urutan: a.jumlah_panggil,
+      waktu: a.waktu_panggil, oleh: PROFIL.id });
+    return a;
+  }
+
+  async function antreanCheckin(id, opsi = {}) {
+    await tunggu(90);
+    const a = ANTREAN.find(x => x.id === id);
+    if (!a) throw new Error('Nomor antrean tidak ditemukan.');
+    if (a.kunjungan_id) return KUNJUNGAN.find(k => k.id === a.kunjungan_id);
+    if (!opsi.pasien_id) throw new Error('Pilih dulu data pasiennya sebelum check-in.');
+    const k = {
+      id: uid(), no_kunjungan: hariIni.replace(/-/g,'') + '-' + String(KUNJUNGAN.length + 1).padStart(4,'0'),
+      pasien_id: opsi.pasien_id, tanggal: hariIni, poli_id: a.poli_id,
+      dokter_id: opsi.dokter_id || null, cara_bayar: opsi.cara_bayar || 'BPJS',
+      no_antrian: a.no_urut, jenis_kunjungan: 'LAMA', kunjungan_sakit: true,
+      status: 'MENUNGGU', keluhan_singkat: opsi.keluhan || null,
+      waktu_daftar: new Date().toISOString(), antrean_id: a.id,
+      pcare_status: 'BELUM', satusehat_status: 'BELUM'
+    };
+    KUNJUNGAN.push(k);
+    a.pasien_id = opsi.pasien_id; a.kunjungan_id = k.id;
+    a.tahap = 'POLI'; a.status = 'MENUNGGU';
+    a.waktu_hadir = a.waktu_hadir || new Date().toISOString();
+    return k;
+  }
+
+  async function antreanMulaiLayan(id) {
+    await tunggu(50);
+    const a = ANTREAN.find(x => x.id === id);
+    if (!a || ['SELESAI','BATAL'].includes(a.status))
+      throw new Error('Nomor antrean tidak bisa dilayani.');
+    a.status = 'DILAYANI';
+    a.waktu_mulai_layan = a.waktu_mulai_layan || new Date().toISOString();
+    return a;
+  }
+
+  async function antreanLewat(id, alasan = null) {
+    await tunggu(50);
+    const a = ANTREAN.find(x => x.id === id);
+    if (!a || ['SELESAI','BATAL'].includes(a.status))
+      throw new Error('Nomor antrean tidak bisa dilewati.');
+    a.status = 'TIDAK_HADIR';
+    a.alasan_batal = alasan || 'Tidak hadir saat dipanggil';
+    a.waktu_selesai = new Date().toISOString();
+    return a;
+  }
+
+  async function antreanBatal(id, alasan = null) {
+    await tunggu(50);
+    const a = ANTREAN.find(x => x.id === id);
+    if (!a) throw new Error('Nomor antrean tidak ditemukan.');
+    if (a.kunjungan_id)
+      throw new Error(`Nomor ${a.nomor} sudah menjadi kunjungan. Batalkan kunjungannya lebih dulu.`);
+    a.status = 'BATAL'; a.alasan_batal = alasan;
+    a.waktu_selesai = new Date().toISOString();
+    return a;
+  }
+
+  async function antreanUbah(id, patch) {
+    await tunggu(40);
+    const a = ANTREAN.find(x => x.id === id);
+    Object.assign(a, patch);
+    return a;
+  }
+
+  async function antreanPanggilanHariIni(batas = 20) {
+    await tunggu(40);
+    return PANGGILAN.slice(0, batas).map(p => ({
+      ...p, antrean: { nomor: ANTREAN.find(a => a.id === p.antrean_id)?.nomor,
+                       poli_id: ANTREAN.find(a => a.id === p.antrean_id)?.poli_id }
+    }));
+  }
+
+  async function poliJadwal() { await tunggu(40); return JADWAL.slice(); }
+  async function simpanJadwal(rec, id = null) {
+    await tunggu(60);
+    if (id) { const j = JADWAL.find(x => x.id === id); Object.assign(j, rec); return j; }
+    const ada = JADWAL.find(x => x.poli_id === rec.poli_id && x.hari === rec.hari && x.sesi === rec.sesi);
+    if (ada) { Object.assign(ada, rec); return ada; }
+    const baru = { id: uid(), ...rec };
+    JADWAL.push(baru); return baru;
+  }
+  async function hapusJadwal(id) {
+    await tunggu(40);
+    const i = JADWAL.findIndex(x => x.id === id);
+    if (i >= 0) JADWAL.splice(i, 1);
+  }
+  async function poliLibur() {
+    await tunggu(40);
+    return LIBUR.map(l => ({ ...l, poli: POLI.find(p => p.id === l.poli_id) || null }));
+  }
+  async function simpanLibur(rec) {
+    await tunggu(50);
+    if (LIBUR.some(l => l.tanggal === rec.tanggal && (l.poli_id || null) === (rec.poli_id || null)))
+      throw new Error('duplicate key value violates unique constraint');
+    const baru = { id: uid(), ...rec };
+    LIBUR.push(baru); return baru;
+  }
+  async function hapusLibur(id) {
+    await tunggu(40);
+    const i = LIBUR.findIndex(x => x.id === id);
+    if (i >= 0) LIBUR.splice(i, 1);
+  }
+
+  async function antreanPengaturan() { await tunggu(40); return JSON.parse(JSON.stringify(ANTREAN_SET)); }
+  async function simpanAntreanPengaturan(konfigurasi) {
+    await tunggu(60); ANTREAN_SET.konfigurasi = konfigurasi; return ANTREAN_SET;
+  }
+  async function antreanTokenBaru(token) {
+    await tunggu(50); ANTREAN_SET.token_layar = token; return token;
+  }
+
+  /* Tiruan antrean_layar(). Menyusun bentuk jawaban yang SAMA PERSIS
+     dengan fungsi database — termasuk kenyataan bahwa tidak ada satu pun
+     nama pasien di dalamnya. Uji halaman layar membaca bentuk ini. */
+  async function antreanLayar(token) {
+    await tunggu(40);
+    if (!token || token !== ANTREAN_SET.token_layar)
+      return { galat: 'Token layar tidak dikenal.' };
+    const jam = (t) => t ? new Date(t).toTimeString().slice(0, 5) : '';
+    return {
+      tanggal: hariIni,
+      waktu: new Date().toISOString().slice(0, 19),
+      klinik: FASKES.nama,
+      judul: ANTREAN_SET.konfigurasi.judul_layar,
+      teks_berjalan: ANTREAN_SET.konfigurasi.teks_berjalan,
+      panggilan: PANGGILAN.slice(0, 8).map(p => {
+        const a = ANTREAN.find(x => x.id === p.antrean_id);
+        return { id: p.id, nomor: a?.nomor, tujuan: p.tujuan,
+                 poli: POLI.find(x => x.id === a?.poli_id)?.nama,
+                 waktu: jam(p.waktu), ulang: p.urutan };
+      }),
+      poli: POLI.filter(p => p.aktif).map(p => {
+        const isi = ANTREAN.filter(a => a.poli_id === p.id && a.tanggal === hariIni);
+        const terakhir = PANGGILAN.find(pg =>
+          ANTREAN.find(a => a.id === pg.antrean_id)?.poli_id === p.id);
+        return {
+          nama: p.nama, prefix: PREFIX[p.id] || 'A',
+          dipanggil: terakhir ? ANTREAN.find(a => a.id === terakhir.antrean_id)?.nomor : '',
+          berikut: isi.filter(a => ['MENUNGGU','BELUM_HADIR'].includes(a.status))
+                      .sort((a, b) => a.no_urut - b.no_urut).slice(0, 4).map(a => a.nomor),
+          sisa: isi.filter(a => ['MENUNGGU','BELUM_HADIR','DIPANGGIL'].includes(a.status)).length,
+          selesai: isi.filter(a => a.status === 'SELESAI').length
+        };
+      })
+    };
+  }
+
+  async function antrolAkun() { await tunggu(40); return AKUN_ANTROL.slice(); }
+  async function antrolAkunSimpan(username, sandi, keterangan = null) {
+    await tunggu(60);
+    if (!username || !username.trim()) throw new Error('Username tidak boleh kosong.');
+    if ((sandi || '').length < 12) throw new Error('Sandi web service minimal 12 karakter.');
+    const u = username.trim().toLowerCase();
+    const ada = AKUN_ANTROL.find(a => a.username === u);
+    if (ada) { ada.keterangan = keterangan || ada.keterangan; ada.aktif = true; return u; }
+    AKUN_ANTROL.push({ username: u, keterangan, aktif: true,
+      dibuat_pada: new Date().toISOString(), terakhir_dipakai: null, jumlah_dipakai: 0 });
+    return u;
+  }
+  async function antrolAkunHapus(username) {
+    await tunggu(40);
+    const i = AKUN_ANTROL.findIndex(a => a.username === username);
+    if (i >= 0) AKUN_ANTROL.splice(i, 1);
+    return i >= 0;
+  }
+  async function antrolLog() { await tunggu(40); return LOG_ANTROL.slice(); }
 
   async function daftarKunjungan(f = {}) {
     await tunggu(60);
@@ -2181,5 +2534,11 @@ const DB = (() => {
            suratNomorBerikutnya, suratNomorTerpakai,
            buatSurat, ubahSurat, surat, daftarSurat, suratKunjungan, suratPasien,
            suratBatalkan, suratCatatCetak,
+           antreanHariIni, antreanKuota, antreanAmbilLoket, antreanPanggil,
+           antreanCheckin, antreanMulaiLayan, antreanLewat, antreanBatal, antreanUbah,
+           antreanPanggilanHariIni,
+           poliJadwal, simpanJadwal, hapusJadwal, poliLibur, simpanLibur, hapusLibur,
+           antreanPengaturan, simpanAntreanPengaturan, antreanTokenBaru, antreanLayar,
+           antrolAkun, antrolAkunSimpan, antrolAkunHapus, antrolLog,
            gantiPeranDemo, peranDemoSekarang, PERAN_DEMO };
 })();

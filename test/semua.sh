@@ -12,6 +12,7 @@ printf 'struk_core    '; node test/uji_struk_core.js   | tail -1
 printf 'lab_core      '; node test/uji_lab_core.js     | tail -1
 printf 'surat_core    '; node test/uji_surat_core.js   | tail -1
 printf 'periksa_core  '; node test/uji_periksa_core.js | tail -1
+printf 'antrean_core  '; node test/uji_antrean_core.js | tail -1
 echo
 echo "════ 3. Kolom db.js vs skema SQL ════"
 # Uji halaman semuanya berjalan di demo.html, yang memakai demo-data.js dan
@@ -25,3 +26,4 @@ printf 'impor & ekspor Excel '; node test/uji_impor_halaman.js | tail -1
 printf 'lab & penunjang      '; node test/uji_lab_halaman.js  | tail -1
 printf 'surat keterangan     '; node test/uji_surat_halaman.js | tail -1
 printf 'pemeriksaan dokter   '; node test/uji_periksa_halaman.js | tail -1
+printf 'antrean & layar      '; node test/uji_antrean_halaman.js | tail -1

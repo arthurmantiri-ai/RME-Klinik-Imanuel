@@ -10,7 +10,7 @@ Biaya: **Rp 0** (Supabase free tier + Netlify free tier).
 1. [Apa yang sudah jadi](#1-apa-yang-sudah-jadi)
 2. [Yang perlu Anda siapkan](#2-yang-perlu-anda-siapkan)
 3. [Langkah 1 — Buat database Supabase](#langkah-1--buat-database-supabase)
-4. [Langkah 2 — Jalankan empat belas berkas SQL](#langkah-2--jalankan-empat-belas-berkas-sql)
+4. [Langkah 2 — Jalankan lima belas berkas SQL](#langkah-2--jalankan-lima-belas-berkas-sql)
 5. [Langkah 3 — Buat akun admin pertama](#langkah-3--buat-akun-admin-pertama)
 6. [Langkah 4 — Hubungkan aplikasi ke database](#langkah-4--hubungkan-aplikasi-ke-database)
 7. [Langkah 5 — Unggah ke Netlify](#langkah-5--unggah-ke-netlify)
@@ -21,11 +21,12 @@ Biaya: **Rp 0** (Supabase free tier + Netlify free tier).
 12. [Lab & pemeriksaan penunjang](#lab--pemeriksaan-penunjang)
 13. [Surat keterangan](#surat-keterangan)
 14. [Master data](#master-data)
-15. [Bridging PCare & SatuSehat](#bridging-pcare--satusehat)
-16. [Keamanan dan kepatuhan PMK 24/2022](#keamanan-dan-kepatuhan-pmk-242022)
-17. [Batas paket gratis](#batas-paket-gratis)
-18. [Rencana penggabungan dengan portal klinik](#rencana-penggabungan-dengan-portal-klinik)
-19. [Yang belum ada](#yang-belum-ada)
+15. [Antrean, layar tunggu, dan antrean online Mobile JKN](#antrean-layar-tunggu-dan-antrean-online-mobile-jkn)
+16. [Bridging PCare & SatuSehat](#bridging-pcare--satusehat)
+17. [Keamanan dan kepatuhan PMK 24/2022](#keamanan-dan-kepatuhan-pmk-242022)
+18. [Batas paket gratis](#batas-paket-gratis)
+19. [Rencana penggabungan dengan portal klinik](#rencana-penggabungan-dengan-portal-klinik)
+20. [Yang belum ada](#yang-belum-ada)
 
 ---
 
@@ -117,7 +118,7 @@ Tidak perlu memasang apa pun di komputer. Tidak perlu kartu kredit.
 
 ---
 
-## Langkah 2 — Jalankan empat belas berkas SQL
+## Langkah 2 — Jalankan lima belas berkas SQL
 
 Di dasbor Supabase, buka **SQL Editor** (ikon terminal di bilah kiri).
 
@@ -139,6 +140,7 @@ Jalankan **berurutan**, satu per satu. Untuk tiap berkas: buka isinya, salin sel
 | 12 | `sql/12_kasir_penunjang.sql` | Lab & penunjang ikut masuk tagihan |
 | 13 | `sql/13_surat.sql` | Surat keterangan: jenis surat, penomoran, riwayat, pengaturan kop |
 | 14 | `sql/14_periksa_terstruktur.sql` | Pemeriksaan dokter berfield: tabel rujukan berkode, kolom baru pada `pemeriksaan`, view payload PCare & Observation SatuSehat |
+| 15 | `sql/15_antrean.sql` | Antrean online (Mobile JKN/Antrol), jadwal & kuota poli, layar ruang tunggu |
 
 > **Berkas 7 harus dijalankan sendirian.** Isinya hanya satu baris, tetapi
 > PostgreSQL melarang nilai enum yang baru ditambahkan dipakai di dalam
@@ -159,10 +161,12 @@ select
   (select count(*) from ref_gigi) as gigi,
   (select count(*) from poli)    as poli,
   (select count(*) from kasir_tarif) as tarif,
-  (select count(*) from ref_jenis_surat) as jenis_surat;
+  (select count(*) from ref_jenis_surat) as jenis_surat,
+  (select count(*) from poli_jadwal) as jadwal_antrean;
 ```
 
-Harus muncul: 178 ICD-10, 43 tindakan, 70 obat, 52 gigi, 3 poli, 1 tarif, 6 jenis surat.
+Harus muncul: 178 ICD-10, 43 tindakan, 70 obat, 52 gigi, 3 poli, 1 tarif, 6 jenis surat,
+33 baris jadwal antrean (3 poli × 6 hari pagi + 3 poli × 5 hari sore).
 
 ---
 
@@ -889,6 +893,215 @@ diisi.
 
 ---
 
+## Antrean, layar tunggu, dan antrean online Mobile JKN
+
+### Satu hal yang harus dipahami lebih dulu: arahnya terbalik
+
+Pada **PCare**, klinik adalah *klien* — aplikasi kita yang menelepon server BPJS.
+
+Pada **antrean online FKTP**, klinik adalah *server*. Aplikasi Mobile JKN di ponsel
+pasien menelepon **web service milik klinik**. Yang Anda serahkan ke BPJS karena itu
+bukan permohonan kredensial, melainkan **alamat web service klinik beserta username
+dan password yang Anda buat sendiri** di halaman Pengaturan.
+
+Perbedaan ini menentukan hampir semua hal di bawah, jadi ingat baik-baik: untuk
+antrean online, BPJS yang mengetuk pintu kita.
+
+### Nomor antrean sekarang punya tabelnya sendiri
+
+Sebelumnya nomor antrean lahir bersama kunjungan — ia baru ada ketika pasien sudah
+berdiri di loket. Antrean online lahir sehari sebelumnya, dari orang yang belum tentu
+datang, yang mungkin belum pernah berobat di sini, dan yang boleh membatalkan lewat
+ponselnya. Dua hal itu tidak muat di satu tabel tanpa merusak rekam medis.
+
+Sekarang alurnya:
+
+```
+Mobile JKN  ──▶  nomor antrean  ──▶  check-in di loket  ──▶  kunjungan (rekam medis)
+   atau                                     ▲
+   loket    ──────────────────────────────────┘
+```
+
+**Kunjungan tetap lahir saat pasien hadir.** Yang berubah hanya: nomornya kini
+diwarisi dari antrean, bukan dihitung ulang. Pasien yang mendaftar langsung di loket
+tetap otomatis mendapat nomor — Anda tidak perlu melakukan apa pun untuk itu.
+
+### Halaman Antrean Hari Ini
+
+Menu **Antrean Hari Ini** kini berupa papan dengan empat tab:
+
+| Tab | Isinya |
+|---|---|
+| **Menunggu loket** | Pemesanan Mobile JKN dan nomor loket yang belum didaftarkan. Di sinilah admin bekerja. |
+| **Menunggu poli** | Pasien yang sudah punya kunjungan dan menunggu diperiksa. Di sinilah dokter memanggil. |
+| **Selesai & batal** | Riwayat hari ini |
+| **Semua** | Semuanya |
+
+Di atasnya ada kartu per poli: nomor yang sedang dipanggil, berapa yang menunggu,
+sisa kuota, dan jam buka. Poli yang libur ditandai **Tutup hari ini** — bukan
+dibiarkan kosong, supaya "sepi" dan "libur" tidak tertukar.
+
+Halaman ini menyegarkan dirinya sendiri tiap 12 detik.
+
+### Memanggil pasien
+
+Ada dua titik panggil, dan keduanya menulis ke layar tunggu yang sama:
+
+- **Admin/loket** memanggil dari papan antrean, tombol **Panggil**. Tujuannya
+  "Loket Pendaftaran".
+- **Dokter** memanggil dari **halaman pemeriksaan**, bilah paling atas, tombol
+  **Panggil pasien**. Tujuannya nama poli.
+
+Tombol dokter sengaja ditaruh di halaman pemeriksaan, bukan hanya di papan antrean.
+Kalau dokter harus pindah halaman untuk memanggil, yang terjadi di klinik adalah
+dokter membuka pintu dan berteriak — dan layar tunggu tidak pernah menunjukkan nomor
+yang benar.
+
+Menekan tombol kedua kalinya menjadi **Panggil ulang**, dan layar mengumumkannya
+sebagai panggilan ulang supaya pasien yang tadi tidak dengar tahu ini kesempatan
+kedua, bukan nomor yang berbeda.
+
+Tombol **⋯** menyediakan: *tandai sedang dilayani*, *tandai tidak hadir* (nomornya
+dilewati, **kuotanya kembali**, dan pasien boleh mengambil nomor baru), dan
+*batalkan nomor*.
+
+### Check-in
+
+Untuk pemesanan Mobile JKN, tekan **Check-in**. Dialognya menampilkan nomor kartu
+dan NIK peserta supaya Anda bisa mencocokkannya dengan kartu fisik.
+
+Kalau pesertanya **belum pernah berobat di sini**, sistem tidak membuatkan rekam
+medis otomatis — dialog akan meminta Anda mencari atau mendaftarkan pasiennya lebih
+dulu. Ini disengaja: nomor rekam medis adalah identitas seumur hidup, dan
+menerbitkannya dari data yang belum pernah dilihat petugas adalah cara tercepat
+melahirkan pasien kembar (satu dari Mobile JKN, satu lagi saat orangnya datang dan
+ejaan namanya beda sedikit).
+
+### Layar tunggu
+
+**Pengaturan → Antrean & Layar → Layar Tunggu**, tekan **Buat tautan layar**.
+Salin tautannya, buka di TV atau tablet ruang tunggu, lalu biarkan.
+
+Yang perlu Anda ketahui tentang layar ini:
+
+- **Tidak perlu login.** Ia hanya membawa token panjang di URL.
+- **Hanya menampilkan nomor.** Tidak ada nama pasien, nomor rekam medis, nomor
+  BPJS, atau data medis apa pun — bukan karena disembunyikan, melainkan karena
+  fungsi database yang dipakainya secara struktural tidak bisa memulangkannya.
+  Itulah yang membuat tautannya aman dibiarkan terbuka seharian: seandainya
+  tersebar, yang terbaca hanya kalimat yang memang diteriakkan petugas.
+- **Berbunyi.** Bel dua nada lalu suara membacakan nomornya dalam bahasa Indonesia.
+  Peramban melarang halaman berbunyi sebelum disentuh sekali, jadi pada pemakaian
+  pertama tekan tombol **🔔 Aktifkan suara** di pojok bawah (menyentuh layar di mana
+  pun juga bisa). Setelah itu tombolnya hilang.
+- **Tidak mengosongkan diri saat jaringan putus.** Nomor terakhir tetap terpampang;
+  hanya titik kecil di pojok yang berubah merah. Pasien yang melihat layar kosong
+  akan mengira antreannya hilang dan berbondong ke loket — tepat ketika Anda sedang
+  menghadapi gangguan jaringan.
+
+**Mengganti token** mematikan tautan lama seketika. Lakukan kalau tautannya pernah
+terkirim ke luar klinik, lalu buka ulang tautan baru di TV.
+
+### Jadwal dan kuota
+
+**Pengaturan → Antrean & Layar → Jadwal & Kuota.**
+
+Tiap poli punya jadwal per hari, boleh sampai tiga sesi (pagi/sore). Isian bawaannya
+Senin–Sabtu pagi 08.00–12.00 dan Senin–Jumat sore 16.00–20.00 — sesuaikan dengan jam
+praktek Anda. Tombol **Salin** menyalin jam dan kuota satu hari ke Senin–Sabtu
+sekaligus.
+
+Ada **dua angka kuota**, dan bedanya penting:
+
+| Kuota | Membatasi |
+|---|---|
+| **Kuota total** | Seluruh pasien hari itu |
+| **Kuota online** | Berapa di antaranya boleh dipesan lewat Mobile JKN |
+
+Sisanya tetap tersedia untuk pasien yang datang langsung. Itulah gunanya dua angka:
+kalau hanya ada satu, pemesanan online bisa menghabiskan seluruh kursi sebelum pintu
+klinik dibuka.
+
+**Pendaftaran online ditutup pukul** sengaja dibuat lebih awal daripada jam tutup
+poli. Nomor yang terbit pukul 11.55 untuk poli yang tutup 12.00 hampir pasti tidak
+terlayani, dan nomor hangus lebih merepotkan daripada nomor yang ditolak.
+
+**Hari Libur** menutup tanggal tertentu — untuk semua poli atau satu poli saja.
+
+### Menyiapkan antrean online (Antrol)
+
+Tiga hal harus beres sebelum ini bisa dinyalakan. Halaman **Antrean & Layar**
+menampilkan ketiganya sebagai daftar kesiapan di bagian atas.
+
+**1. Kode poli PCare.** Mobile JKN mengirim `kdPoli` milik BPJS, bukan kode poli
+klinik. Isi di **Pengaturan → Poli**. Selama kosong, setiap pemesanan ke poli itu
+dijawab *"Poli tidak ditemukan"* — dan pesan itu akan tampak seperti sistem rusak
+padahal hanya kolom yang belum diisi.
+
+**2. Pasang Edge Function.** Dari komputer yang punya Supabase CLI:
+
+```bash
+supabase functions deploy antrol --no-verify-jwt
+```
+
+`--no-verify-jwt` **wajib**. BPJS tidak punya akun Supabase; tanpa opsi itu setiap
+permintaan mereka dijawab 401 oleh Supabase sebelum kode kita sempat berjalan.
+
+**3. Buat akun web service.** Tab **Antrean Online (Antrol)** → **Buat akun**.
+Password dibuat acak oleh sistem dan **ditampilkan sekali saja** — salin dan simpan
+bersama berkas pendaftaran. Kalau hilang, buat password baru untuk username yang sama;
+tidak ada cara membacanya kembali, bahkan oleh admin.
+
+Lalu serahkan ke Kantor Cabang BPJS: **base URL** (ada di halaman itu, tombol salin),
+**username**, dan **password**.
+
+**Uji coba.** Sebelum menghubungi BPJS, jalankan panel **Uji coba** di halaman yang
+sama. Ia menembak Edge Function lewat HTTP sungguhan — persis seperti yang akan
+dilakukan BPJS — dan memeriksa tiga hal: token bisa dibuat, status antrean terbaca,
+dan **token palsu ditolak**. Yang ketiga itu yang paling penting: kalau ia lolos,
+pintu klinik terbuka untuk siapa saja yang tahu alamatnya.
+
+**Log permintaan masuk** di bagian bawah mencatat setiap permintaan BPJS beserta
+jawaban kita. Inilah yang dibuka saat UAT ketika mereka mengatakan "kami kirim,
+faskes tidak menjawab".
+
+### Enam layanan yang disediakan klinik
+
+| Fitur | Metode | Jalur |
+|---|---|---|
+| Generate token | `GET` | `/auth` |
+| Status antrean | `GET` | `/antrean/status/{kodepoli}/{tanggal}` |
+| Ambil antrean | `POST` | `/antrean` |
+| Sisa antrean peserta | `GET` | `/antrean/sisapeserta/{nokartu}/{kodepoli}/{tanggal}` |
+| Post peserta baru | `POST` | `/peserta` |
+| Batal antrean | `PUT` | `/antrean/batal` |
+
+Beberapa keputusan yang sudah tertanam di dalamnya, supaya Anda tidak terkejut saat
+UAT:
+
+- **Kode 202 bukan kegagalan.** Ia berarti "nomornya terbit, tetapi pesertanya belum
+  terdaftar sebagai pasien di sini". Nomor tetap diberikan — pasien yang sudah
+  berangkat tidak boleh disuruh pulang. Di papan antrean, nomor itu bertanda
+  *belum jadi pasien klinik*.
+- **`POST /peserta` tidak membuat rekam medis.** Datanya disimpan sebagai catatan
+  pada nomor antreannya supaya petugas loket melihatnya lengkap saat check-in.
+- **Satu peserta, satu nomor, per poli, per hari.** Termasuk kalau nomor pertamanya
+  diambil di loket — pemeriksaan itu menutup celah antar-jalur.
+- **Loket tidak pernah terhalang.** Aturan duplikat dan kuota online hanya berlaku
+  untuk jalur Mobile JKN. Petugas yang sedang berhadapan dengan pasien harus selalu
+  bisa mendaftarkannya; sistem yang menolak akan disiasati dengan mengosongkan nomor
+  BPJS, dan yang rusak kemudian adalah data klaim.
+- **Pasien yang sudah check-in tidak bisa dibatalkan dari ponselnya.** Kalau memang
+  ingin batal, petugas yang membatalkan — dan kunjungannya juga dibereskan.
+
+### Yang masih menunggu BPJS
+
+Kredensial dan pendaftaran ke Kantor Cabang. Semua yang lain di modul ini —
+papan antrean, panggil dari loket dan dokter, layar tunggu, jadwal, kuota —
+**sudah bisa dipakai hari ini** tanpa menunggu apa pun.
+
+---
+
 ## Bridging PCare & SatuSehat
 
 Struktur data sudah disiapkan sejak awal untuk keduanya, jadi tidak perlu membongkar aplikasi saat kredensial nanti keluar. Yang perlu diurus:
@@ -1141,7 +1354,6 @@ Yang belum dibuat:
 - **Unggah gambar** (foto rontgen, pindaian lembar hasil) — sengaja tidak dibuat selama
   klinik memakai paket gratis. Struktur tabelnya sudah disiapkan; lihat
   [Lab & pemeriksaan penunjang](#lab--pemeriksaan-penunjang)
-- Antrean online / integrasi Mobile JKN (Antrol)
 - Laporan LB1 dan format Dinkes
 - Skrining PTM/Prolanis terstruktur
 

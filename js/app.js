@@ -11,7 +11,7 @@ const App = (() => {
     { grup: 'Pelayanan' },
     { rute: '#/beranda',     label: 'Beranda',       ikon: 'beranda',   peran: '*' },
     { rute: '#/pendaftaran', label: 'Pendaftaran',   ikon: 'daftar',    peran: ['admin','pendaftaran','perawat','dokter'] },
-    { rute: '#/antrian',     label: 'Antrian Hari Ini', ikon: 'antrian', peran: '*', hitung: true },
+    { rute: '#/antrian',     label: 'Antrean Hari Ini', ikon: 'antrian', peran: '*', hitung: true },
     { rute: '#/lab',         label: 'Lab & Penunjang', ikon: 'stetoskop', peran: '*' },
     { rute: '#/apotek',      label: 'Apotek',        ikon: 'pil',       peran: '*' },
     { rute: '#/kasir',       label: 'Kasir',         ikon: 'jantung',   peran: ['admin','kasir','pendaftaran'] },
@@ -23,6 +23,7 @@ const App = (() => {
     { grup: 'Sistem' },
     { rute: '#/master',      label: 'Master Data',   ikon: 'pil',       peran: ['admin'] },
     { rute: '#/tarif',       label: 'Tarif & Invoice', ikon: 'laporan', peran: ['admin'] },
+    { rute: '#/jadwal',      label: 'Antrean & Layar', ikon: 'jam',     peran: ['admin'] },
     { rute: '#/pengaturan',  label: 'Pengaturan',    ikon: 'setelan',   peran: ['admin'] }
   ];
 
@@ -41,17 +42,19 @@ const App = (() => {
     'kasir':       (p) => Kasir.render(view(), p),
     'surat':       (p) => Surat.render(view(), p),
     'tarif':       (p) => Tarif.render(view(), p),
+    'jadwal':      (p) => Jadwal.render(view(), p),
     'master':      (p) => Master.render(view(), p),
     'pengaturan':  (p) => Pengaturan.render(view(), p)
   };
 
   const JUDUL = {
-    beranda: 'Beranda', pendaftaran: 'Pendaftaran Pasien', antrian: 'Antrian Hari Ini',
+    beranda: 'Beranda', pendaftaran: 'Pendaftaran Pasien', antrian: 'Antrean Hari Ini',
     pasien: 'Data Pasien', riwayat: 'Riwayat Kunjungan', kajian: 'Kajian Awal',
     periksa: 'Pemeriksaan Dokter', rekam: 'Rekam Medis', laporan: 'Laporan',
     lab: 'Lab & Pemeriksaan Penunjang',
     apotek: 'Apotek', kasir: 'Kasir', surat: 'Surat Keterangan',
     tarif: 'Tarif & Tampilan Invoice',
+    jadwal: 'Antrean & Layar Tunggu',
     master: 'Master Data', pengaturan: 'Pengaturan'
   };
 
@@ -87,8 +90,11 @@ const App = (() => {
     const el = document.getElementById('hitungAntrian');
     if (!el) return;
     try {
-      const a = await DB.antrianHariIni();
-      const belum = a.filter(x => x.status !== 'SELESAI' && x.status !== 'BATAL').length;
+      /* Dihitung dari ANTREAN, bukan kunjungan: pemesanan Mobile JKN yang
+         pasiennya belum datang belum punya kunjungan sama sekali, dan
+         justru merekalah yang perlu terlihat oleh petugas loket. */
+      const a = await DB.antreanHariIni();
+      const belum = a.filter(x => AntreanCore.masihAktif(x)).length;
       el.textContent = belum;
       el.style.display = belum ? 'grid' : 'none';
     } catch (e) { el.style.display = 'none'; }

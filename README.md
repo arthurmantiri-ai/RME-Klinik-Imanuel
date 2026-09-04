@@ -48,6 +48,16 @@ atas untuk mencoba tampilan tiap peran, termasuk dokter gigi.
   hari ini juga. Yang tersisa hanya memasangkan kode milik BPJS di
   **Pengaturan → Rujukan & Kode PCare**; sistem sengaja tidak menebaknya, karena kode
   yang salah tidak menimbulkan galat apa pun
+- **Antrean & layar tunggu**: papan antrean dua tahap (loket → poli), panggil dari
+  loket maupun dari ruang periksa, panggil ulang, tandai tidak hadir. Layar TV ruang
+  tunggu berdiri sendiri (`display.html`) — tanpa login, **nomor saja tanpa nama
+  pasien**, dengan bel dan suara panggilan berbahasa Indonesia
+- **Antrean online Mobile JKN (Antrol) — siap pasang**: enam web service yang diminta
+  BPJS untuk FKTP sudah lengkap sebagai Edge Function `antrol`, dengan jadwal poli,
+  kuota total vs kuota online, hari libur, akun web service berhash, dan log
+  permintaan masuk. Arahnya terbalik dari PCare: **BPJS yang memanggil klinik**.
+  Yang tersisa hanya kredensial dari Kantor Cabang —
+  [alasan & caranya di PANDUAN.md](PANDUAN.md#antrean-layar-tunggu-dan-antrean-online-mobile-jkn)
 - **Master data**: kelola obat, ICD-10, tindakan, pemeriksaan lab, dan tarif dari
   aplikasi; impor/ekspor CSV
 - **Kepatuhan**: PMK 24/2022 — audit trail, penguncian rekam medis, addendum, ICD-10
