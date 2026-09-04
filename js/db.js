@@ -1537,6 +1537,84 @@ const DB = (() => {
     if (error) throw error; return data;
   }
 
+  /* --------------------- Kronis: referensi & migrasi -------------------- */
+  async function refKronisDiagnosa() {
+    const { data, error } = await sb.from('ref_kronis_diagnosa')
+      .select('kode,nama,pantau_obat,bulan_lab,alias,icd10_awal,urutan,aktif')
+      .eq('aktif', true).order('urutan');
+    if (error) throw error; return data;
+  }
+
+  async function kronisImporRingkas() {
+    const { data, error } = await sb.from('v_kronis_impor_ringkas').select('*').single();
+    if (error) throw error; return data;
+  }
+
+  /* Baris titipan. `pasien` ikut diambil supaya daftar "sudah cocok" bisa
+     menyebut nama tujuannya — tanpa itu petugas tidak punya cara memeriksa
+     apakah tempelannya benar selain membatalkannya satu per satu. */
+  async function kronisImporDaftar(status = 'MENUNGGU', cari = '', batas = 200) {
+    let q = sb.from('kronis_impor_pasien')
+      .select('id,kunci,nama_pasien,no_bpjs,no_telp,jml_obat,jml_lab,jml_kontrol,' +
+              'punya_terapi,diagnosis_teks,status,pasien_id,alasan,dicocokkan_pada,' +
+              'pasien:pasien_id(id,no_rm,nama,tanggal_lahir,jenis_kelamin,no_bpjs)')
+      .order('punya_terapi', { ascending: false })
+      .order('nama_pasien')
+      .limit(batas);
+    if (status) q = q.eq('status', status);
+    if (cari) q = q.ilike('nama_pasien', `%${cari}%`);
+    const { data, error } = await q;
+    if (error) throw error; return data;
+  }
+
+  async function kronisImporBaris(imporId, batas = 60) {
+    const { data, error } = await sb.from('kronis_impor_baris')
+      .select('id,sumber,sumber_id,tanggal,isi,dituang')
+      .eq('impor_id', imporId)
+      .order('sumber').order('tanggal', { ascending: false, nullsFirst: false })
+      .limit(batas);
+    if (error) throw error; return data;
+  }
+
+  async function kronisImporUsulan(imporId, batas = 8) {
+    const { data, error } = await sb.rpc('kronis_impor_usulan',
+      { p_impor_id: imporId, p_batas: batas });
+    if (error) throw error; return data || [];
+  }
+
+  async function kronisImporTampung(sumber, baris) {
+    const { data, error } = await sb.rpc('kronis_impor_tampung',
+      { p_sumber: sumber, p_baris: baris });
+    if (error) throw error; return data;
+  }
+
+  async function kronisImporCocokkan(imporId, pasienId) {
+    const { data, error } = await sb.rpc('kronis_impor_cocokkan',
+      { p_impor_id: imporId, p_pasien_id: pasienId });
+    if (error) throw error; return data;
+  }
+
+  async function kronisImporBatalCocok(imporId) {
+    const { data, error } = await sb.rpc('kronis_impor_batal_cocok', { p_impor_id: imporId });
+    if (error) throw error; return data;
+  }
+
+  async function kronisImporAbaikan(imporId, alasan = null) {
+    const { data, error } = await sb.rpc('kronis_impor_abaikan',
+      { p_impor_id: imporId, p_alasan: alasan });
+    if (error) throw error; return data;
+  }
+
+  async function kronisImporOtomatis() {
+    const { data, error } = await sb.rpc('kronis_impor_cocokkan_otomatis');
+    if (error) throw error; return data;
+  }
+
+  async function kronisImporBersihkan(semua = false) {
+    const { data, error } = await sb.rpc('kronis_impor_bersihkan', { p_semua: semua });
+    if (error) throw error; return data;
+  }
+
   return {
     sb, masuk, keluar, sesi, saya, bolehTulis,
     faskes, simpanFaskes,
@@ -1586,6 +1664,10 @@ const DB = (() => {
     poliJadwal, simpanJadwal, hapusJadwal, poliLibur, simpanLibur, hapusLibur,
     antreanPengaturan, simpanAntreanPengaturan, antreanTokenBaru, antreanLayar,
     antrolAkun, antrolAkunSimpan, antrolAkunHapus, antrolLog,
-    panggilBridging, riwayatBridging
+    panggilBridging, riwayatBridging,
+    refKronisDiagnosa,
+    kronisImporRingkas, kronisImporDaftar, kronisImporBaris, kronisImporUsulan,
+    kronisImporTampung, kronisImporCocokkan, kronisImporBatalCocok,
+    kronisImporAbaikan, kronisImporOtomatis, kronisImporBersihkan
   };
 })();

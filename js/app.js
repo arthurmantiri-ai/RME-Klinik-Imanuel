@@ -24,6 +24,7 @@ const App = (() => {
     { rute: '#/master',      label: 'Master Data',   ikon: 'pil',       peran: ['admin'] },
     { rute: '#/tarif',       label: 'Tarif & Invoice', ikon: 'laporan', peran: ['admin'] },
     { rute: '#/jadwal',      label: 'Antrean & Layar', ikon: 'jam',     peran: ['admin'] },
+    { rute: '#/migrasi',     label: 'Migrasi Portal', ikon: 'unduh',    peran: ['admin'] },
     { rute: '#/pengaturan',  label: 'Pengaturan',    ikon: 'setelan',   peran: ['admin'] }
   ];
 
@@ -43,6 +44,7 @@ const App = (() => {
     'surat':       (p) => Surat.render(view(), p),
     'tarif':       (p) => Tarif.render(view(), p),
     'jadwal':      (p) => Jadwal.render(view(), p),
+    'migrasi':     (p) => Migrasi.render(view(), p),
     'master':      (p) => Master.render(view(), p),
     'pengaturan':  (p) => Pengaturan.render(view(), p)
   };
@@ -54,7 +56,7 @@ const App = (() => {
     lab: 'Lab & Pemeriksaan Penunjang',
     apotek: 'Apotek', kasir: 'Kasir', surat: 'Surat Keterangan',
     tarif: 'Tarif & Tampilan Invoice',
-    jadwal: 'Antrean & Layar Tunggu',
+    jadwal: 'Antrean & Layar Tunggu', migrasi: 'Migrasi Portal',
     master: 'Master Data', pengaturan: 'Pengaturan'
   };
 

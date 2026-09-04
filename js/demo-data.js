@@ -109,7 +109,19 @@ const DB = (() => {
       jenis_kelamin: 'L', gol_darah: 'AB', agama: 'Kristen', pekerjaan: 'Pensiunan',
       status_kawin: 'Kawin', alamat: 'Jl. Sultan Agung No. 21', kabupaten: 'Kota Semarang',
       provinsi: 'Jawa Tengah', no_hp: '081556677889',
-      catatan_penting: 'Riwayat stroke ringan 2023', aktif: true }
+      catatan_penting: 'Riwayat stroke ringan 2023', aktif: true },
+    /* Nama yang hanya beda satu huruf dari pas-1, dan sengaja diletakkan
+       PALING BELAKANG. Bukan hiasan: inilah keadaan yang membuat migrasi
+       portal berbahaya — dua orang berbeda yang di daftar terlihat sama,
+       sementara catatan portal hanya menyimpan nama dan nomor BPJS.
+       Halaman Migrasi Portal harus menampilkan keduanya dan menandai
+       mana yang tebakan. Letaknya di akhir larik supaya pencarian
+       "Budi" pada halaman lain tetap menemukan pas-1 lebih dulu. */
+    { id: 'pas-6', no_rm: '000006', nik: '3374010303820006', no_bpjs: '0009999999999',
+      nama: 'Budi Santosa', tempat_lahir: 'Ungaran', tanggal_lahir: '1982-03-03',
+      jenis_kelamin: 'L', gol_darah: 'A', agama: 'Islam', pekerjaan: 'Buruh',
+      status_kawin: 'Kawin', alamat: 'Jl. Kartini No. 3', kabupaten: 'Kota Semarang',
+      provinsi: 'Jawa Tengah', no_hp: '081344556677', aktif: true }
   ];
 
 
@@ -2494,6 +2506,181 @@ const DB = (() => {
 
   async function ambilSemua(f) { return []; }
 
+  /* ================= KRONIS: referensi & migrasi portal ================ */
+
+  const REF_KRONIS = KronisCore.REF_BAWAAN.map((d, i) =>
+    ({ ...d, pantau_obat: true, icd10_awal: [], urutan: i + 1, aktif: true }));
+
+  /* Tiga keadaan yang harus bisa dilihat di demo, karena ketiganya yang
+     benar-benar muncul saat migrasi sungguhan:
+       1. nomor BPJS cocok persis      -> bisa ditempel otomatis
+       2. tanpa nomor BPJS             -> hanya kemiripan nama yang menolong
+       3. sudah tertempel              -> dan harus bisa dibatalkan lagi   */
+  let IMPOR = [
+    { id: 1, kunci: 'b:0001234567890', nama_pasien: 'Budi Santoso',
+      no_bpjs: '0001234567890', no_telp: '081234567890',
+      jml_obat: 11, jml_lab: 3, jml_kontrol: 1, punya_terapi: true,
+      diagnosis_teks: 'Hipertensi, Diabetes Melitus',
+      status: 'MENUNGGU', pasien_id: null, alasan: null, dicocokkan_pada: null },
+    { id: 2, kunci: 'n:rina wijaya', nama_pasien: 'Rina Wijaya',
+      no_bpjs: null, no_telp: '081211112222',
+      jml_obat: 5, jml_lab: 1, jml_kontrol: 0, punya_terapi: true,
+      diagnosis_teks: 'Asma',
+      status: 'MENUNGGU', pasien_id: null, alasan: null, dicocokkan_pada: null },
+    { id: 3, kunci: 'b:0001234567891', nama_pasien: 'Siti Aminah',
+      no_bpjs: '0001234567891', no_telp: '081298765432',
+      jml_obat: 8, jml_lab: 2, jml_kontrol: 0, punya_terapi: true,
+      diagnosis_teks: 'HPT', status: 'COCOK', pasien_id: 'pas-2',
+      alasan: null, dicocokkan_pada: new Date().toISOString() }
+  ];
+
+  const IMPOR_BARIS = {
+    1: [
+      { id: 11, sumber: 'KRONIS_TERAPI', sumber_id: '101', tanggal: null, dituang: false,
+        isi: { id: 101, nama_pasien: 'Budi Santoso', no_bpjs: '0001234567890',
+               diagnosis: 'Hipertensi, Diabetes Melitus',
+               resep_tetap: 'Amlodipine 5 mg\nMetformin 500 mg',
+               statin_obat: 'Simvastatin 20 mg' } },
+      { id: 12, sumber: 'OBAT_KRONIS', sumber_id: '201', tanggal: '2026-08-05', dituang: false,
+        isi: { id: 201, tanggal_ambil: '2026-08-05', resep_obat: 'Amlodipine 5 mg' } },
+      { id: 13, sumber: 'LAB_RUTIN', sumber_id: '301', tanggal: '2026-06-02', dituang: false,
+        isi: { id: 301, tanggal_lab: '2026-06-02', diagnosa: 'HPT+DM', lab_pemeriksa: 'Lab Prodia' } }
+    ],
+    2: [
+      { id: 21, sumber: 'KRONIS_TERAPI', sumber_id: '102', tanggal: null, dituang: false,
+        isi: { id: 102, nama_pasien: 'Rina Wijaya', diagnosis: 'Asma',
+               resep_tetap: 'Salbutamol inhaler' } }
+    ],
+    3: [
+      { id: 31, sumber: 'KRONIS_TERAPI', sumber_id: '103', tanggal: null, dituang: true,
+        isi: { id: 103, nama_pasien: 'Siti Aminah', diagnosis: 'HPT',
+               resep_tetap: 'Amlodipine 10 mg' } }
+    ]
+  };
+
+  function lengkapiImpor(r) {
+    return { ...r, pasien: r.pasien_id ? salin(PASIEN.find(p => p.id === r.pasien_id)) : null };
+  }
+
+  async function refKronisDiagnosa() { await tunggu(30); return salin(REF_KRONIS); }
+
+  async function kronisImporRingkas() {
+    await tunggu(40);
+    const angka = (f) => IMPOR.filter(f).length;
+    return {
+      total: IMPOR.length,
+      menunggu: angka(r => r.status === 'MENUNGGU'),
+      cocok:    angka(r => r.status === 'COCOK'),
+      abaikan:  angka(r => r.status === 'ABAIKAN'),
+      baris_obat:    IMPOR.reduce((a, r) => a + r.jml_obat, 0),
+      baris_lab:     IMPOR.reduce((a, r) => a + r.jml_lab, 0),
+      baris_kontrol: IMPOR.reduce((a, r) => a + r.jml_kontrol, 0),
+      menunggu_tanpa_bpjs: angka(r => r.status === 'MENUNGGU' && !r.no_bpjs)
+    };
+  }
+
+  async function kronisImporDaftar(status = 'MENUNGGU', cari = '') {
+    await tunggu(60);
+    let d = IMPOR.filter(r => !status || r.status === status);
+    if (cari) d = d.filter(r => r.nama_pasien.toLowerCase().includes(cari.toLowerCase()));
+    return d.map(lengkapiImpor);
+  }
+
+  async function kronisImporBaris(imporId) {
+    await tunggu(40); return salin(IMPOR_BARIS[imporId] || []);
+  }
+
+  /* Kembaran sederhana kronis_impor_usulan(): BPJS sama 100, nama sama 90,
+     sisanya dinilai dari berapa banyak huruf awal yang sama. */
+  async function kronisImporUsulan(imporId) {
+    await tunggu(60);
+    const t = IMPOR.find(r => r.id === imporId);
+    if (!t) return [];
+    const bpjs = String(t.no_bpjs || '').replace(/\D/g, '');
+    const nama = t.nama_pasien.trim().toLowerCase();
+    const dipakai = IMPOR.filter(r => r.id !== imporId && r.pasien_id).map(r => r.pasien_id);
+    return PASIEN
+      .filter(p => p.aktif !== false && !dipakai.includes(p.id))
+      .map(p => {
+        const pb = String(p.no_bpjs || '').replace(/\D/g, '');
+        const pn = p.nama.trim().toLowerCase();
+        let skor = 0, alasan = 'Nama mirip';
+        if (bpjs && pb === bpjs) { skor = 100; alasan = 'Nomor BPJS sama'; }
+        else if (pn === nama)    { skor = 90;  alasan = 'Nama sama persis'; }
+        else {
+          let sama = 0;
+          while (sama < pn.length && sama < nama.length && pn[sama] === nama[sama]) sama++;
+          skor = Math.round(sama / Math.max(pn.length, nama.length) * 80);
+        }
+        return { pasien_id: p.id, no_rm: p.no_rm, nama: p.nama,
+                 tanggal_lahir: p.tanggal_lahir, jenis_kelamin: p.jenis_kelamin,
+                 no_bpjs: p.no_bpjs, nik: p.nik, alamat: p.alamat, skor, alasan };
+      })
+      .filter(u => u.skor >= 25)
+      .sort((a, b) => b.skor - a.skor)
+      .slice(0, 8);
+  }
+
+  async function kronisImporTampung(sumber, baris) {
+    await tunggu(120);
+    return { sumber, masuk: (baris || []).length, dilewati: 0, orang_baru: 0 };
+  }
+
+  async function kronisImporCocokkan(imporId, pasienId) {
+    await tunggu(120);
+    const t = IMPOR.find(r => r.id === imporId);
+    if (!t) throw new Error('Baris titipan tidak ditemukan.');
+    if (t.status === 'COCOK') throw new Error('Baris ini sudah dicocokkan.');
+    if (IMPOR.some(r => r.id !== imporId && r.pasien_id === pasienId)) {
+      throw new Error('Pasien ini sudah jadi tujuan baris titipan lain. ' +
+                      'Gabungkan dua barisnya dulu, jangan ditempel dua kali.');
+    }
+    t.status = 'COCOK'; t.pasien_id = pasienId; t.dicocokkan_pada = new Date().toISOString();
+    (IMPOR_BARIS[imporId] || []).forEach(b => { b.dituang = true; });
+    return { impor_id: imporId, pasien_id: pasienId, terapi: t.punya_terapi,
+             ambil_obat: t.jml_obat, lab: t.jml_lab, kontrol: t.jml_kontrol };
+  }
+
+  async function kronisImporBatalCocok(imporId) {
+    await tunggu(100);
+    const t = IMPOR.find(r => r.id === imporId);
+    if (!t || t.status !== 'COCOK') throw new Error('Baris ini belum dicocokkan.');
+    const n = t.jml_obat + t.jml_lab + t.jml_kontrol;
+    t.status = 'MENUNGGU'; t.pasien_id = null; t.dicocokkan_pada = null;
+    (IMPOR_BARIS[imporId] || []).forEach(b => { b.dituang = false; });
+    return { impor_id: imporId, riwayat_dicabut: n, terapi_dicabut: t.punya_terapi };
+  }
+
+  async function kronisImporAbaikan(imporId, alasan) {
+    await tunggu(80);
+    const t = IMPOR.find(r => r.id === imporId);
+    if (!t) throw new Error('Baris titipan tidak ditemukan.');
+    if (t.status === 'COCOK') throw new Error('Baris ini sudah dicocokkan. Batalkan dulu.');
+    t.status = 'ABAIKAN'; t.alasan = alasan || null;
+    return { impor_id: imporId, status: 'ABAIKAN' };
+  }
+
+  async function kronisImporOtomatis() {
+    await tunggu(150);
+    let ok = 0, sisa = 0;
+    for (const t of IMPOR.filter(r => r.status === 'MENUNGGU')) {
+      const bpjs = String(t.no_bpjs || '').replace(/\D/g, '');
+      const cocok = bpjs
+        ? PASIEN.filter(p => String(p.no_bpjs || '').replace(/\D/g, '') === bpjs) : [];
+      if (cocok.length !== 1 || IMPOR.some(r => r.pasien_id === cocok[0].id)) { sisa++; continue; }
+      await kronisImporCocokkan(t.id, cocok[0].id);
+      ok++;
+    }
+    return { tertempel: ok, tersisa: sisa, pesan: [] };
+  }
+
+  async function kronisImporBersihkan(semua) {
+    await tunggu(80);
+    const sebelum = IMPOR.length;
+    IMPOR = semua ? [] : IMPOR.filter(r => r.status === 'MENUNGGU');
+    return { dihapus: sebelum - IMPOR.length };
+  }
+
   return { sb, masuk, keluar, sesi, saya, bolehTulis, faskes, simpanFaskes,
            daftarPoli, daftarDokter, daftarPegawai, cariIcd, cariObat, daftarSigna,
            cariPasien, pasien, simpanPasien, alergiPasien, tambahAlergi, hapusAlergi, catatAkses,
@@ -2540,5 +2727,9 @@ const DB = (() => {
            poliJadwal, simpanJadwal, hapusJadwal, poliLibur, simpanLibur, hapusLibur,
            antreanPengaturan, simpanAntreanPengaturan, antreanTokenBaru, antreanLayar,
            antrolAkun, antrolAkunSimpan, antrolAkunHapus, antrolLog,
+           refKronisDiagnosa,
+           kronisImporRingkas, kronisImporDaftar, kronisImporBaris, kronisImporUsulan,
+           kronisImporTampung, kronisImporCocokkan, kronisImporBatalCocok,
+           kronisImporAbaikan, kronisImporOtomatis, kronisImporBersihkan,
            gantiPeranDemo, peranDemoSekarang, PERAN_DEMO };
 })();

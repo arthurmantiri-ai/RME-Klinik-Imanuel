@@ -271,6 +271,38 @@ const KONTRAK = [
     alasan: 'judul layar, teks berjalan, dan kalimat yang dikirim ke Mobile JKN. ' +
             'Tanpa kolom ini seluruh pengaturan layar tampak kosong dan menyimpannya ' +
             'akan menimpa isi yang sudah ada dengan objek kosong.'
+  },
+  {
+    fungsi: 'kronisImporDaftar',
+    wajib: ['pasien:pasien_id', 'nama'],
+    alasan: 'nama pasien tujuan pada daftar "sudah tertempel". Tanpa sumber tersemat ' +
+            'ini halaman migrasi hanya menampilkan nama dari portal, sehingga tidak ' +
+            'ada cara memeriksa apakah tempelannya benar selain membatalkannya satu ' +
+            'per satu — dan pencocokan yang keliru akan lolos diam-diam.'
+  },
+  {
+    fungsi: 'kronisImporDaftar',
+    wajib: ['kunci'],
+    alasan: 'penentu apakah sebuah baris berasal dari nomor BPJS ("b:") atau hanya ' +
+            'dari nama ("n:"). KronisCore.bolehOtomatis() membacanya untuk memutuskan ' +
+            'boleh atau tidaknya tempel otomatis. Tanpa kolom ini nilainya undefined, ' +
+            'pemeriksaan startsWith("b:") selalu gagal, dan spanduk "bisa ditempel ' +
+            'otomatis" tidak pernah muncul — tanpa satu pun galat.'
+  },
+  {
+    fungsi: 'kronisImporDaftar',
+    wajib: ['diagnosis_teks'],
+    alasan: 'tulisan diagnosis dari portal yang dipetakan KronisCore.kodeDiagnosa() ' +
+            'menjadi lencana HPT/DM di kartu pencocokan. Tanpa kolom ini kartu tampil ' +
+            'rapi tanpa satu pun diagnosis, dan petugas kehilangan petunjuk terkuat ' +
+            'untuk memastikan orang yang benar.'
+  },
+  {
+    fungsi: 'kronisImporBaris',
+    wajib: ['isi'],
+    alasan: 'seluruh baris portal apa adanya — resep rutin, nama statin, nama lab. ' +
+            'Kartu pencocokan membacanya untuk menampilkan resep rutin pasien. Tanpa ' +
+            'kolom ini kartunya kosong dan tidak ada bahan untuk memeriksa kecocokan.'
   }
 ];
 
