@@ -174,4 +174,45 @@ cek('kartu stok tetap menghitung saldo awal sebagai pemasukan',
     kartuS.total.masukQty === 600 && kartuS.saldoAwal === 0,
     `masuk ${kartuS.total.masukQty}, saldo awal ${kartuS.saldoAwal}`);
 
-console.log(`\n${lulus} pemeriksaan lulus (termasuk saldo awal).`);
+/* ------------------------------------------------ Kolam (17_apotek_kolam) */
+
+// b2 (expired terdekat kedua) ditandai kronis; b1 dan b3 reguler. Tanpa
+// preferensi, urutan tetap murni FEFO (b3, b2, b1) — dites di atas.
+const batchKolam = batch.map(b => ({ ...b, kolam: b.id === 'b2' ? 'kronis' : 'reguler' }));
+
+const urutKronis = A.urutFefo(batchKolam, 'kronis').map(b => b.id);
+cek('urutFefo(kolamDisukai) mendahulukan kolam yang disukai walau expired-nya bukan terdekat',
+    JSON.stringify(urutKronis) === JSON.stringify(['b2', 'b3', 'b1']),
+    'dapat ' + urutKronis.join(','));
+
+const urutTanpaPreferensi = A.urutFefo(batchKolam).map(b => b.id);
+cek('urutFefo tanpa kolamDisukai tidak berubah dari sebelum kolam ada',
+    JSON.stringify(urutTanpaPreferensi) === JSON.stringify(['b3', 'b2', 'b1']),
+    'dapat ' + urutTanpaPreferensi.join(','));
+
+const simKronis2 = A.simulasiFefo(batchKolam, 10, 'kronis');
+cek('simulasiFefo(kolamDisukai) cukup dari kolam kronis saja, tidak menyentuh reguler',
+    simKronis2.potongan.length === 1 && simKronis2.potongan[0].batch.id === 'b2'
+    && simKronis2.potongan[0].ambil === 10,
+    'dapat ' + JSON.stringify(simKronis2.potongan.map(p => [p.batch.id, p.ambil])));
+
+const simMenyeberang = A.simulasiFefo(batchKolam, 40, 'kronis');
+cek('simulasiFefo(kolamDisukai) menyeberang ke kolam lain kalau yang disukai tidak cukup',
+    simMenyeberang.kurang === 0 && simMenyeberang.potongan.length === 2
+    && simMenyeberang.potongan[0].batch.id === 'b2'
+    && simMenyeberang.potongan[1].batch.id === 'b3',
+    'dapat ' + JSON.stringify(simMenyeberang.potongan.map(p => [p.batch.id, p.ambil])));
+
+const ringKolam = A.ringkasStok(batchKolam);
+cek('ringkasStok memecah nilai aset per kolam, jumlahnya tetap sama dengan total',
+    dekat(ringKolam.nilaiReguler + ringKolam.nilaiKronis, ringKolam.nilaiAset)
+    && dekat(ringKolam.nilaiKronis, 30 * 1200),
+    `reguler ${ringKolam.nilaiReguler}, kronis ${ringKolam.nilaiKronis}, total ${ringKolam.nilaiAset}`);
+cek('ringkasStok: batch tanpa field kolam dihitung reguler (data lama sebelum tahap ini)',
+    dekat(A.ringkasStok(batch).nilaiKronis, 0));
+
+cek('KOLAM dan labelKolam konsisten', A.KOLAM.length === 2
+    && A.labelKolam('kronis') === 'Kronis' && A.labelKolam('reguler') === 'Reguler'
+    && A.labelKolam(undefined) === 'Reguler');
+
+console.log(`\n${lulus} pemeriksaan lulus (termasuk saldo awal & kolam).`);

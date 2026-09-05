@@ -187,6 +187,39 @@ cek('baris obat baru yang tidak dicentang tidak ikut dikirim',
     E.keMuatan(bersih).length === 2);
 b3.buatObat = true;
 
+/* ═══════════════════════════════════════════════ KOLAM (17_apotek_kolam) */
+
+cek('bacaKolam: kosong dibaca reguler', E.bacaKolam('').kolam === 'reguler'
+    && E.bacaKolam('').tidakDikenal === false);
+cek('bacaKolam: kosong-dari-null (kolom tidak ada di berkas) juga reguler',
+    E.bacaKolam(null).kolam === 'reguler' && E.bacaKolam(undefined).kolam === 'reguler');
+cek('bacaKolam: mengenali beberapa ejaan "reguler"',
+    ['Reguler', 'REGULAR', ' biasa ', 'Umum'].every(v => E.bacaKolam(v).kolam === 'reguler'));
+cek('bacaKolam: mengenali beberapa ejaan "kronis"',
+    ['Kronis', 'CHRONIC', 'prb', 'Prolanis'].every(v => E.bacaKolam(v).kolam === 'kronis'));
+cek('bacaKolam: nilai yang tidak dikenal ditandai, bukan diam-diam jadi reguler',
+    E.bacaKolam('entah').tidakDikenal === true && E.bacaKolam('entah').kolam === 'reguler');
+
+const aoaKolam = [
+  ['Nama Obat', 'Jumlah', 'Harga Beli', 'Tanggal Kadaluwarsa', 'PBF', 'Kolam'],
+  ['Paracetamol 500 mg', 30, 500, '2028-01-01', 'PT Kimia Farma', 'Kronis'],
+  ['Paracetamol 500 mg', 20, 500, '2028-01-01', 'PT Kimia Farma', ''],
+  ['Paracetamol 500 mg', 10, 500, '2028-01-01', 'PT Kimia Farma', 'entah-berantah']
+];
+const hKolam = E.bacaLembar(aoaKolam, master, { hariIni: HARI_INI });
+cek('baris dengan "Kolam"="Kronis" terbaca kronis, tanpa galat',
+    hKolam.baris[0].kolam === 'kronis' && hKolam.baris[0].galat.length === 0,
+    JSON.stringify(hKolam.baris[0].galat));
+cek('baris dengan "Kolam" kosong bawaan ke reguler, tanpa galat',
+    hKolam.baris[1].kolam === 'reguler' && hKolam.baris[1].galat.length === 0);
+cek('baris dengan "Kolam" tidak dikenal ditahan sebagai galat, bukan ditebak jadi reguler',
+    hKolam.baris[2].galat.some(g => /Kolam/.test(g)), JSON.stringify(hKolam.baris[2].galat));
+
+const muatanKolam = E.keMuatan(hKolam.baris.filter(b => !b.galat.length));
+cek('keMuatan meneruskan kolam per baris ke muatan RPC',
+    muatanKolam.length === 2 && muatanKolam[0].kolam === 'kronis' && muatanKolam[1].kolam === 'reguler',
+    JSON.stringify(muatanKolam.map(m => m.kolam)));
+
 /* ═══════════════════════════════════════════════ JUDUL KOLOM LAIN */
 
 const lembarPortal = [
@@ -245,6 +278,12 @@ cek('lembar batch memakai judul kolom yang sama dengan template impor',
     sama(lb[0], E.lembarTemplate()[0]),
     'hasil ekspor harus bisa langsung dipakai sebagai berkas impor');
 cek('lembar batch melewatkan batch kosong', lb.length === 3);
+
+const idxKolam = E.KOLOM.findIndex(k => k.kunci === 'kolam');
+cek('lembar batch menulis "Reguler" untuk batch tanpa field kolam (data sebelum tahap ini)',
+    lb[1][idxKolam] === 'Reguler', 'dapat ' + lb[1][idxKolam]);
+cek('lembar batch menulis "Kronis" untuk batch berkolam kronis',
+    E.lembarStokPerBatch([{ ...batchEks[0], kolam: 'kronis' }])[1][idxKolam] === 'Kronis');
 
 const lr = E.lembarRingkasan({
   stok, batch: batchEks, namaKlinik: 'Klinik Imanuel', tanggal: '1 September 2026',

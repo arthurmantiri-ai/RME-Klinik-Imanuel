@@ -60,6 +60,12 @@ const ApotekExcel = (() => {
       alias: ['distributor', 'supplier', 'pemasok', 'nama pbf'],
       contoh: 'PT Kimia Farma',
       bantu: 'Wajib. Untuk saldo awal, isi asal barangnya atau tulis "Opname Awal".' },
+    { kunci: 'kolam',       judul: 'Kolam',        wajib: false,
+      alias: ['pool', 'kolam stok', 'jenis stok'],
+      contoh: 'Reguler',
+      bantu: 'Reguler atau Kronis. Kosongkan untuk Reguler. Menentukan kolam pencatatan '
+           + 'batch ini — bukan sekat: obat tetap bisa saling menutupi kalau salah satu '
+           + 'kolam kehabisan stok, hanya pencatatannya yang dipisah.' },
     { kunci: 'no_batch',    judul: 'No. Batch',    wajib: false,
       alias: ['batch', 'no batch', 'nomor batch', 'lot'],
       contoh: 'B2609A',
@@ -189,6 +195,20 @@ const ApotekExcel = (() => {
     return isFinite(n) ? n : null;
   }
 
+  /* Kolam ditulis bebas di Excel ("Reguler", "Kronis", "PRB", kosong…).
+     Kosong DIBACA sebagai reguler (bawaan yang aman untuk berkas lama
+     yang belum punya kolom ini sama sekali); yang TIDAK DIKENALI ditandai
+     `tidakDikenal` supaya periksaBaris() menahannya sebagai galat —
+     dibiarkan diam-diam jatuh ke reguler justru berbahaya untuk saldo
+     awal, di mana pemisahan kolamnya paling penting. */
+  function bacaKolam(v) {
+    const s = teks(v).toLowerCase();
+    if (!s) return { kolam: 'reguler', tidakDikenal: false };
+    if (['reguler', 'regular', 'biasa', 'umum'].includes(s)) return { kolam: 'reguler', tidakDikenal: false };
+    if (['kronis', 'chronic', 'prb', 'prolanis'].includes(s)) return { kolam: 'kronis', tidakDikenal: false };
+    return { kolam: 'reguler', tidakDikenal: true };
+  }
+
   /* ------------------------------------------------------------------
      PENCOCOKAN NAMA OBAT
      ------------------------------------------------------------------ */
@@ -311,6 +331,7 @@ const ApotekExcel = (() => {
       const exp = bacaTanggal(mentah.tgl_expired);
       const msk = bacaTanggal(mentah.tgl_masuk);
       if (exp.ambigu || msk.ambigu) hasil.adaAmbigu = true;
+      const kol = bacaKolam(mentah.kolam);
 
       const b = {
         nomorBaris: r + 1,                       // nomor seperti terlihat di Excel
@@ -325,6 +346,8 @@ const ApotekExcel = (() => {
         tglAmbigu:   exp.ambigu || msk.ambigu,
         no_faktur:  teks(mentah.no_faktur),
         pbf:        teks(mentah.pbf),
+        kolam:      kol.kolam,
+        kolamTidakDikenal: kol.tidakDikenal,
         no_batch:   teks(mentah.no_batch),
         keterangan: teks(mentah.keterangan),
         galat: [], peringatan: []
@@ -374,6 +397,9 @@ const ApotekExcel = (() => {
       b.galat.push('Tanggal masuk tidak terbaca.');
     }
     if (!b.pbf) b.galat.push('PBF / distributor kosong.');
+    if (b.kolamTidakDikenal) {
+      b.galat.push('Kolom "Kolam" harus "Reguler" atau "Kronis" (dikosongkan = Reguler).');
+    }
 
     if (!b.obat) {
       if (b.mirip && b.mirip.length) {
@@ -430,6 +456,7 @@ const ApotekExcel = (() => {
       tgl_masuk: b.tgl_masuk || null,
       no_faktur: b.no_faktur || null,
       pbf: b.pbf,
+      kolam: b.kolam || 'reguler',
       no_batch: b.no_batch || null,
       keterangan: b.keterangan || null
     }));
@@ -514,7 +541,7 @@ const ApotekExcel = (() => {
       ...(batch || []).filter(b => Number(b.stok_sisa) > 0).map(b => [
         b.kode_internal || '', b.nama_obat, b.satuan,
         Number(b.stok_sisa), Number(b.harga_beli), b.tgl_expired, b.tgl_masuk,
-        b.no_faktur || '', b.pbf || '', b.no_batch || '',
+        b.no_faktur || '', b.pbf || '', (b.kolam === 'kronis' ? 'Kronis' : 'Reguler'), b.no_batch || '',
         Number(b.harga_jual || 0),
         b.keterangan || ''
       ])
@@ -654,7 +681,7 @@ const ApotekExcel = (() => {
 
   const API = {
     KOLOM, JENIS_IMPOR, AMBANG_MIRIP,
-    normalKunci, bacaTanggal, bacaAngka, kemiripan,
+    normalKunci, bacaTanggal, bacaAngka, bacaKolam, kemiripan,
     indeksObat, cocokkanObat, bacaLembar, periksaBaris, statusBaris, ringkas, keMuatan,
     lembarTemplate, lembarPetunjuk,
     lembarStokPerObat, lembarStokPerBatch, lembarRingkasan, lembarRiwayat,

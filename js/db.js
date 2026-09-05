@@ -817,11 +817,15 @@ const DB = (() => {
       p_obat_id: r.obat_id, p_jumlah: r.jumlah, p_harga_beli: r.harga_beli,
       p_tgl_expired: r.tgl_expired, p_pbf: r.pbf,
       p_no_faktur: r.no_faktur || null, p_tgl_masuk: r.tgl_masuk || null,
-      p_no_batch: r.no_batch || null, p_keterangan: r.keterangan || null
+      p_no_batch: r.no_batch || null, p_keterangan: r.keterangan || null,
+      p_kolam: r.kolam || 'reguler'
     });
     if (error) throw error; return data;
   }
 
+  /* `kolam` di sini adalah PREFERENSI, bukan syarat — lihat catatan di
+     17_apotek_kolam.sql. Kosongkan untuk FEFO polos seperti sebelum kolam
+     ada; database tetap boleh menyeberang kolam kalau yang disukai habis. */
   async function apotekKeluar(r) {
     const { data, error } = await sb.rpc('apotek_keluar', {
       p_obat_id: r.obat_id, p_jumlah: r.jumlah,
@@ -830,7 +834,8 @@ const DB = (() => {
       p_kunjungan_id: r.kunjungan_id || null,
       p_resep_item_id: r.resep_item_id || null,
       p_batch_id: r.batch_id || null,
-      p_keterangan: r.keterangan || null
+      p_keterangan: r.keterangan || null,
+      p_kolam_disukai: r.kolam || null
     });
     if (error) throw error; return data;
   }

@@ -1507,45 +1507,57 @@ const DB = (() => {
     { id: 'bt-1', obat_id: 'ob-1', nama_obat: 'Paracetamol 500 mg', satuan: 'Tablet',
       tgl_expired: geser(400), tgl_masuk: geser(-60), no_faktur: 'FK-2026/07/001',
       pbf: 'PT Kimia Farma', harga_beli: 600, stok_awal: 500, stok_sisa: 320,
-      created_at: geser(-60) },
+      kolam: 'reguler', created_at: geser(-60) },
     /* Batch ini masuk BELAKANGAN tapi expired lebih dekat. Dengan FIFO ia
        akan mengendap sampai kadaluwarsa; dengan FEFO ia keluar duluan —
        inilah perbedaan yang membuat modulnya ditulis ulang. */
     { id: 'bt-2', obat_id: 'ob-1', nama_obat: 'Paracetamol 500 mg', satuan: 'Tablet',
       tgl_expired: geser(25), tgl_masuk: geser(-10), no_faktur: 'FK-2026/08/014',
       pbf: 'PT Enseval', harga_beli: 650, stok_awal: 100, stok_sisa: 80,
-      created_at: geser(-10) },
+      kolam: 'reguler', created_at: geser(-10) },
     { id: 'bt-3', obat_id: 'ob-2', nama_obat: 'Amoxicillin 500 mg', satuan: 'Tablet',
       tgl_expired: geser(300), tgl_masuk: geser(-45), no_faktur: 'FK-2026/07/002',
       pbf: 'PT Kimia Farma', harga_beli: 1400, stok_awal: 300, stok_sisa: 6,
-      created_at: geser(-45) },
+      kolam: 'reguler', created_at: geser(-45) },
     { id: 'bt-4', obat_id: 'ob-3', nama_obat: 'Ambroxol 30 mg', satuan: 'Tablet',
       tgl_expired: geser(-12), tgl_masuk: geser(-380), no_faktur: 'FK-2025/08/031',
       pbf: 'PT Enseval', harga_beli: 900, stok_awal: 200, stok_sisa: 45,
-      created_at: geser(-380) },
+      kolam: 'reguler', created_at: geser(-380) },
     { id: 'bt-5', obat_id: 'ob-4', nama_obat: 'Cetirizine 10 mg', satuan: 'Tablet',
       tgl_expired: geser(500), tgl_masuk: geser(-20), no_faktur: 'FK-2026/08/009',
       pbf: 'PT Anugrah Argon', harga_beli: 1100, stok_awal: 250, stok_sisa: 250,
-      created_at: geser(-20) }
+      kolam: 'reguler', created_at: geser(-20) },
+    /* Batch kolam KRONIS, obat yang sama dengan bt-1/bt-2, dibeli klinik
+       sendiri lewat jalur pembelian program kronis. Dipasang di sini
+       supaya tab Stok punya sesuatu untuk ditunjukkan pecahannya
+       (reguler vs kronis) tanpa menunggu Tahap 2. */
+    { id: 'bt-6', obat_id: 'ob-1', nama_obat: 'Paracetamol 500 mg', satuan: 'Tablet',
+      tgl_expired: geser(200), tgl_masuk: geser(-15), no_faktur: 'FK-2026/08/020',
+      pbf: 'PT Kimia Farma', harga_beli: 600, stok_awal: 150, stok_sisa: 150,
+      kolam: 'kronis', created_at: geser(-15) }
   ];
 
   const TRANSAKSI = [
     { id: 1, batch_id: 'bt-1', obat_id: 'ob-1', nama_obat: 'Paracetamol 500 mg',
       satuan: 'Tablet', jenis: 'MASUK', kategori: 'Pembelian', jumlah: 500,
-      harga_satuan: 600, total_nilai: 300000, tanggal: geser(-60),
+      harga_satuan: 600, total_nilai: 300000, tanggal: geser(-60), kolam: 'reguler',
       no_faktur: 'FK-2026/07/001', pbf: 'PT Kimia Farma', grup_id: 'g-1', dibatalkan: false },
     { id: 2, batch_id: 'bt-2', obat_id: 'ob-1', nama_obat: 'Paracetamol 500 mg',
       satuan: 'Tablet', jenis: 'MASUK', kategori: 'Pembelian', jumlah: 100,
-      harga_satuan: 650, total_nilai: 65000, tanggal: geser(-10),
+      harga_satuan: 650, total_nilai: 65000, tanggal: geser(-10), kolam: 'reguler',
       no_faktur: 'FK-2026/08/014', pbf: 'PT Enseval', grup_id: 'g-2', dibatalkan: false },
     { id: 3, batch_id: 'bt-2', obat_id: 'ob-1', nama_obat: 'Paracetamol 500 mg',
       satuan: 'Tablet', jenis: 'KELUAR', kategori: 'Resep Pasien', jumlah: 20,
-      harga_satuan: 650, total_nilai: 13000, tanggal: geser(-3),
+      harga_satuan: 650, total_nilai: 13000, tanggal: geser(-3), kolam: 'reguler',
       grup_id: 'g-3', dibatalkan: false, keterangan: 'R260828004' },
     { id: 4, batch_id: 'bt-3', obat_id: 'ob-2', nama_obat: 'Amoxicillin 500 mg',
       satuan: 'Tablet', jenis: 'KELUAR', kategori: 'Resep Pasien', jumlah: 294,
-      harga_satuan: 1400, total_nilai: 411600, tanggal: geser(-5),
-      grup_id: 'g-4', dibatalkan: false }
+      harga_satuan: 1400, total_nilai: 411600, tanggal: geser(-5), kolam: 'reguler',
+      grup_id: 'g-4', dibatalkan: false },
+    { id: 5, batch_id: 'bt-6', obat_id: 'ob-1', nama_obat: 'Paracetamol 500 mg',
+      satuan: 'Tablet', jenis: 'MASUK', kategori: 'Pembelian', jumlah: 150,
+      harga_satuan: 600, total_nilai: 90000, tanggal: geser(-15), kolam: 'kronis',
+      no_faktur: 'FK-2026/08/020', pbf: 'PT Kimia Farma', grup_id: 'g-5', dibatalkan: false }
   ];
 
   let TAGIHAN = [], TAGIHAN_ITEM = [], PEMBAYARAN = [], urutTagihan = 0;
@@ -1613,10 +1625,12 @@ const DB = (() => {
   async function apotekMasuk(r) {
     await tunggu(120);
     const o = OBAT.find(x => x.id === r.obat_id);
+    const kolam = r.kolam || 'reguler';
     const ada = BATCH.find(b => b.obat_id === r.obat_id && b.tgl_expired === r.tgl_expired
       && (b.no_faktur || '') === (r.no_faktur || '')
       && String(b.pbf).toLowerCase() === String(r.pbf).toLowerCase()
-      && Number(b.harga_beli) === Number(r.harga_beli));
+      && Number(b.harga_beli) === Number(r.harga_beli)
+      && (b.kolam || 'reguler') === kolam);
     let batchId;
     if (ada) { ada.stok_awal += r.jumlah; ada.stok_sisa += r.jumlah; batchId = ada.id; }
     else {
@@ -1624,25 +1638,27 @@ const DB = (() => {
       BATCH.push({ id: batchId, obat_id: r.obat_id, nama_obat: o.nama, satuan: o.satuan,
         tgl_expired: r.tgl_expired, tgl_masuk: r.tgl_masuk || UI.hariIni(),
         no_faktur: r.no_faktur, pbf: r.pbf, harga_beli: Number(r.harga_beli) || 0,
-        stok_awal: r.jumlah, stok_sisa: r.jumlah, keterangan: r.keterangan,
+        stok_awal: r.jumlah, stok_sisa: r.jumlah, keterangan: r.keterangan, kolam,
         created_at: new Date().toISOString() });
     }
     TRANSAKSI.unshift({ id: TRANSAKSI.length + 1, batch_id: batchId, obat_id: r.obat_id,
       nama_obat: o.nama, satuan: o.satuan, jenis: 'MASUK', kategori: 'Pembelian',
       jumlah: r.jumlah, harga_satuan: Number(r.harga_beli) || 0,
-      total_nilai: r.jumlah * (Number(r.harga_beli) || 0),
+      total_nilai: r.jumlah * (Number(r.harga_beli) || 0), kolam,
       tanggal: r.tgl_masuk || UI.hariIni(), no_faktur: r.no_faktur, pbf: r.pbf,
       grup_id: uid(), dibatalkan: false, keterangan: r.keterangan });
-    return { batch_id: batchId, digabung: !!ada };
+    return { batch_id: batchId, digabung: !!ada, kolam };
   }
 
+  /* `r.kolam` di sini PREFERENSI (lihat 17_apotek_kolam.sql) — bukan
+     syarat. Kosong = FEFO polos seperti sebelum kolam ada. */
   async function apotekKeluar(r) {
     await tunggu(120);
     const o = OBAT.find(x => x.id === r.obat_id);
     let kandidat = BATCH.filter(b => b.obat_id === r.obat_id && b.stok_sisa > 0);
     if (r.batch_id) kandidat = kandidat.filter(b => b.id === r.batch_id);
     kandidat = ApotekCore.batchBolehKeluar(kandidat, r.kategori);
-    const sim = ApotekCore.simulasiFefo(kandidat, r.jumlah);
+    const sim = ApotekCore.simulasiFefo(kandidat, r.jumlah, r.kolam || null);
     if (sim.kurang > 0) {
       throw new Error(`Stok ${o.nama} tidak cukup. Kurang ${sim.kurang} ${o.satuan}.`);
     }
@@ -1653,13 +1669,15 @@ const DB = (() => {
       TRANSAKSI.unshift({ id: TRANSAKSI.length + 1, batch_id: b.id, obat_id: r.obat_id,
         nama_obat: o.nama, satuan: o.satuan, jenis: 'KELUAR', kategori: r.kategori,
         jumlah: p.ambil, harga_satuan: b.harga_beli, total_nilai: p.nilai,
+        kolam: b.kolam || 'reguler',
         tanggal: r.tanggal || UI.hariIni(), kunjungan_id: r.kunjungan_id || null,
         resep_item_id: r.resep_item_id || null, grup_id: grup, dibatalkan: false,
         keterangan: r.keterangan });
     });
     return { grup_id: grup, total_nilai: sim.totalNilai,
              potongan: sim.potongan.map(p => ({ batch_id: p.batch.id,
-               tgl_expired: p.batch.tgl_expired, jumlah: p.ambil, nilai: p.nilai })) };
+               tgl_expired: p.batch.tgl_expired, kolam: p.batch.kolam || 'reguler',
+               jumlah: p.ambil, nilai: p.nilai })) };
   }
 
   async function apotekBatalkanGrup(grupId) {
@@ -1687,8 +1705,15 @@ const DB = (() => {
     for (const it of item) {
       const ri = (r.item || []).find(x => x.id === it.resep_item_id);
       if (!ri) continue;
+      /* Aplikasi sungguhan menanyakan kronis_kolam_resep_item() di sini
+         (lihat 17_apotek_kolam.sql) dan mengutamakan kolam kronis untuk
+         obat yang bagian dari terapi kronis aktif pasiennya. Data contoh
+         belum punya pendaftaran kronis aktif (menyusul di Tahap 2), jadi
+         sementara selalu 'reguler' — sama seperti pasien tanpa terapi
+         kronis di database sungguhan. */
       await apotekKeluar({ obat_id: ri.obat_id, jumlah: it.jumlah, kategori: 'Resep Pasien',
-        kunjungan_id: r.kunjungan_id, resep_item_id: ri.id, keterangan: r.no_resep });
+        kunjungan_id: r.kunjungan_id, resep_item_id: ri.id, keterangan: r.no_resep,
+        kolam: 'reguler' });
       ri.jumlah_diserahkan = it.jumlah;
     }
     const semua = (r.item || []).filter(i => i.obat_id).length;
@@ -1755,7 +1780,7 @@ const DB = (() => {
             obat_id: obatId, jumlah: Number(b.jumlah),
             harga_beli: Number(b.harga_beli) || 0, tgl_expired: b.tgl_expired,
             pbf: b.pbf, no_faktur: b.no_faktur, tgl_masuk: b.tgl_masuk,
-            no_batch: b.no_batch, keterangan: b.keterangan
+            no_batch: b.no_batch, keterangan: b.keterangan, kolam: b.kolam || 'reguler'
           });
           if (h.digabung) ringkas.batch_digabung++; else ringkas.batch_baru++;
           ringkas.total_nilai += Number(b.jumlah) * (Number(b.harga_beli) || 0);

@@ -45,6 +45,17 @@ const ApotekCore = (() => {
     'Retur ke PBF', 'Penyesuaian Stok', 'Lainnya'
   ];
 
+  /* Kolam pencatatan stok — bukan sekat. Klinik membeli sendiri obat
+     kronisnya (bukan titipan BPJS), jadi ini murni supaya nilai aset dan
+     pemakaian bisa dilaporkan terpisah dari obat resep biasa. FEFO tetap
+     boleh menyeberang kolam kalau kolam yang disukai kosong — lihat
+     urutFefo() dan apotek_keluar() di 17_apotek_kolam.sql. */
+  const KOLAM = [
+    { kunci: 'reguler', label: 'Reguler' },
+    { kunci: 'kronis',  label: 'Kronis' }
+  ];
+  const labelKolam = (k) => (KOLAM.find(x => x.kunci === k) || KOLAM[0]).label;
+
   /* Hanya kategori ini yang boleh mengambil dari batch kadaluwarsa.
      Harus sama dengan apotek_kategori_pemusnahan() di 08_apotek.sql;
      yang di sini hanya untuk menonaktifkan pilihan lebih awal di layar,
@@ -93,8 +104,15 @@ const ApotekCore = (() => {
      expired-nya masih lama, sementara batch yang masuk belakangan justru
      sudah mau lewat. Dengan FIFO, batch yang mau lewat itu mengendap
      sampai benar-benar kadaluwarsa dan akhirnya dibuang. */
-  function urutFefo(list) {
+  /* `kolamDisukai` hanya mengubah PEMUTUS SERI PALING AWAL: batch di
+     kolam yang disukai didahulukan, tapi urutan FEFO di dalam maupun di
+     luar kolam itu tidak berubah, dan batch kolam lain tetap ikut
+     terurut di belakangnya — tidak pernah disingkirkan. Dibiarkan
+     undefined, urutannya identik dengan sebelum kolam ada. */
+  function urutFefo(list, kolamDisukai) {
+    const pref = kolamDisukai || null;
     return [...(list || [])].sort((a, b) =>
+      (pref ? (a.kolam === pref ? 0 : 1) - (b.kolam === pref ? 0 : 1) : 0) ||
       String(a.tgl_expired).localeCompare(String(b.tgl_expired)) ||
       String(a.tgl_masuk).localeCompare(String(b.tgl_masuk)) ||
       String(a.created_at || '').localeCompare(String(b.created_at || '')) ||
@@ -119,10 +137,10 @@ const ApotekCore = (() => {
 
      Ini HANYA pratinjau. Alokasi yang sebenarnya dikerjakan fungsi
      apotek_keluar() di database, yang mengunci barisnya lebih dulu. */
-  function simulasiFefo(batches, jumlah) {
+  function simulasiFefo(batches, jumlah, kolamDisukai) {
     let sisa = angka(jumlah), totalNilai = 0;
     const potongan = [];
-    for (const b of urutFefo(batches)) {
+    for (const b of urutFefo(batches, kolamDisukai)) {
       if (sisa <= 0) break;
       const ambil = Math.min(angka(b.stok_sisa), sisa);
       if (ambil <= 0) continue;
@@ -312,8 +330,13 @@ const ApotekCore = (() => {
     const batas30 = hariIniLokal(h30);
 
     const aktif = (batchList || []).filter(b => angka(b.stok_sisa) > 0);
+    const kolamDari = (b) => b.kolam === 'kronis' ? 'kronis' : 'reguler';
+    const nilaiKolam = (k) => aktif.filter(b => kolamDari(b) === k)
+      .reduce((s, b) => s + angka(b.stok_sisa) * angka(b.harga_beli), 0);
     return {
       nilaiAset:  aktif.reduce((s, b) => s + angka(b.stok_sisa) * angka(b.harga_beli), 0),
+      nilaiReguler: nilaiKolam('reguler'),
+      nilaiKronis:  nilaiKolam('kronis'),
       jumlahBatch: aktif.length,
       jenisObat:  new Set(aktif.map(b => b.obat_id)).size,
       menipis:    aktif.filter(b => angka(b.stok_sisa) < 10).length,
@@ -377,7 +400,7 @@ const ApotekCore = (() => {
   }
 
   const API = {
-    KATEGORI_KELUAR, KATEGORI_PEMUSNAHAN, KATEGORI_SALDO_AWAL,
+    KATEGORI_KELUAR, KATEGORI_PEMUSNAHAN, KATEGORI_SALDO_AWAL, KOLAM, labelKolam,
     hariIniLokal, bulanIniLokal, akhirBulan,
     urutFefo, sudahExpired, batchBolehKeluar, simulasiFefo,
     stokSekarang, kartuObat, rekapHarian, daftarObat,

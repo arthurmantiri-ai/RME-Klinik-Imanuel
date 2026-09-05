@@ -119,6 +119,8 @@ const Apotek = (() => {
         <div class="lbl">Nilai aset obat</div>
         <div class="val">${rp(r.nilaiAset)}</div>
         <div class="hint">harga beli, ${r.jenisObat} jenis obat</div>
+        ${r.nilaiKronis > 0 ? `<div class="hint">reguler ${rp(r.nilaiReguler)} ·
+          kronis ${rp(r.nilaiKronis)}</div>` : ''}
       </div>
       <div class="stat">
         <div class="lbl">Batch aktif</div>
@@ -226,6 +228,8 @@ const Apotek = (() => {
   /* ------------------------------------------------------------------
      TAB 2 — STOK SAAT INI (grup per obat, batch urutan FEFO)
      ------------------------------------------------------------------ */
+  let filterKolamStok = '';
+
   function gambarStok(el) {
     el.innerHTML = `
       <div class="card">
@@ -235,16 +239,24 @@ const Apotek = (() => {
             <input type="text" id="cariStok" placeholder="Cari nama obat, PBF, atau no. faktur…"
                    value="${UI.esc(cari)}">
           </div>
+          <select id="fKolamStok" style="width:auto">
+            <option value="">Semua kolam</option>
+            ${K.KOLAM.map(k => `<option value="${k.kunci}">${UI.esc(k.label)}</option>`).join('')}
+          </select>
         </div>
         <div class="banner info" style="margin:14px 18px 0"><div>
           Stok dikelompokkan per obat. Klik nama obat untuk melihat rincian batch.
           Urutan batch = urutan keluar <b>FEFO</b>: yang paling dekat kadaluwarsa keluar lebih
-          dulu, tanggal masuk hanya jadi pemutus seri.</div></div>
+          dulu, tanggal masuk hanya jadi pemutus seri. <b>Kolam</b> hanya pencatatan — bukan
+          sekat, batch tetap bisa saling menutupi kalau salah satu kolam kehabisan stok.</div></div>
         <div class="card-body tight" id="isiStok"></div>
       </div>`;
 
     const inp = el.querySelector('#cariStok');
     inp.addEventListener('input', UI.tunda(() => { cari = inp.value; gambarTabelStok(); }, 200));
+    const selKolam = el.querySelector('#fKolamStok');
+    selKolam.value = filterKolamStok;
+    selKolam.addEventListener('change', () => { filterKolamStok = selKolam.value; gambarTabelStok(); });
     gambarTabelStok();
   }
 
@@ -255,6 +267,7 @@ const Apotek = (() => {
     const hariIni = UI.hariIni();
 
     let list = batch.filter(b => Number(b.stok_sisa) > 0);
+    if (filterKolamStok) list = list.filter(b => (b.kolam || 'reguler') === filterKolamStok);
     if (q) list = list.filter(b =>
       (b.nama_obat || '').toLowerCase().includes(q) ||
       (b.pbf || '').toLowerCase().includes(q) ||
@@ -285,6 +298,8 @@ const Apotek = (() => {
         const nilai = bs.reduce((s, b) => s + Number(b.stok_sisa) * Number(b.harga_beli), 0);
         const buka = grupTerbuka.has(obatId) || q.length > 0;
         const adaExp = bs.some(b => String(b.tgl_expired) <= hariIni);
+        const totalKronis = bs.filter(b => b.kolam === 'kronis')
+          .reduce((s, b) => s + Number(b.stok_sisa), 0);
 
         /* Baris grup sengaja TIDAK mengisi kolom faktur/PBF/tanggal:
            nilai-nilai itu milik batch, bukan milik obat, dan menaruh
@@ -298,7 +313,8 @@ const Apotek = (() => {
               ${UI.esc([bs[0].bentuk_sediaan, bs[0].kekuatan].filter(Boolean).join(' · ') || '—')}
               ${bs[0].harga_jual > 0 ? ' · jual ' + rp(bs[0].harga_jual) : ''}</div></td>
           <td colspan="5" class="text-xs text-muted">
-            Batch terdepan kadaluwarsa ${UI.tglPendek(terdekat.tgl_expired)}</td>
+            Batch terdepan kadaluwarsa ${UI.tglPendek(terdekat.tgl_expired)}
+            ${totalKronis > 0 ? ` · reguler ${total - totalKronis}, kronis ${totalKronis}` : ''}</td>
           <td class="text-right"><b>${total}</b> <small>${UI.esc(bs[0].satuan)}</small></td>
           <td class="text-right"><b>${rp(nilai)}</b></td>
           <td>${adaExp ? '<span class="badge b-danger">Ada kadaluwarsa</span>'
@@ -312,6 +328,7 @@ const Apotek = (() => {
                        style="${buka ? '' : 'display:none'}">
             <td style="padding-left:32px" class="text-xs text-muted">
               Batch ${i + 1}${b.no_batch ? ' · ' + UI.esc(b.no_batch) : ''}
+              ${b.kolam === 'kronis' ? '<span class="badge b-info">Kronis</span>' : ''}
               ${i === 0 && !exp ? '<span class="badge b-info">keluar duluan</span>' : ''}</td>
             <td class="text-xs">${UI.esc(b.no_faktur || '—')}</td>
             <td class="text-xs">${UI.esc(b.pbf || '—')}</td>
@@ -349,7 +366,7 @@ const Apotek = (() => {
   /* ------------------------------------------------------------------
      TAB 3 — RIWAYAT TRANSAKSI
      ------------------------------------------------------------------ */
-  let filterRiwayat = { jenis: '', bulan: '' };
+  let filterRiwayat = { jenis: '', bulan: '', kolam: '' };
 
   function gambarRiwayat(el) {
     el.innerHTML = `
@@ -364,6 +381,10 @@ const Apotek = (() => {
             <option value="MASUK">Masuk</option>
             <option value="KELUAR">Keluar</option>
           </select>
+          <select id="fKolamRiwayat" style="width:auto">
+            <option value="">Semua kolam</option>
+            ${K.KOLAM.map(k => `<option value="${k.kunci}">${UI.esc(k.label)}</option>`).join('')}
+          </select>
           <input type="month" id="fBulan" style="width:auto" value="${UI.esc(filterRiwayat.bulan)}">
         </div>
         <div class="card-body tight" id="isiRiwayat"></div>
@@ -372,6 +393,10 @@ const Apotek = (() => {
     el.querySelector('#fJenis').value = filterRiwayat.jenis;
     el.querySelector('#fJenis').addEventListener('change', (e) => {
       filterRiwayat.jenis = e.target.value; gambarTabelRiwayat();
+    });
+    el.querySelector('#fKolamRiwayat').value = filterRiwayat.kolam;
+    el.querySelector('#fKolamRiwayat').addEventListener('change', (e) => {
+      filterRiwayat.kolam = e.target.value; gambarTabelRiwayat();
     });
     el.querySelector('#fBulan').addEventListener('change', (e) => {
       filterRiwayat.bulan = e.target.value; gambarTabelRiwayat();
@@ -384,6 +409,7 @@ const Apotek = (() => {
     if (!wadah) return;
     let d = transaksi;
     if (filterRiwayat.jenis) d = d.filter(t => t.jenis === filterRiwayat.jenis);
+    if (filterRiwayat.kolam) d = d.filter(t => (t.kolam || 'reguler') === filterRiwayat.kolam);
     if (filterRiwayat.bulan) d = d.filter(t => String(t.tanggal).slice(0, 7) === filterRiwayat.bulan);
     d = d.slice(0, 400);
 
@@ -400,7 +426,7 @@ const Apotek = (() => {
     const urutDalamGrup = {};
 
     wadah.innerHTML = `<div class="table-wrap"><table class="tbl"><thead><tr>
-      <th>Tanggal</th><th>Jenis</th><th>Kategori</th><th>Obat</th>
+      <th>Tanggal</th><th>Jenis</th><th>Kategori</th><th>Obat</th><th>Kolam</th>
       <th class="text-right">Jumlah</th><th class="text-right">Nilai</th>
       <th>Keterangan</th><th style="width:1%"></th></tr></thead><tbody>
       ${d.map(t => {
@@ -416,6 +442,7 @@ const Apotek = (() => {
           <td class="text-xs">${UI.esc(t.kategori)}</td>
           <td>${UI.esc(t.nama_obat)}
             ${n > 1 ? `<span class="text-xs text-muted"> (${urutDalamGrup[t.grup_id]}/${n})</span>` : ''}</td>
+          <td class="text-xs">${t.kolam === 'kronis' ? '<span class="badge b-info">Kronis</span>' : 'Reguler'}</td>
           <td class="text-right">${t.jumlah} <small>${UI.esc(t.satuan)}</small></td>
           <td class="text-right">${rp(t.total_nilai)}</td>
           <td class="text-xs text-muted" style="max-width:200px">${UI.esc(t.keterangan || t.no_faktur || '—')}</td>
@@ -557,13 +584,23 @@ const Apotek = (() => {
   /* ------------------------------------------------------------------
      TAB 5 — LAPORAN BULANAN
      ------------------------------------------------------------------ */
+  let filterKolamLaporan = '';
+
   function gambarLaporan(el) {
-    const lap = K.laporanBulan(transaksi, bulanLaporan);
+    const sumberLap = filterKolamLaporan
+      ? transaksi.filter(t => (t.kolam || 'reguler') === filterKolamLaporan)
+      : transaksi;
+    const lap = K.laporanBulan(sumberLap, bulanLaporan);
     el.innerHTML = `
       <div class="card">
         <div class="card-head">
           <div style="flex:1"><h2>Laporan ${UI.labelBulan(bulanLaporan)}</h2>
-            <div class="sub">${lap.jumlahTransaksi} transaksi.</div></div>
+            <div class="sub">${lap.jumlahTransaksi} transaksi
+              ${filterKolamLaporan ? ' · kolam ' + K.labelKolam(filterKolamLaporan) : ''}.</div></div>
+          <select id="lapKolam" style="width:auto">
+            <option value="">Semua kolam</option>
+            ${K.KOLAM.map(k => `<option value="${k.kunci}">${UI.esc(k.label)}</option>`).join('')}
+          </select>
           <div class="btn-group">
             <button class="btn btn-secondary btn-sm" id="lapPrev">‹</button>
             <input type="month" id="lapBulan" style="width:auto" value="${bulanLaporan}">
@@ -621,6 +658,10 @@ const Apotek = (() => {
       bulanLaporan = UI.geserBulan(bulanLaporan, langkah);
       gambarLaporan(el);
     };
+    el.querySelector('#lapKolam').value = filterKolamLaporan;
+    el.querySelector('#lapKolam').addEventListener('change', (e) => {
+      filterKolamLaporan = e.target.value; gambarLaporan(el);
+    });
     el.querySelector('#lapPrev').addEventListener('click', () => pindah(-1));
     el.querySelector('#lapNext').addEventListener('click', () => pindah(1));
     el.querySelector('#lapBulan').addEventListener('change', (e) => {
@@ -663,6 +704,11 @@ const Apotek = (() => {
           <div class="field"><label>PBF / distributor *</label><input type="text" name="pbf" required></div>
           <div class="field"><label>No. batch pabrik</label><input type="text" name="no_batch"></div>
         </div>
+        <div class="field"><label>Kolam pencatatan</label>
+          <select name="kolam">${K.KOLAM.map(k =>
+            `<option value="${k.kunci}"${k.kunci === 'reguler' ? ' selected' : ''}>${UI.esc(k.label)}</option>`).join('')}</select>
+          <div class="hint">Bukan sekat — hanya menentukan kolam mana yang dilaporkan terpisah
+            dan diutamakan FEFO saat obat ini dikeluarkan. Bisa dikoreksi lewat Edit Batch.</div></div>
         <div class="field"><label>Keterangan</label><input type="text" name="keterangan"></div>
         <div class="banner ok" id="pratinjauMasuk"><div>Total nilai: <b>Rp 0</b></div></div>`,
       siap: (badan) => {
@@ -702,7 +748,8 @@ const Apotek = (() => {
             if (!await konfirmasiMasuk(obatDipilih, f)) return false;
 
             await DB.apotekMasuk({ ...f, obat_id: obatDipilih.id, jumlah: Number(f.jumlah),
-                                   harga_beli: Number(f.harga_beli) || 0 });
+                                   harga_beli: Number(f.harga_beli) || 0,
+                                   kolam: f.kolam || 'reguler' });
             UI.toast('Obat masuk tercatat.');
             await segarkan();
           } }
@@ -718,7 +765,8 @@ const Apotek = (() => {
       String(b.tgl_expired) === f.tgl_expired &&
       String(b.no_faktur || '') === String(f.no_faktur || '') &&
       String(b.pbf || '').toLowerCase() === String(f.pbf || '').toLowerCase() &&
-      Number(b.harga_beli) === Number(f.harga_beli));
+      Number(b.harga_beli) === Number(f.harga_beli) &&
+      (b.kolam || 'reguler') === (f.kolam || 'reguler'));
 
     let peringatan = '';
     if (hariKeExp <= 0) {
@@ -748,6 +796,7 @@ const Apotek = (() => {
           <tr><td class="text-muted">Kadaluwarsa</td><td>${UI.tglIndo(f.tgl_expired)}</td></tr>
           <tr><td class="text-muted">Faktur / PBF</td>
               <td>${UI.esc(f.no_faktur || '—')} · ${UI.esc(f.pbf)}</td></tr>
+          <tr><td class="text-muted">Kolam</td><td>${UI.esc(K.labelKolam(f.kolam || 'reguler'))}</td></tr>
         </tbody></table></div>`,
       tombol: [
         { teks: 'Periksa lagi', nilai: false },
@@ -787,6 +836,14 @@ const Apotek = (() => {
             <input type="date" name="tanggal" value="${UI.hariIni()}" required></div>
         </div>
 
+        <div class="field"><label>Utamakan kolam</label>
+          <select name="kolam">
+            <option value="">Tidak masalah (FEFO biasa)</option>
+            ${K.KOLAM.map(k => `<option value="${k.kunci}">Utamakan ${UI.esc(k.label)}</option>`).join('')}
+          </select>
+          <div class="hint">Hanya urutan pengambilan — kalau kolam yang diutamakan kosong,
+            tetap diambil dari kolam lain.</div></div>
+
         <div class="field"><label>Ambil dari batch</label>
           <select name="batch_id"><option value="">Otomatis (FEFO — kadaluwarsa terdekat dulu)</option></select>
           <div class="hint">Pilih batch tertentu hanya bila memang batch itu yang
@@ -799,6 +856,7 @@ const Apotek = (() => {
       siap: (badan) => {
         const selBatch = badan.querySelector('[name=batch_id]');
         const selKat = badan.querySelector('[name=kategori]');
+        const selKolam = badan.querySelector('[name=kolam]');
         const hintKat = badan.querySelector('#hintKategori');
 
         const perbaruiHintKat = () => {
@@ -810,8 +868,9 @@ const Apotek = (() => {
         const gambarBatch = () => {
           const boleh = K.batchBolehKeluar(batchObat, selKat.value);
           selBatch.innerHTML = '<option value="">Otomatis (FEFO — kadaluwarsa terdekat dulu)</option>'
-            + K.urutFefo(boleh).map(b =>
-                `<option value="${UI.esc(b.id)}">Exp ${UI.tglPendek(b.tgl_expired)} · ${UI.esc(b.pbf || '—')}
+            + K.urutFefo(boleh, selKolam.value || null).map(b =>
+                `<option value="${UI.esc(b.id)}">[${UI.esc(K.labelKolam(b.kolam))}]
+                 Exp ${UI.tglPendek(b.tgl_expired)} · ${UI.esc(b.pbf || '—')}
                  · sisa ${b.stok_sisa} · ${rp(b.harga_beli)}</option>`).join('');
           pratinjau();
         };
@@ -824,7 +883,7 @@ const Apotek = (() => {
 
           let kandidat = K.batchBolehKeluar(batchObat, f.kategori);
           if (f.batch_id) kandidat = kandidat.filter(b => b.id === f.batch_id);
-          const sim = K.simulasiFefo(kandidat, jml);
+          const sim = K.simulasiFefo(kandidat, jml, f.kolam || null);
           const terkunci = batchObat.reduce((s, b) => s + Number(b.stok_sisa), 0)
                          - kandidat.reduce((s, b) => s + Number(b.stok_sisa), 0);
 
@@ -859,6 +918,7 @@ const Apotek = (() => {
         });
 
         selKat.addEventListener('change', () => { perbaruiHintKat(); gambarBatch(); });
+        selKolam.addEventListener('change', gambarBatch);
         selBatch.addEventListener('change', pratinjau);
         badan.querySelector('[name=jumlah]').addEventListener('input', pratinjau);
         perbaruiHintKat();
@@ -869,7 +929,8 @@ const Apotek = (() => {
             const f = UI.nilaiForm(badan);
             if (!obatDipilih) { UI.toast('Pilih obat lebih dulu.', 'err'); return false; }
             if (!f.jumlah || Number(f.jumlah) <= 0) { UI.toast('Jumlah harus lebih dari nol.', 'err'); return false; }
-            await DB.apotekKeluar({ ...f, obat_id: obatDipilih.id, jumlah: Number(f.jumlah) });
+            await DB.apotekKeluar({ ...f, obat_id: obatDipilih.id, jumlah: Number(f.jumlah),
+                                    kolam: f.kolam || null });
             UI.toast('Obat keluar tercatat.');
             await segarkan();
           } }
@@ -1011,6 +1072,12 @@ const Apotek = (() => {
           <div class="field"><label>No. batch pabrik</label>
             <input type="text" name="no_batch" value="${UI.esc(b.no_batch || '')}"></div>
         </div>
+        <div class="field"><label>Kolam pencatatan</label>
+          <select name="kolam">${K.KOLAM.map(k =>
+            `<option value="${k.kunci}"${(b.kolam || 'reguler') === k.kunci ? ' selected' : ''}>
+              ${UI.esc(k.label)}</option>`).join('')}</select>
+          <div class="hint">Memindahkan batch ini ke kolam lain untuk pencatatan berikutnya.
+            Transaksi yang sudah tercatat sebelumnya tidak ikut berubah.</div></div>
         <div class="field"><label>Keterangan</label>
           <input type="text" name="keterangan" value="${UI.esc(b.keterangan || '')}"></div>`,
       tombol: [
@@ -1021,6 +1088,7 @@ const Apotek = (() => {
               harga_beli: Number(f.harga_beli) || 0,
               tgl_expired: f.tgl_expired, tgl_masuk: f.tgl_masuk,
               no_faktur: f.no_faktur, pbf: f.pbf, no_batch: f.no_batch,
+              kolam: f.kolam || 'reguler',
               keterangan: f.keterangan
             });
             UI.toast('Batch diperbarui.');
@@ -1383,7 +1451,7 @@ const Apotek = (() => {
           <table class="tbl"><thead><tr>
             <th style="width:44px">Baris</th><th>Obat</th>
             <th class="text-right">Jumlah</th><th class="text-right">Harga beli</th>
-            <th>Kadaluwarsa</th><th>PBF / faktur</th>
+            <th>Kadaluwarsa</th><th>PBF / faktur</th><th>Kolam</th>
             <th style="width:52px">Buat</th><th>Catatan</th>
           </tr></thead><tbody>${h.baris.map((b, i) => barisPratinjau(b, i)).join('')}</tbody></table>
         </div>
@@ -1447,6 +1515,7 @@ const Apotek = (() => {
         : '<span style="color:var(--danger-700)">tidak terbaca</span>'}</td>
       <td class="text-xs">${UI.esc(b.pbf || '—')}
         ${b.no_faktur ? `<div class="text-muted">${UI.esc(b.no_faktur)}</div>` : ''}</td>
+      <td class="text-xs">${b.kolam === 'kronis' ? '<span class="badge b-info">Kronis</span>' : 'Reguler'}</td>
       <td class="text-center">${b.obat ? '<span class="text-muted">—</span>'
         : `<input type="checkbox" data-buat="${i}" ${b.buatObat ? 'checked' : ''}
              title="Buat obat ini di Master Data">`}</td>

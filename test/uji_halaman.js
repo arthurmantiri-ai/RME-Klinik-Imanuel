@@ -89,16 +89,18 @@ const server = http.createServer((req, res) => {
     const barisGrup = await page.locator('#isiStok .grup-row').count();
     cek('stok dikelompokkan per obat', barisGrup >= 4, `dapat ${barisGrup} grup`);
 
-    /* Paracetamol punya dua batch: yang masuk lebih dulu expired-nya masih
-       lama, yang masuk belakangan hampir kadaluwarsa. Dengan FIFO batch
-       kedua akan mengendap sampai kadaluwarsa; dengan FEFO ia yang keluar
-       duluan. Itulah yang diperiksa di bawah. */
+    /* Paracetamol punya tiga batch: bt-1 (reguler, expired lama), bt-2
+       (reguler, masuk belakangan tapi hampir kadaluwarsa), dan bt-6
+       (kolam kronis, expired menengah). Dengan FIFO bt-2 akan mengendap
+       sampai kadaluwarsa; dengan FEFO ia yang keluar duluan. Itulah yang
+       diperiksa di bawah. bt-6 sengaja ditambahkan supaya tab Stok punya
+       pecahan reguler/kronis yang nyata untuk satu obat yang sama. */
     const grupPct = page.locator('#isiStok .grup-row').filter({ hasText: 'Paracetamol' });
     await grupPct.click();
     await page.waitForTimeout(200);
     const idPct = await grupPct.getAttribute('data-grup');
     const batchPct = page.locator(`#isiStok .batch-row[data-induk="${idPct}"]:visible`);
-    cek('klik grup membuka rincian batch', await batchPct.count() === 2,
+    cek('klik grup membuka rincian batch', await batchPct.count() === 3,
         `dapat ${await batchPct.count()}`);
 
     const barisPertama = await batchPct.first().textContent();
