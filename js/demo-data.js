@@ -68,7 +68,10 @@ const DB = (() => {
     { id: 'ob-7', nama: 'Omeprazole 20 mg', satuan: 'Kapsul', bentuk_sediaan: 'Kapsul', golongan: 'Keras' },
     { id: 'ob-8', nama: 'Vitamin B Kompleks', satuan: 'Tablet', bentuk_sediaan: 'Tablet', golongan: 'Bebas' },
     { id: 'ob-9', nama: 'Asam Mefenamat 500 mg', satuan: 'Tablet', bentuk_sediaan: 'Kaplet', golongan: 'Keras' },
-    { id: 'ob-10', nama: 'Oralit', satuan: 'Sachet', bentuk_sediaan: 'Serbuk', golongan: 'Bebas' }
+    { id: 'ob-10', nama: 'Oralit', satuan: 'Sachet', bentuk_sediaan: 'Serbuk', golongan: 'Bebas' },
+    /* Statin — dipakai contoh kuota BPJS di Pemantauan Kronis (Tahap 2). */
+    { id: 'ob-11', nama: 'Atorvastatin 20 mg', satuan: 'Tablet', bentuk_sediaan: 'Tablet', golongan: 'Keras' },
+    { id: 'ob-12', nama: 'Simvastatin 20 mg', satuan: 'Tablet', bentuk_sediaan: 'Tablet', golongan: 'Keras' }
   ];
 
   const SIGNA = [
@@ -2533,8 +2536,30 @@ const DB = (() => {
 
   /* ================= KRONIS: referensi & migrasi portal ================ */
 
+  /* Awalan ICD-10 dipakai kronis_usulan_diagnosa() sungguhan untuk
+     mengusulkan pendaftaran kronis dari diagnosa yang baru ditulis di
+     halaman Periksa. Kosong di REF_BAWAAN karena itu salinan minimal
+     untuk pratinjau berkas migrasi — di sini diisi supaya usulan Tahap 2
+     benar-benar muncul di demo.html. */
+  const ICD10_AWAL_KRONIS = {
+    HPT: ['I10', 'I11', 'I12', 'I13', 'I15'],
+    DM: ['E10', 'E11', 'E12', 'E13', 'E14'],
+    ASMA: ['J45'],
+    PPOK: ['J44'],
+    JANTUNG: ['I20', 'I21', 'I25', 'I50'],
+    SKIZO: ['F20'],
+    EPILEPSI: ['G40'],
+    STROKE: ['I63', 'I64', 'I69'],
+    CKD: ['N18'],
+    SLE: ['M32']
+  };
   const REF_KRONIS = KronisCore.REF_BAWAAN.map((d, i) =>
-    ({ ...d, pantau_obat: true, icd10_awal: [], urutan: i + 1, aktif: true }));
+    ({ ...d, pantau_obat: true, icd10_awal: ICD10_AWAL_KRONIS[d.kode] || [], urutan: i + 1, aktif: true }));
+
+  const REF_KUOTA = [
+    { kunci: 'atorvastatin', nama: 'Atorvastatin', maks: 3, aktif: true },
+    { kunci: 'simvastatin', nama: 'Simvastatin', maks: 6, aktif: true }
+  ];
 
   /* Tiga keadaan yang harus bisa dilihat di demo, karena ketiganya yang
      benar-benar muncul saat migrasi sungguhan:
@@ -2706,6 +2731,191 @@ const DB = (() => {
     return { dihapus: sebelum - IMPOR.length };
   }
 
+  /* ================= KRONIS: pemantauan (Tahap 2) ======================= */
+
+  const hariKe = (tglA, tglB) => Math.round((new Date(tglB) - new Date(tglA)) / 86400000);
+  function tambahBulanDemo(tglStr, n) {
+    const d = new Date(tglStr + 'T00:00:00');
+    const hariAsal = d.getDate();
+    d.setMonth(d.getMonth() + n);
+    if (d.getDate() < hariAsal) d.setDate(0);   // kalau hari asal tidak ada di bulan tujuan
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  const bulanSama = (a, b) => !!a && a.slice(0, 7) === b.slice(0, 7);
+
+  /* Tiga pasien contoh yang mencakup tiga keadaan sekaligus: sudah ambil
+     bulan ini (pas-1), belum pernah sama sekali (pas-2), dan tertinggal
+     (pas-5) — supaya ketiga status di tab "Belum Ambil Obat" terlihat
+     tanpa perlu mengubah apa pun di demo.html. */
+  let KRONIS_TERAPI = [
+    { id: 'kt-1', pasien_id: 'pas-1', aktif: true, tanggal_mulai: geser(-190), catatan: null,
+      diagnosa: ['HPT', 'DM'],
+      obat: [
+        { id: 'ko-1', obat_id: 'ob-5', nama_obat: 'Amlodipine 5 mg', signa: '1 x sehari 1 tablet', jumlah: 30, satuan: 'Tablet' },
+        { id: 'ko-2', obat_id: 'ob-6', nama_obat: 'Metformin 500 mg', signa: '2 x sehari 1 tablet', jumlah: 60, satuan: 'Tablet' }
+      ],
+      statin_kunci: 'atorvastatin', statin_obat_id: 'ob-11', statin_nama: 'Atorvastatin 20 mg',
+      statin_tgl_lab: geser(-40), statin_terpakai: 2,
+      ambil_terakhir: hariIni, lab_terakhir: geser(-200),
+      kontrol_besok: true, nama_poli: 'Poli Umum', nama_dokter: 'dr. Arthur Mantiri',
+      kontrol_instruksi: 'Puasa 10 jam sebelum datang untuk cek gula darah.' },
+    { id: 'kt-2', pasien_id: 'pas-2', aktif: true, tanggal_mulai: geser(-60), catatan: null,
+      diagnosa: ['ASMA'],
+      obat: [{ id: 'ko-3', obat_id: null, nama_obat: 'Salbutamol inhaler', signa: 'Bila sesak', jumlah: 1, satuan: 'Tabung' }],
+      statin_kunci: null, statin_obat_id: null, statin_nama: null, statin_tgl_lab: null, statin_terpakai: 0,
+      ambil_terakhir: null, lab_terakhir: null, kontrol_besok: false },
+    { id: 'kt-3', pasien_id: 'pas-5', aktif: true, tanggal_mulai: geser(-400), catatan: 'Kontrol rutin bulanan',
+      diagnosa: ['HPT', 'STROKE'],
+      obat: [{ id: 'ko-4', obat_id: 'ob-5', nama_obat: 'Amlodipine 10 mg', signa: '1 x sehari 1 tablet', jumlah: 30, satuan: 'Tablet' }],
+      statin_kunci: 'simvastatin', statin_obat_id: 'ob-12', statin_nama: 'Simvastatin 20 mg',
+      statin_tgl_lab: geser(-210), statin_terpakai: 6,
+      ambil_terakhir: geser(-70), lab_terakhir: geser(-190), kontrol_besok: false }
+  ];
+
+  function lengkapiKronisPasien(t) {
+    const p = PASIEN.find(x => x.id === t.pasien_id);
+    return {
+      terapi_id: t.id, pasien_id: t.pasien_id, no_rm: p?.no_rm, nama: p?.nama, no_hp: p?.no_hp,
+      aktif: t.aktif, tanggal_mulai: t.tanggal_mulai, catatan: t.catatan,
+      statin_kunci: t.statin_kunci, statin_obat_id: t.statin_obat_id,
+      statin_nama: t.statin_nama, statin_tgl_lab: t.statin_tgl_lab,
+      diagnosa: salin(t.diagnosa), obat: salin(t.obat)
+    };
+  }
+
+  async function kronisPantauObat() {
+    await tunggu(60);
+    return KRONIS_TERAPI.filter(t => t.aktif).map(t => {
+      const p = PASIEN.find(x => x.id === t.pasien_id);
+      const bulanIni = bulanSama(t.ambil_terakhir, hariIni);
+      let bulanTertinggal = 0;
+      if (!bulanIni && t.ambil_terakhir) {
+        const a = new Date(t.ambil_terakhir + 'T00:00:00'), b = new Date(hariIni + 'T00:00:00');
+        bulanTertinggal = Math.max(1, (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()));
+      }
+      return {
+        pasien_id: t.pasien_id, no_rm: p.no_rm, nama: p.nama, no_hp: p.no_hp,
+        diagnosa: t.diagnosa.map(k => REF_KRONIS.find(d => d.kode === k)?.nama || k),
+        terakhir_ambil: t.ambil_terakhir, bulan_ini_ambil: bulanIni, bulan_tertinggal: bulanTertinggal
+      };
+    });
+  }
+
+  async function kronisPantauLab() {
+    await tunggu(60);
+    return KRONIS_TERAPI.filter(t => t.aktif).map(t => {
+      const refs = t.diagnosa.map(k => REF_KRONIS.find(d => d.kode === k)).filter(d => d && d.bulan_lab != null);
+      if (!refs.length) return null;
+      const interval = Math.min(...refs.map(d => d.bulan_lab));
+      const p = PASIEN.find(x => x.id === t.pasien_id);
+      const dasar = t.lab_terakhir || t.tanggal_mulai;
+      const jadwal = tambahBulanDemo(dasar, interval);
+      return {
+        pasien_id: t.pasien_id, no_rm: p.no_rm, nama: p.nama,
+        diagnosa: t.diagnosa.map(k => REF_KRONIS.find(d => d.kode === k)?.nama || k),
+        interval_bulan: interval, terakhir_lab: t.lab_terakhir || null,
+        jadwal_berikutnya: jadwal, hari_lewat_jadwal: hariKe(jadwal, hariIni)
+      };
+    }).filter(Boolean);
+  }
+
+  async function kronisPantauStatin() {
+    await tunggu(60);
+    return KRONIS_TERAPI.filter(t => t.aktif && t.statin_kunci).map(t => {
+      const p = PASIEN.find(x => x.id === t.pasien_id);
+      const k = REF_KUOTA.find(x => x.kunci === t.statin_kunci);
+      return {
+        pasien_id: t.pasien_id, no_rm: p.no_rm, nama: p.nama, no_hp: p.no_hp,
+        statin_kunci: t.statin_kunci, statin_nama: t.statin_nama, statin_obat_id: t.statin_obat_id,
+        maks: k ? k.maks : 3, tgl_dasar: t.statin_tgl_lab || t.tanggal_mulai,
+        terpakai: t.statin_terpakai || 0
+      };
+    });
+  }
+
+  async function kronisTelponH1() {
+    await tunggu(50);
+    return KRONIS_TERAPI.filter(t => t.aktif && t.kontrol_besok).map(t => {
+      const p = PASIEN.find(x => x.id === t.pasien_id);
+      return {
+        pasien_id: t.pasien_id, no_rm: p.no_rm, nama: p.nama, no_hp: p.no_hp,
+        nama_poli: t.nama_poli || null, nama_dokter: t.nama_dokter || null,
+        kontrol_instruksi: t.kontrol_instruksi || null
+      };
+    });
+  }
+
+  async function kronisPasien(pasienId) {
+    await tunggu(40);
+    const t = KRONIS_TERAPI.find(x => x.pasien_id === pasienId && x.aktif);
+    return t ? lengkapiKronisPasien(t) : null;
+  }
+
+  async function kronisStatinPasien(pasienId) {
+    const baris = await kronisPantauStatin();
+    return baris.find(r => r.pasien_id === pasienId) || null;
+  }
+
+  async function kronisUsulanDiagnosa(pasienId, kodeIcd10) {
+    await tunggu(40);
+    const t = KRONIS_TERAPI.find(x => x.pasien_id === pasienId && x.aktif);
+    const sudah = t ? t.diagnosa : [];
+    const kodeArr = kodeIcd10 || [];
+    return REF_KRONIS
+      .filter(d => !sudah.includes(d.kode) &&
+        (d.icd10_awal || []).some(awal => kodeArr.some(k => String(k).startsWith(awal))))
+      .map(d => ({ kode: d.kode, nama: d.nama }));
+  }
+
+  async function kronisDaftarSimpan(p) {
+    await tunggu(150);
+    if (!p?.pasienId || !PASIEN.some(x => x.id === p.pasienId)) throw new Error('Pasien tidak ditemukan.');
+    if (!p.diagnosa || !p.diagnosa.length) throw new Error('Pilih minimal satu diagnosis kronis.');
+    p.diagnosa.forEach(k => {
+      if (!REF_KRONIS.some(d => d.kode === k)) throw new Error(`Kode diagnosis kronis "${k}" tidak dikenal.`);
+    });
+    if (p.statinKunci && !REF_KUOTA.some(k => k.kunci === p.statinKunci)) {
+      throw new Error(`Obat berkuota "${p.statinKunci}" tidak dikenal.`);
+    }
+    const obat = (p.obat || []).filter(o => o.nama_obat && o.nama_obat.trim()).map(o => ({
+      id: o.id || uid(), obat_id: o.obat_id || null, nama_obat: o.nama_obat.trim(),
+      signa: o.signa || null, jumlah: o.jumlah || null, satuan: o.satuan || null
+    }));
+    let t = KRONIS_TERAPI.find(x => x.pasien_id === p.pasienId && x.aktif);
+    if (!t) {
+      t = { id: uid(), pasien_id: p.pasienId, aktif: true, tanggal_mulai: hariIni,
+            ambil_terakhir: null, lab_terakhir: null, kontrol_besok: false };
+      KRONIS_TERAPI.push(t);
+    }
+    t.catatan = p.catatan || null;
+    t.diagnosa = [...p.diagnosa];
+    t.obat = obat;
+    t.statin_kunci = p.statinKunci || null;
+    t.statin_obat_id = p.statinKunci ? (p.statinObatId || null) : null;
+    t.statin_nama = p.statinKunci ? (p.statinNama || null) : null;
+    t.statin_tgl_lab = p.statinKunci ? (p.statinTglLab || null) : null;
+    t.statin_terpakai = t.statin_terpakai || 0;
+    return t.id;
+  }
+
+  async function kronisTerapiSelesai(terapiId, alasan) {
+    await tunggu(90);
+    const t = KRONIS_TERAPI.find(x => x.id === terapiId && x.aktif);
+    if (!t) throw new Error('Pendaftaran kronis tidak ditemukan atau sudah tidak aktif.');
+    t.aktif = false; t.tanggal_selesai = hariIni; t.alasan_selesai = alasan || null;
+  }
+
+  async function kronisH3Cek(pasienId) {
+    await tunggu(40);
+    const t = KRONIS_TERAPI.find(x => x.pasien_id === pasienId && x.aktif);
+    if (!t) return null;
+    const jadwal = tambahBulanDemo(t.ambil_terakhir || t.tanggal_mulai, 1);
+    return { terakhir_ambil: t.ambil_terakhir || null, jadwal_berikutnya: jadwal,
+             hari_menuju_jadwal: hariKe(hariIni, jadwal) };
+  }
+
+  async function refKronisKuotaObat() { await tunggu(30); return salin(REF_KUOTA); }
+
   return { sb, masuk, keluar, sesi, saya, bolehTulis, faskes, simpanFaskes,
            daftarPoli, daftarDokter, daftarPegawai, cariIcd, cariObat, daftarSigna,
            cariPasien, pasien, simpanPasien, alergiPasien, tambahAlergi, hapusAlergi, catatAkses,
@@ -2752,9 +2962,12 @@ const DB = (() => {
            poliJadwal, simpanJadwal, hapusJadwal, poliLibur, simpanLibur, hapusLibur,
            antreanPengaturan, simpanAntreanPengaturan, antreanTokenBaru, antreanLayar,
            antrolAkun, antrolAkunSimpan, antrolAkunHapus, antrolLog,
-           refKronisDiagnosa,
+           refKronisDiagnosa, refKronisKuotaObat,
            kronisImporRingkas, kronisImporDaftar, kronisImporBaris, kronisImporUsulan,
            kronisImporTampung, kronisImporCocokkan, kronisImporBatalCocok,
            kronisImporAbaikan, kronisImporOtomatis, kronisImporBersihkan,
+           kronisPantauObat, kronisPantauLab, kronisPantauStatin, kronisTelponH1,
+           kronisPasien, kronisStatinPasien, kronisUsulanDiagnosa,
+           kronisDaftarSimpan, kronisTerapiSelesai, kronisH3Cek,
            gantiPeranDemo, peranDemoSekarang, PERAN_DEMO };
 })();

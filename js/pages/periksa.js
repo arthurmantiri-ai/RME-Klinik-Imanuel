@@ -50,6 +50,13 @@ const Periksa = (() => {
   // Penunjang
   let labKunjungan = [], bacaanKunjungan = [], paketLab = [], masterLab = [];
 
+  // Buku kronis (Tahap 2) — penandaan kronis di halaman periksa
+  let kronisBuku = null;             // baris v_kronis_pasien aktif, atau null
+  let kronisStatin = null;           // baris v_kronis_statin (hanya bila statin_kunci terisi)
+  let kronisUsulan = [];             // usulan dari kronis_usulan_diagnosa(), diperbarui tiap diagnosa berubah
+  let refKronisDiagnosaCache = null;
+  let refKronisKuotaObatCache = null;
+
   const KEADAAN_UMUM_CEPAT = [
     'Tampak sakit ringan', 'Tampak sakit sedang', 'Tampak sakit berat',
     'Tampak baik', 'Tampak lemas', 'Tampak sesak'
@@ -128,6 +135,7 @@ const Periksa = (() => {
     gambarFisik(terkunci);
     muatRiwayatSingkat();
     muatKartuSurat(kj.id, bolehTulis);
+    muatKartuKronis();
     perbaruiRingkasKirim();
   }
 
@@ -206,6 +214,14 @@ const Periksa = (() => {
           ${kartuTindakLanjut(terkunci)}
           ${kartuSimpan(terkunci, bolehTulis)}
           ${kartuKirim()}
+
+          <div class="card no-print">
+            <div class="card-head">
+              <div class="flex-1"><h2>Buku Kronis</h2>
+                <div class="sub">Diagnosis kronis, obat rutin, dan kuota statin BPJS pasien ini</div></div>
+            </div>
+            <div class="card-body" id="kartuKronis">${UI.memuat(1)}</div>
+          </div>
 
           <div class="card no-print">
             <div class="card-head">
@@ -985,6 +1001,7 @@ const Periksa = (() => {
       kasus: 'BARU'
     });
     gambarDiagnosa(); perbaruiRingkasKirim();
+    perbaruiUsulanKronis();
   }
 
   function gambarDiagnosa() {
@@ -1034,6 +1051,7 @@ const Periksa = (() => {
       if (daftarDiagnosa.length && !daftarDiagnosa.some(x => x.jenis === 'PRIMER'))
         daftarDiagnosa[0].jenis = 'PRIMER';
       gambarDiagnosa(); perbaruiRingkasKirim();
+      perbaruiUsulanKronis();
     }));
     w.querySelectorAll('[data-jenis]').forEach(s => s.addEventListener('change', () => {
       const i = +s.dataset.jenis;
@@ -1842,6 +1860,267 @@ const Periksa = (() => {
     } catch (e) {
       w.innerHTML = `<p class="text-muted text-sm mb-0">Daftar surat tidak bisa dimuat.</p>`;
     }
+  }
+
+  /* =================================================================== *
+   *  BUKU KRONIS (Tahap 2)
+   *  ---------------------------------------------------------------
+   *  Mendaftarkan/mengubah buku kronis dilakukan DI SINI (halaman
+   *  Periksa), bukan di halaman Pemantauan Kronis — itu halaman baca
+   *  saja. Dibatasi dokter & belum terkunci (bolehKelolaKronis), lebih
+   *  sempit daripada boleh_kronis_kelola() di database (yang juga
+   *  mengizinkan perawat/admin) — pengurangan cakupan yang disengaja
+   *  supaya sesi ini tidak menyentuh halaman kajian perawat.
+   * =================================================================== */
+  function bolehKelolaKronis() {
+    // Trik yang sama dipakai gambarDiagnosa()/gambarResep(): keberadaan
+    // tombol Selesai menandai rekam medis belum dikunci, tanpa perlu
+    // menyimpan ulang `terkunci` sebagai state modul.
+    return App.boleh(['dokter']) && !!document.getElementById('btnFinal');
+  }
+
+  async function muatKartuKronis() {
+    const w = document.getElementById('kartuKronis');
+    if (!w) return;
+    try {
+      if (!refKronisDiagnosaCache) refKronisDiagnosaCache = await DB.refKronisDiagnosa();
+      kronisBuku = await DB.kronisPasien(kj.pasien_id);
+      kronisStatin = kronisBuku?.statin_kunci
+        ? await DB.kronisStatinPasien(kj.pasien_id).catch(() => null) : null;
+      await perbaruiUsulanKronis(false);
+      gambarKronis();
+    } catch (e) {
+      w.innerHTML = `<p class="text-muted text-sm mb-0">Buku kronis tidak bisa dimuat.</p>`;
+    }
+  }
+
+  /* Dipanggil ulang setiap kali daftar diagnosa kunjungan berubah
+     (tambahDiagnosa / hapus di gambarDiagnosa), supaya usulan pendaftaran
+     kronis selalu mengikuti diagnosa TERBARU, bukan diagnosa saat
+     halaman dibuka. */
+  async function perbaruiUsulanKronis(gambar = true) {
+    if (!kj?.pasien_id || !bolehKelolaKronis()) {
+      kronisUsulan = [];
+    } else {
+      try {
+        kronisUsulan = await DB.kronisUsulanDiagnosa(kj.pasien_id, daftarDiagnosa.map(d => d.kode));
+      } catch (e) { kronisUsulan = []; }
+    }
+    if (gambar) gambarKronis();
+  }
+
+  function gambarKronis() {
+    const w = document.getElementById('kartuKronis');
+    if (!w) return;
+    const bolehKelola = bolehKelolaKronis();
+    const namaDiagnosa = (kode) => {
+      const d = (refKronisDiagnosaCache || []).find(x => x.kode === kode);
+      return d ? d.nama : kode;
+    };
+
+    if (!kronisBuku) {
+      w.innerHTML = `
+        <div class="banner info mb-0"><div>Pasien ini belum terdaftar di buku kronis.</div></div>
+        ${kronisUsulan.length ? `
+          <p class="text-sm mt-12 mb-8">Diagnosa kunjungan ini cocok untuk dipantau kronis:
+            ${kronisUsulan.map(u => `<span class="chip">${UI.esc(u.nama)}</span>`).join(' ')}</p>
+          <button class="btn btn-secondary btn-sm btn-block" id="btnDaftarKronis">
+            ${UI.ikon('plus', 14)} Daftarkan ke buku kronis</button>`
+          : (bolehKelola ? `<button class="btn btn-ghost btn-sm btn-block mt-12" id="btnDaftarKronis">
+              Daftarkan ke buku kronis</button>` : '')}`;
+      const bd = w.querySelector('#btnDaftarKronis');
+      if (bd) bd.addEventListener('click', () => modalBukuKronis());
+      return;
+    }
+
+    w.innerHTML = `
+      <div class="mb-8">${kronisBuku.diagnosa.map(k =>
+        `<span class="chip">${UI.esc(namaDiagnosa(k))}</span>`).join(' ')}</div>
+      ${kronisBuku.obat.length
+        ? `<ul class="text-sm" style="margin:0 0 10px;padding-left:18px">
+            ${kronisBuku.obat.map(o => `<li>${UI.esc(o.nama_obat)}${o.jumlah
+              ? ` — ${UI.esc(String(o.jumlah))} ${UI.esc(o.satuan || '')}` : ''}${o.signa
+              ? ` <span class="text-muted">(${UI.esc(o.signa)})</span>` : ''}</li>`).join('')}
+           </ul>`
+        : `<p class="text-muted text-sm">Belum ada obat rutin kronis dicatat.</p>`}
+      ${kronisBuku.statin_kunci ? `
+        <div class="flex items-center gap-8 mb-8 flex-wrap">
+          <span class="text-sm">${UI.esc(kronisBuku.statin_nama || kronisBuku.statin_kunci)}</span>
+          ${kronisStatin ? `<span class="badge b-${KronisPantauCore.warnaStatin(kronisStatin)}">
+            ${UI.esc(KronisPantauCore.labelStatin(kronisStatin))}</span>` : ''}
+        </div>` : ''}
+      <div class="text-xs text-muted mb-12">Terdaftar sejak ${UI.tglPendek(kronisBuku.tanggal_mulai)}</div>
+      ${bolehKelola ? `
+        <div class="flex gap-8">
+          <button class="btn btn-secondary btn-sm flex-1" id="btnUbahKronis">Ubah</button>
+          <button class="btn btn-ghost btn-sm" id="btnHentikanKronis"
+            style="color:var(--danger-700)">Hentikan</button>
+        </div>` : ''}`;
+
+    const bu = w.querySelector('#btnUbahKronis');
+    if (bu) bu.addEventListener('click', () => modalBukuKronis());
+    const bh = w.querySelector('#btnHentikanKronis');
+    if (bh) bh.addEventListener('click', hentikanKronis);
+  }
+
+  async function hentikanKronis() {
+    if (!kronisBuku) return;
+    const ok = await UI.konfirmasi('Hentikan pendaftaran buku kronis?',
+      `Riwayat pendaftaran tetap tersimpan dan bisa didaftarkan kembali kapan saja. ` +
+      `Pasien ini akan berhenti muncul di halaman Pemantauan Kronis.`,
+      'Hentikan', true);
+    if (!ok) return;
+    try {
+      await DB.kronisTerapiSelesai(kronisBuku.terapi_id, null);
+      UI.toast('Pendaftaran buku kronis dihentikan.', 'ok');
+      await muatKartuKronis();
+    } catch (e) { UI.toast(e.message || 'Gagal menghentikan pendaftaran.', 'err'); }
+  }
+
+  async function modalBukuKronis() {
+    if (!refKronisKuotaObatCache) refKronisKuotaObatCache = await DB.refKronisKuotaObat();
+
+    const sedang = kronisBuku;
+    const terpilihAwal = new Set(sedang ? sedang.diagnosa : kronisUsulan.map(u => u.kode));
+    let obatModal = sedang ? sedang.obat.map(o => ({ ...o })) : [];
+    let statinObatId = sedang?.statin_obat_id || null;
+    let statinNama = sedang?.statin_nama || null;
+
+    function gambarObatModal(b) {
+      const w = b.querySelector('#tabelObatKronis');
+      if (!obatModal.length) {
+        w.innerHTML = `<p class="text-muted text-sm mb-0">Belum ada obat rutin dicatat.</p>`;
+        return;
+      }
+      w.innerHTML = `<div class="table-wrap"><table class="tbl">
+        <thead><tr><th>Obat</th><th style="width:84px">Jumlah</th><th style="width:78px">Satuan</th>
+          <th style="width:180px">Aturan pakai</th><th style="width:1%"></th></tr></thead>
+        <tbody>${obatModal.map((o, i) => `
+          <tr>
+            <td>${UI.esc(o.nama_obat)}</td>
+            <td><input type="number" data-kjml="${i}" value="${o.jumlah || ''}" min="1"
+                  style="width:64px;padding:5px 7px;text-align:center"></td>
+            <td><input type="text" data-ksat="${i}" value="${UI.esc(o.satuan || '')}"
+                  style="width:64px;padding:5px 7px"></td>
+            <td><input type="text" data-ksigna="${i}" value="${UI.esc(o.signa || '')}"
+                  style="padding:5px 8px;font-size:12.5px"></td>
+            <td><button type="button" class="btn-icon" data-khapus="${i}"
+                  title="Hapus">${UI.ikon('x', 14)}</button></td>
+          </tr>`).join('')}</tbody></table></div>`;
+      w.querySelectorAll('[data-khapus]').forEach(bt => bt.addEventListener('click', () => {
+        obatModal.splice(+bt.dataset.khapus, 1); gambarObatModal(b);
+      }));
+      w.querySelectorAll('[data-kjml]').forEach(inp => inp.addEventListener('change', () => {
+        obatModal[+inp.dataset.kjml].jumlah = Number(inp.value) || null;
+      }));
+      w.querySelectorAll('[data-ksat]').forEach(inp => inp.addEventListener('change', () => {
+        obatModal[+inp.dataset.ksat].satuan = inp.value.trim() || null;
+      }));
+      w.querySelectorAll('[data-ksigna]').forEach(inp => inp.addEventListener('change', () => {
+        obatModal[+inp.dataset.ksigna].signa = inp.value.trim() || null;
+      }));
+    }
+
+    const hasil = await UI.modal({
+      judul: sedang ? 'Ubah buku kronis' : 'Daftarkan ke buku kronis',
+      lebar: true,
+      isi: `
+        <p class="text-sm text-muted">Terdaftar di sini berarti pasien masuk pemantauan
+          "belum ambil obat", jadwal &amp; kepatuhan lab, dan (bila relevan) kuota statin
+          BPJS — semuanya terlihat di halaman Pemantauan Kronis.</p>
+        <div class="field">
+          <label>Diagnosis kronis <span class="req">*</span></label>
+          <div class="form-row c2" id="dfKronisDx">
+            ${refKronisDiagnosaCache.map(d => `<label class="check">
+              <input type="checkbox" value="${UI.esc(d.kode)}" ${terpilihAwal.has(d.kode) ? 'checked' : ''}>
+              <span>${UI.esc(d.nama)}</span></label>`).join('')}
+          </div>
+        </div>
+        <div class="divider"></div>
+        <div class="field">
+          <label>Obat rutin bulanan <span class="opt">dipantau di tab "Belum Ambil Obat"</span></label>
+          <div id="cariObatKronis" class="mb-8"></div>
+          <div id="tabelObatKronis"></div>
+        </div>
+        <div class="divider"></div>
+        <fieldset class="fieldset">
+          <legend>Obat berkuota BPJS (statin) <span class="opt">isi bila ada</span></legend>
+          <div class="form-row c2">
+            <div class="field">
+              <label for="stKunci">Jenis statin</label>
+              <select id="stKunci">
+                <option value="">— tidak ada —</option>
+                ${refKronisKuotaObatCache.map(k => `<option value="${UI.esc(k.kunci)}"
+                  ${sedang?.statin_kunci === k.kunci ? 'selected' : ''}
+                  >${UI.esc(k.nama)} (maks ${k.maks}×)</option>`).join('')}
+              </select>
+            </div>
+            <div class="field">
+              <label for="stTglLab">Tanggal hasil LDL terakhir <span class="opt">bila belum ada di RME</span></label>
+              <input type="date" id="stTglLab" value="${UI.esc(sedang?.statin_tgl_lab || '')}">
+            </div>
+          </div>
+          <div id="cariObatStatin" class="mb-8"></div>
+          <div class="text-xs text-muted" id="statinTerpilih">${statinNama
+            ? 'Obat: ' + UI.esc(statinNama) : 'Obat spesifik belum dipilih — kuota tetap dihitung dari jenisnya.'}</div>
+        </fieldset>
+        <div class="field mb-0">
+          <label for="ctKronis">Catatan</label>
+          <textarea id="ctKronis" rows="2">${UI.esc(sedang?.catatan)}</textarea>
+        </div>`,
+      siap: (b) => {
+        gambarObatModal(b);
+        Komponen.comboCari({
+          wadah: b.querySelector('#cariObatKronis'),
+          placeholder: 'Cari obat untuk ditambah ke daftar rutin…',
+          cariFn: (kata) => DB.cariObat(kata),
+          formatFn: (o) => `<b>${UI.esc(o.nama)}</b><span>${UI.esc(o.satuan || '')}</span>`,
+          onPilih: (o) => {
+            if (obatModal.some(x => x.obat_id === o.id)) {
+              UI.toast('Obat itu sudah ada dalam daftar.', 'warn'); return;
+            }
+            obatModal.push({
+              obat_id: o.id, nama_obat: o.nama, jumlah: 30,
+              satuan: o.satuan, signa: '1 x sehari 1 tablet'
+            });
+            gambarObatModal(b);
+          }
+        });
+        Komponen.comboCari({
+          wadah: b.querySelector('#cariObatStatin'),
+          placeholder: 'Cari nama obat statin spesifik (opsional)…',
+          cariFn: (kata) => DB.cariObat(kata),
+          formatFn: (o) => `<b>${UI.esc(o.nama)}</b><span>${UI.esc(o.satuan || '')}</span>`,
+          onPilih: (o) => {
+            statinObatId = o.id; statinNama = o.nama;
+            b.querySelector('#statinTerpilih').textContent = 'Obat: ' + o.nama;
+          }
+        });
+      },
+      tombol: [
+        { teks: 'Batal', nilai: null },
+        { teks: 'Simpan', kelas: 'btn-primary', aksi: async (b) => {
+            const dx = Array.from(b.querySelectorAll('#dfKronisDx input:checked')).map(c => c.value);
+            if (!dx.length) { UI.toast('Pilih minimal satu diagnosis kronis.', 'err'); return false; }
+            const stKunci = b.querySelector('#stKunci').value || null;
+            const stTglLab = b.querySelector('#stTglLab').value || null;
+            try {
+              await DB.kronisDaftarSimpan({
+                pasienId: kj.pasien_id, diagnosa: dx, obat: obatModal,
+                statinKunci: stKunci,
+                statinObatId: stKunci ? statinObatId : null,
+                statinNama: stKunci ? statinNama : null,
+                statinTglLab: stKunci ? stTglLab : null,
+                catatan: b.querySelector('#ctKronis').value.trim() || null
+              });
+              UI.toast('Buku kronis pasien disimpan.', 'ok');
+              return true;
+            } catch (e) { UI.toast(e.message || 'Gagal menyimpan.', 'err'); return false; }
+          } }
+      ]
+    });
+
+    if (hasil) await muatKartuKronis();
   }
 
   async function muatRiwayatSingkat() {

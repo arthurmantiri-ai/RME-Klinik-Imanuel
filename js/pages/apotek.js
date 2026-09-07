@@ -978,6 +978,40 @@ const Apotek = (() => {
     const adaKurang = (r.item || []).some(it =>
       it.obat_id && Number((it.stok || {}).stok_layak || 0) < Number(it.jumlah));
 
+    // Peringatan kronis (Tahap 2) — H-3 (terlalu cepat) dan kuota statin.
+    // Keduanya PERINGATAN, bukan penolakan (keputusan 4 Sep 2026): apoteker
+    // sudah berhadapan dengan pasiennya, sistem hanya mengingatkan.
+    // Diam-diam dilewati kalau gagal dimuat (mis. RLS/izin) — modul ini
+    // tidak boleh menghalangi penyerahan resep yang sebenarnya normal.
+    let banerKronis = '';
+    if (!sudah && p.id) {
+      try {
+        const kronis = await DB.kronisPasien(p.id);
+        if (kronis) {
+          const idObatKronis = new Set((kronis.obat || []).map(o => o.obat_id).filter(Boolean));
+          const punyaObatKronis = (r.item || []).some(it => idObatKronis.has(it.obat_id));
+          if (punyaObatKronis) {
+            const h3 = await DB.kronisH3Cek(p.id);
+            const pesanH3 = KronisPantauCore.pesanH3(h3);
+            if (pesanH3) banerKronis += `<div class="banner warn mb-16">${UI.ikon('peringatan')}
+              <div><b>Pengambilan lebih cepat dari jadwal.</b> ${UI.esc(pesanH3)}</div></div>`;
+          }
+          const punyaStatin = kronis.statin_kunci && kronis.statin_obat_id
+            && (r.item || []).some(it => it.obat_id === kronis.statin_obat_id);
+          if (punyaStatin) {
+            const statin = await DB.kronisStatinPasien(p.id);
+            const info = statin && KronisPantauCore.statinInfo(statin);
+            if (info && (info.peringatan || info.mendekati)) {
+              banerKronis += `<div class="banner ${info.peringatan ? 'err' : 'warn'} mb-16">
+                ${UI.ikon('peringatan')}<div><b>Kuota ${UI.esc(statin.statin_nama || statin.statin_kunci)}
+                  BPJS: ${UI.esc(KronisPantauCore.labelStatin(statin))}.</b> Tetap boleh diserahkan
+                  bila memang perlu secara klinis.</div></div>`;
+            }
+          }
+        }
+      } catch (e) { /* diam-diam dilewati — lihat catatan di atas */ }
+    }
+
     await UI.modal({
       judul: sudah ? `Resep ${r.no_resep || ''} — sudah diserahkan`
                    : `Serahkan resep ${r.no_resep || ''}`,
@@ -990,6 +1024,7 @@ const Apotek = (() => {
               · ${UI.esc(k.poli?.nama || '')} · ${UI.esc(k.cara_bayar || '')}</span></div>
         </div>
 
+        ${banerKronis}
         ${sudah ? `<div class="banner ok mb-16"><div>Diserahkan
             ${UI.tglIndo(r.diserahkan_pada)} ${UI.jam(r.diserahkan_pada)}.
             ${r.diserahkan_sebagian ? '<b>Sebagian butir tidak diserahkan.</b>' : ''}</div></div>`

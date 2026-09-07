@@ -19,6 +19,7 @@ const App = (() => {
     { grup: 'Data' },
     { rute: '#/pasien',      label: 'Data Pasien',   ikon: 'pasien',    peran: '*' },
     { rute: '#/riwayat',     label: 'Riwayat Kunjungan', ikon: 'rekam', peran: '*' },
+    { rute: '#/pantau-kronis', label: 'Pemantauan Kronis', ikon: 'stetoskop', peran: '*' },
     { rute: '#/laporan',     label: 'Laporan',       ikon: 'laporan',   peran: ['admin','dokter','pendaftaran'] },
     { grup: 'Sistem' },
     { rute: '#/master',      label: 'Master Data',   ikon: 'pil',       peran: ['admin'] },
@@ -34,6 +35,7 @@ const App = (() => {
     'antrian':     () => Antrian.render(view()),
     'pasien':      (p) => Pasien.render(view(), p),
     'riwayat':     () => Rekam.renderRiwayat(view()),
+    'pantau-kronis': (p) => PantauKronis.render(view(), p),
     'kajian':      (p) => Kajian.render(view(), p),
     'periksa':     (p) => Periksa.render(view(), p),
     'rekam':       (p) => Rekam.render(view(), p),
@@ -51,7 +53,7 @@ const App = (() => {
 
   const JUDUL = {
     beranda: 'Beranda', pendaftaran: 'Pendaftaran Pasien', antrian: 'Antrean Hari Ini',
-    pasien: 'Data Pasien', riwayat: 'Riwayat Kunjungan', kajian: 'Kajian Awal',
+    pasien: 'Data Pasien', riwayat: 'Riwayat Kunjungan', 'pantau-kronis': 'Pemantauan Kronis', kajian: 'Kajian Awal',
     periksa: 'Pemeriksaan Dokter', rekam: 'Rekam Medis', laporan: 'Laporan',
     lab: 'Lab & Pemeriksaan Penunjang',
     apotek: 'Apotek', kasir: 'Kasir', surat: 'Surat Keterangan',

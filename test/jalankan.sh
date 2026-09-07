@@ -20,7 +20,7 @@ done
 
 echo
 echo "== Uji fungsional =="
-for t in uji_apotek uji_apotek_kolam uji_kasir uji_rls uji_impor uji_penunjang uji_surat uji_periksa uji_antrean uji_kronis; do
+for t in uji_apotek uji_apotek_kolam uji_kasir uji_rls uji_impor uji_penunjang uji_surat uji_periksa uji_antrean uji_kronis uji_kronis_pantau; do
   echo "-- $t"
   if ! psql -h "$PGHOST" -p "$PGPORT" -U postgres -d rme -v ON_ERROR_STOP=1 \
         -f "$DIR/test/$t.sql" 2>&1 | grep -v '^ \|^-\{2,\}$\|^(\|^ *$\|set_config'; then

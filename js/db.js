@@ -1550,6 +1550,14 @@ const DB = (() => {
     if (error) throw error; return data;
   }
 
+  /* Obat berkuota BPJS (statin) — dipakai dropdown di modal pendaftaran
+     buku kronis halaman Periksa. */
+  async function refKronisKuotaObat() {
+    const { data, error } = await sb.from('ref_kronis_kuota_obat')
+      .select('kunci,nama,maks,aktif').eq('aktif', true).order('nama');
+    if (error) throw error; return data;
+  }
+
   async function kronisImporRingkas() {
     const { data, error } = await sb.from('v_kronis_impor_ringkas').select('*').single();
     if (error) throw error; return data;
@@ -1620,6 +1628,74 @@ const DB = (() => {
     if (error) throw error; return data;
   }
 
+  /* --------------------- Kronis: pemantauan (Tahap 2) ------------------- */
+  async function kronisPantauObat() {
+    const { data, error } = await sb.from('v_kronis_obat_bulan_ini')
+      .select('*').order('bulan_tertinggal', { ascending: false }).order('nama');
+    if (error) throw error; return data;
+  }
+
+  async function kronisPantauLab() {
+    const { data, error } = await sb.from('v_kronis_lab_jadwal')
+      .select('*').order('hari_lewat_jadwal', { ascending: false }).order('nama');
+    if (error) throw error; return data;
+  }
+
+  async function kronisPantauStatin() {
+    const { data, error } = await sb.from('v_kronis_statin')
+      .select('*').order('nama');
+    if (error) throw error; return data;
+  }
+
+  async function kronisTelponH1() {
+    const { data, error } = await sb.from('v_kronis_telpon_h1').select('*');
+    if (error) throw error; return data;
+  }
+
+  /* Buku kronis pasien tertentu — dipakai halaman periksa & apotek.
+     null (bukan galat) bila pasien tidak/belum terdaftar. */
+  async function kronisPasien(pasienId) {
+    const { data, error } = await sb.from('v_kronis_pasien')
+      .select('*').eq('pasien_id', pasienId).maybeSingle();
+    if (error) throw error; return data;
+  }
+
+  async function kronisStatinPasien(pasienId) {
+    const { data, error } = await sb.from('v_kronis_statin')
+      .select('*').eq('pasien_id', pasienId).maybeSingle();
+    if (error) throw error; return data;
+  }
+
+  async function kronisUsulanDiagnosa(pasienId, kodeIcd10) {
+    const { data, error } = await sb.rpc('kronis_usulan_diagnosa',
+      { p_pasien_id: pasienId, p_kode_icd10: kodeIcd10 });
+    if (error) throw error; return data || [];
+  }
+
+  async function kronisDaftarSimpan(p) {
+    const { data, error } = await sb.rpc('kronis_daftar_simpan', {
+      p_pasien_id: p.pasienId, p_diagnosa: p.diagnosa, p_obat: p.obat || [],
+      p_statin_kunci: p.statinKunci || null, p_statin_obat_id: p.statinObatId || null,
+      p_statin_nama: p.statinNama || null, p_statin_tgl_lab: p.statinTglLab || null,
+      p_catatan: p.catatan || null
+    });
+    if (error) throw error; return data;
+  }
+
+  async function kronisTerapiSelesai(terapiId, alasan = null) {
+    const { error } = await sb.rpc('kronis_terapi_selesai',
+      { p_terapi_id: terapiId, p_alasan: alasan });
+    if (error) throw error;
+  }
+
+  /* Peringatan H-3 (pengambilan obat kronis terlalu cepat). null = pasien
+     ini tidak terdaftar di buku kronis — bukan galat, apotek/periksa cukup
+     diam saja dalam keadaan itu. */
+  async function kronisH3Cek(pasienId) {
+    const { data, error } = await sb.rpc('kronis_h3_cek', { p_pasien_id: pasienId });
+    if (error) throw error; return data;
+  }
+
   return {
     sb, masuk, keluar, sesi, saya, bolehTulis,
     faskes, simpanFaskes,
@@ -1670,9 +1746,12 @@ const DB = (() => {
     antreanPengaturan, simpanAntreanPengaturan, antreanTokenBaru, antreanLayar,
     antrolAkun, antrolAkunSimpan, antrolAkunHapus, antrolLog,
     panggilBridging, riwayatBridging,
-    refKronisDiagnosa,
+    refKronisDiagnosa, refKronisKuotaObat,
     kronisImporRingkas, kronisImporDaftar, kronisImporBaris, kronisImporUsulan,
     kronisImporTampung, kronisImporCocokkan, kronisImporBatalCocok,
-    kronisImporAbaikan, kronisImporOtomatis, kronisImporBersihkan
+    kronisImporAbaikan, kronisImporOtomatis, kronisImporBersihkan,
+    kronisPantauObat, kronisPantauLab, kronisPantauStatin, kronisTelponH1,
+    kronisPasien, kronisStatinPasien, kronisUsulanDiagnosa,
+    kronisDaftarSimpan, kronisTerapiSelesai, kronisH3Cek
   };
 })();
