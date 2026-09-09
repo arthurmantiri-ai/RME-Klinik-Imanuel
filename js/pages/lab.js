@@ -71,32 +71,29 @@ const Lab = (() => {
     if (!rentang.dari) { rentang.dari = UI.hariIni(); rentang.sampai = UI.hariIni(); }
 
     w.innerHTML = `
+      <div class="page-header">
+        <div class="page-heading">
+          <h2>Antrean pemeriksaan laboratorium</h2>
+          <div class="page-sub">Permintaan dokter dan lembar hasil yang sedang berjalan</div>
+        </div>
+        ${bolehIsi() ? `<div class="page-actions"><button class="btn btn-secondary btn-sm" id="btnLuar">
+          ${UI.ikon('plus',15)} Catat hasil lab luar</button></div>` : ''}
+      </div>
+      <div class="filter-bar">
+        <div class="field"><label>Dari tanggal</label>
+          <input type="date" id="fDari" class="control-auto" value="${rentang.dari}"></div>
+        <div class="field"><label>Sampai</label>
+          <input type="date" id="fSampai" class="control-auto" value="${rentang.sampai}"></div>
+        <div class="field"><label>Status</label>
+          <select id="fStatus" class="control-auto">
+            <option value="AKTIF">Belum selesai</option>
+            <option value="">Semua</option>
+            <option value="SELESAI">Selesai</option>
+            <option value="BATAL">Batal</option>
+          </select></div>
+        <button class="btn btn-secondary" id="btnMuat">Tampilkan</button>
+      </div>
       <div class="card">
-        <div class="card-head">
-          <div class="flex-1">
-            <h2>Antrean pemeriksaan laboratorium</h2>
-            <div class="sub">Permintaan dokter dan lembar hasil yang sedang berjalan</div>
-          </div>
-          ${bolehIsi() ? `<button class="btn btn-secondary btn-sm" id="btnLuar">
-            ${UI.ikon('plus',15)} Catat hasil lab luar</button>` : ''}
-        </div>
-        <div class="card-body">
-          <div class="form-row c4">
-            <div class="field mb-0"><label>Dari tanggal</label>
-              <input type="date" id="fDari" value="${rentang.dari}"></div>
-            <div class="field mb-0"><label>Sampai</label>
-              <input type="date" id="fSampai" value="${rentang.sampai}"></div>
-            <div class="field mb-0"><label>Status</label>
-              <select id="fStatus">
-                <option value="AKTIF">Belum selesai</option>
-                <option value="">Semua</option>
-                <option value="SELESAI">Selesai</option>
-                <option value="BATAL">Batal</option>
-              </select></div>
-            <div class="field mb-0"><label>&nbsp;</label>
-              <button class="btn btn-secondary btn-block" id="btnMuat">Tampilkan</button></div>
-          </div>
-        </div>
         <div class="card-body tight" id="tabelAntrean">${UI.memuat(4)}</div>
       </div>`;
 
@@ -129,18 +126,18 @@ const Lab = (() => {
         const lengkap = r.jml_pemeriksaan > 0 && r.jml_terisi === r.jml_pemeriksaan;
         return `<tr class="clickable" data-id="${r.id}">
           <td><b class="mono">${UI.esc(r.no_lab)}</b>
-              <div class="text-muted" style="font-size:12px">${UI.tglPendek(r.tanggal)}</div></td>
+              <div class="text-muted text-xs">${UI.tglPendek(r.tanggal)}</div></td>
           <td><b>${UI.esc(r.nama_pasien)}</b>
-              <div class="text-muted" style="font-size:12px">
+              <div class="text-muted text-xs">
                 ${UI.esc(r.no_rm)} · ${r.jenis_kelamin === 'L' ? 'L' : 'P'} ·
                 ${UI.umurTeks(r.tanggal_lahir)}</div></td>
           <td>${r.asal === 'EKSTERNAL'
                 ? `<span class="badge b-info">Lab luar</span>
-                   <div class="text-muted" style="font-size:12px">${UI.esc(r.nama_lab_luar || '-')}</div>`
+                   <div class="text-muted text-xs">${UI.esc(r.nama_lab_luar || '-')}</div>`
                 : `${UI.esc(r.nama_dokter || '-')}
-                   <div class="text-muted" style="font-size:12px">${UI.esc(r.nama_poli || '-')}</div>`}</td>
+                   <div class="text-muted text-xs">${UI.esc(r.nama_poli || '-')}</div>`}</td>
           <td class="num">${r.jml_terisi} / ${r.jml_pemeriksaan}
-              ${lengkap ? '' : '<div class="text-muted" style="font-size:12px">belum lengkap</div>'}</td>
+              ${lengkap ? '' : '<div class="text-muted text-xs">belum lengkap</div>'}</td>
           <td>${r.jml_kritis > 0
                 ? `<span class="badge b-danger">${r.jml_kritis} nilai kritis</span>`
                 : r.jml_tak_normal > 0
@@ -243,19 +240,18 @@ const Lab = (() => {
         <div class="card-body tight">
           <div class="table-wrap"><table class="tbl">
             <thead><tr>
-              <th style="width:34%">Pemeriksaan</th><th style="width:20%">Hasil</th>
-              <th style="width:10%">Satuan</th><th style="width:18%">Nilai rujukan</th>
-              <th style="width:12%">Tanda</th><th style="width:6%" class="no-print"></th>
+              <th class="col-w34p">Pemeriksaan</th><th class="col-w20p">Hasil</th>
+              <th class="col-w10p">Satuan</th><th class="col-w18p">Nilai rujukan</th>
+              <th class="col-w12p">Tanda</th><th class="col-w6p no-print"></th>
             </tr></thead>
             <tbody>
               ${grup.map(g => `
-                <tr><td colspan="6" style="background:var(--ink-50);font-weight:700;font-size:12px;
-                    text-transform:uppercase;letter-spacing:.04em">${UI.esc(g.kelompok)}</td></tr>
+                <tr><td colspan="6" class="group-row">${UI.esc(g.kelompok)}</td></tr>
                 ${g.isi.map(h => barisHasil(h, rujukanPakai[h.id], terkunci)).join('')}
               `).join('')}
             </tbody></table></div>
         </div>
-        ${p.asal === 'EKSTERNAL' ? `<div class="card-foot text-muted" style="font-size:12.5px">
+        ${p.asal === 'EKSTERNAL' ? `<div class="card-foot text-muted text-sm">
           Hasil dari ${UI.esc(p.nama_lab_luar || 'lab luar')}
           ${p.no_lembar_luar ? '· lembar no. ' + UI.esc(p.no_lembar_luar) : ''}.
           Pemeriksaan ini tidak masuk tagihan karena bukan klinik yang mengerjakannya.
@@ -323,16 +319,16 @@ const Lab = (() => {
           `<option ${o === h.nilai_teks ? 'selected' : ''}>${UI.esc(o)}</option>`).join('')}
       </select>`;
     } else {
-      isian = `<input type="text" data-hasil="${h.id}" class="w-full" inputmode="decimal"
-                 value="${UI.esc(nilai)}" ${m.jenis_nilai === 'ANGKA' ? 'style="text-align:right"' : ''}>`;
+      isian = `<input type="text" data-hasil="${h.id}" class="w-full ${m.jenis_nilai === 'ANGKA' ? 'text-right' : ''}"
+                 inputmode="decimal" value="${UI.esc(nilai)}">`;
     }
 
     return `<tr data-baris="${h.id}">
       <td>${UI.esc(h.nama)}
-          ${m.kode ? `<span class="text-muted mono" style="font-size:11.5px"> ${UI.esc(m.kode)}</span>` : ''}</td>
+          ${m.kode ? `<span class="text-muted mono text-xs"> ${UI.esc(m.kode)}</span>` : ''}</td>
       <td>${isian}</td>
       <td class="muted">${UI.esc(h.satuan || '')}</td>
-      <td class="muted mono" style="font-size:12.5px">${UI.esc(h.rujukan_teks || LabCore.teksRujukan(ruj, m) || '—')}</td>
+      <td class="muted mono text-sm">${UI.esc(h.rujukan_teks || LabCore.teksRujukan(ruj, m) || '—')}</td>
       <td data-tanda="${h.id}">${lencanaTanda(h.tanda)}</td>
       <td class="no-print">${m.jenis_nilai === 'ANGKA'
         ? `<button class="btn-icon" data-tren="${h.lab_id}" data-nama="${UI.esc(h.nama)}"
@@ -423,15 +419,15 @@ const Lab = (() => {
     const baris = await DB.labTren(pasienId, labId, 12);
     const deret = LabCore.susunTren(baris).reverse();
     const isi = !deret.length
-      ? `<p class="text-muted" style="margin:0">Belum ada hasil terdahulu untuk pemeriksaan ini.</p>`
+      ? `<p class="text-muted mb-0">Belum ada hasil terdahulu untuk pemeriksaan ini.</p>`
       : `<div class="table-wrap"><table class="tbl">
           <thead><tr><th>Tanggal</th><th class="num">Hasil</th><th>Rujukan</th>
             <th class="num">Selisih</th><th>Tanda</th></tr></thead>
           <tbody>${deret.map(d => `<tr>
             <td>${UI.tglPendek(d.tanggal)}
-                <div class="text-muted mono" style="font-size:11.5px">${UI.esc(d.no_lab)}</div></td>
+                <div class="text-muted mono text-xs">${UI.esc(d.no_lab)}</div></td>
             <td class="num"><b>${UI.esc(String(d.nilai))}</b> ${UI.esc(d.satuan || '')}</td>
-            <td class="muted mono" style="font-size:12px">${UI.esc(d.rujukan_teks || '—')}</td>
+            <td class="muted mono text-sm">${UI.esc(d.rujukan_teks || '—')}</td>
             <td class="num">${d.selisih === null ? '<span class="text-muted">—</span>'
               : (d.selisih > 0 ? '+' : '') + UI.esc(String(d.selisih))}</td>
             <td>${lencanaTanda(d.tanda)}</td>
@@ -443,7 +439,7 @@ const Lab = (() => {
   async function modalAlasan(judul, penjelasan) {
     return await UI.modal({
       judul,
-      isi: `<p class="text-muted" style="margin:0 0 12px">${UI.esc(penjelasan)}</p>
+      isi: `<p class="text-muted mt-0 mb-12">${UI.esc(penjelasan)}</p>
             <div class="field mb-0"><label for="alasan">Alasan</label>
               <textarea id="alasan" rows="3" placeholder="Tulis sejelasnya…"></textarea></div>`,
       tombol: [
@@ -497,7 +493,7 @@ const Lab = (() => {
       <div class="kop">
         <h1>${UI.esc(f?.nama || CONFIG.NAMA_KLINIK)}</h1>
         <div class="sub">${UI.esc(f?.alamat || '')} ${f?.telepon ? '· Telp. ' + UI.esc(f.telepon) : ''}</div>
-        <div class="sub" style="margin-top:4px"><b>HASIL PEMERIKSAAN LABORATORIUM</b></div>
+        <div class="sub mt-4"><b>HASIL PEMERIKSAAN LABORATORIUM</b></div>
       </div>
       <div class="id">
         <div><b>Nama</b> ${UI.esc(p.pasien.nama)}</div>
@@ -511,9 +507,9 @@ const Lab = (() => {
               ? UI.esc(p.nama_lab_luar || 'Lab luar') : 'Laboratorium klinik'}</div>
       </div>
       <table><thead><tr>
-        <th style="width:36%">Pemeriksaan</th><th class="num" style="width:16%">Hasil</th>
-        <th style="width:12%">Satuan</th><th style="width:22%">Nilai rujukan</th>
-        <th style="width:14%">Tanda</th></tr></thead><tbody>
+        <th class="col-w36p">Pemeriksaan</th><th class="num col-w16p">Hasil</th>
+        <th class="col-w12p">Satuan</th><th class="col-w22p">Nilai rujukan</th>
+        <th class="col-w14p">Tanda</th></tr></thead><tbody>
         ${grup.map(g => `<tr class="grp"><td colspan="5">${UI.esc(g.kelompok)}</td></tr>
           ${g.isi.map(h => {
             const t = LabCore.TANDA[h.tanda] || {};
@@ -569,12 +565,11 @@ const Lab = (() => {
             <input type="text" id="noLembar"></div>
         </div>
         <div class="field mb-0"><label>Pemeriksaan yang ada hasilnya</label>
-          <div class="chip-quick" id="paketLuar" style="margin-bottom:8px">
+          <div class="chip-quick mb-8" id="paketLuar">
             ${paket.map(pk => `<button type="button" class="chip" data-paket="${pk.id}">
               ${UI.esc(pk.nama)}</button>`).join('')}
           </div>
-          <div style="max-height:230px;overflow-y:auto;border:1px solid var(--ink-200);
-                      border-radius:8px;padding:10px" id="daftarLab">
+          <div class="scroll-box" id="daftarLab">
             ${daftarPilihLab()}
           </div>
           <div class="hint" id="hitungPilih">Belum ada yang dipilih.</div>
@@ -645,9 +640,8 @@ const Lab = (() => {
       (grup[m.kelompok] = grup[m.kelompok] || []).push(m);
     });
     return Object.entries(grup).map(([k, isi]) => `
-      <div style="margin-bottom:10px">
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;
-                    letter-spacing:.04em;color:var(--ink-500);margin-bottom:5px">${UI.esc(k)}</div>
+      <div class="mb-10">
+        <div class="group-label">${UI.esc(k)}</div>
         <div class="form-row c3">
           ${isi.map(m => `<label class="check">
             <input type="checkbox" value="${m.id}" ${terpilih.includes(m.id) ? 'checked' : ''}>
@@ -697,9 +691,9 @@ const Lab = (() => {
           <td>${UI.tglPendek(d.tanggal)}</td>
           <td>${UI.esc(LabCore.labelJenis(d.jenis))}
               ${d.asal === 'EKSTERNAL'
-                ? `<div class="text-muted" style="font-size:12px">${UI.esc(d.nama_tempat || 'luar')}</div>` : ''}</td>
+                ? `<div class="text-muted text-xs">${UI.esc(d.nama_tempat || 'luar')}</div>` : ''}</td>
           <td class="mono">${UI.esc(d.daftar_gigi || '—')}</td>
-          <td style="max-width:340px">${UI.esc(d.kesan)}</td>
+          <td class="col-max-340">${UI.esc(d.kesan)}</td>
           <td class="muted">${UI.esc(d.nama_pembaca || '-')}</td>
           <td class="no-print">${bolehBaca()
             ? `<button class="btn btn-ghost btn-sm" data-sunting="${d.id}">Sunting</button>` : ''}</td>
@@ -792,7 +786,7 @@ const Lab = (() => {
               <option value="EKSTERNAL" ${awal?.asal === 'EKSTERNAL' ? 'selected' : ''}>Tempat lain</option>
             </select></div>
         </div>
-        <div class="form-row c2" id="barisLuar" style="display:${awal?.asal === 'EKSTERNAL' ? '' : 'none'}">
+        <div class="form-row c2" id="barisLuar" ${awal?.asal === 'EKSTERNAL' ? '' : 'hidden'}>
           <div class="field"><label for="pnTempat">Nama tempat</label>
             <input type="text" id="pnTempat" value="${UI.esc(awal?.nama_tempat || '')}"></div>
           <div class="field"><label for="pnNoFilm">No. film / ekspertise</label>
@@ -813,7 +807,7 @@ const Lab = (() => {
         <div class="field"><label for="pnTemuan">Temuan <span class="opt">gambaran yang terlihat</span></label>
           <textarea id="pnTemuan" rows="3"
             placeholder="mis. Tampak area radiolusen pada mahkota gigi 36 mencapai kamar pulpa…">${UI.esc(awal?.temuan || '')}</textarea></div>
-        <div class="field"><label for="pnKesan">Kesan <span style="color:var(--danger)">wajib</span></label>
+        <div class="field"><label for="pnKesan">Kesan <span class="text-danger">wajib</span></label>
           <textarea id="pnKesan" rows="2"
             placeholder="Kesimpulan bacaan — inilah yang dibaca dokter berikutnya">${UI.esc(awal?.kesan || '')}</textarea></div>
         <div class="field mb-0"><label for="pnSaran">Saran <span class="opt">opsional</span></label>
@@ -854,8 +848,8 @@ const Lab = (() => {
         aturJenis();
 
         const aturAsal = () => {
-          b.querySelector('#barisLuar').style.display =
-            b.querySelector('#pnAsal').value === 'EKSTERNAL' ? '' : 'none';
+          b.querySelector('#barisLuar').hidden =
+            b.querySelector('#pnAsal').value !== 'EKSTERNAL';
         };
         b.querySelector('#pnAsal').addEventListener('change', aturAsal);
       },
@@ -943,7 +937,7 @@ const Lab = (() => {
         <tbody>${data.map(d => `<tr>
           <td><b class="mono">${UI.esc(d.no_arsip)}</b></td>
           <td>${UI.esc(d.judul)}
-              <div class="text-muted" style="font-size:12px">
+              <div class="text-muted text-xs">
                 ${UI.esc(LabCore.labelLampiran(d.jenis))}
                 ${d.no_dokumen ? ' · ' + UI.esc(d.no_dokumen) : ''}</div></td>
           <td>${d.tanggal_dokumen ? UI.tglPendek(d.tanggal_dokumen) : '—'}</td>
@@ -1031,10 +1025,10 @@ const Lab = (() => {
               if (!awal) {
                 await UI.modal({
                   judul: 'Berkas tercatat',
-                  isi: `<p style="margin:0 0 10px">Nomor arsipnya:</p>
-                        <p class="mono" style="font-size:26px;font-weight:700;margin:0 0 12px">
+                  isi: `<p class="mt-0 mb-10">Nomor arsipnya:</p>
+                        <p class="mono nomor-arsip mt-0 mb-12">
                           ${UI.esc(rec.no_arsip)}</p>
-                        <p class="text-muted" style="margin:0">Tulis nomor ini di pojok berkasnya,
+                        <p class="text-muted mb-0">Tulis nomor ini di pojok berkasnya,
                         lalu simpan berurutan menurut nomor. Itu yang membuatnya bisa
                         ditemukan lagi tanpa mencari satu per satu.</p>`,
                   tombol: [{ teks: 'Sudah saya catat', nilai: true, kelas: 'btn-primary' }]

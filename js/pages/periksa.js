@@ -152,11 +152,11 @@ const Periksa = (() => {
     if (!kj.antrean_id || !bolehTulis) return '';
     return `
       <div class="card mb-12 no-print" id="bilahPanggil">
-        <div class="card-body" style="padding:10px 14px">
+        <div class="card-body tight-sm">
           <div class="flex items-center gap-12 flex-wrap">
-            <div class="queue-no" style="width:auto;padding:0 12px;height:34px">
+            <div class="queue-no sm">
               ${UI.esc(kj.no_antrian != null ? String(kj.no_antrian) : '—')}</div>
-            <div class="flex-1" style="min-width:150px">
+            <div class="flex-1 min-w-150">
               <b class="text-sm">Panggilan ke ruang periksa</b>
               <div class="text-xs text-muted" id="statusPanggil">
                 Nomor pasien ini akan muncul di layar ruang tunggu dan dibacakan suara.</div>
@@ -187,7 +187,7 @@ const Periksa = (() => {
     return `
       <a href="#/antrian" class="btn btn-ghost btn-sm mb-12 no-print">${UI.ikon('kembali',15)} Antrean</a>
       ${bilahPanggil(bolehTulis)}
-      ${Komponen.bilahPasien(kj, alergi)}
+      ${Komponen.bilahPasien(kj, alergi, true)}
 
       ${!bolehTulis ? `<div class="banner info">${UI.ikon('peringatan',16)}
         <div><b>Anda membuka halaman ini sebagai ${UI.esc(App.siapa().peran)}.</b>
@@ -582,7 +582,7 @@ const Periksa = (() => {
   function kartuSoap(terkunci) {
     const kotak = (id, huruf, judul, nilai) => `
       <div class="field ${huruf === 'P' ? 'mb-0' : ''}">
-        <label for="${id}">${huruf} — ${judul}</label>
+        <label for="${id}"><span class="soap-letter">${huruf}</span>${judul}</label>
         <textarea id="${id}" name="${id}" rows="3" ${terkunci ? 'disabled' : ''}
           data-soap="${id}">${UI.esc(nilai)}</textarea>
       </div>`;
@@ -649,7 +649,7 @@ const Periksa = (() => {
                   ${pm?.rujuk_ppk_kode === p.kode ? 'selected' : ''}
                   >${UI.esc(p.nama)}</option>`).join('')}
               </select>
-              ${refPpk.length ? '' : `<div class="hint" style="color:var(--warn-700)">
+              ${refPpk.length ? '' : `<div class="hint text-warn">
                 Daftar faskes rujukan masih kosong. Isi lewat
                 <b>Pengaturan → Rujukan &amp; kode PCare</b>.</div>`}
             </div>
@@ -735,7 +735,7 @@ const Periksa = (() => {
                <a href="#/rekam/${kj.id}" class="btn btn-primary btn-block">Lihat rekam medis</a>`
             : `<button class="btn btn-secondary btn-block mb-8" id="btnSimpanDraf">
                  Simpan sementara</button>
-               <button class="btn btn-primary btn-block btn-lg" id="btnFinal">
+               <button class="btn btn-warn btn-block btn-lg" id="btnFinal">
                  ${UI.ikon('cek',17)} Selesai &amp; kunci rekam medis</button>
                <p class="hint mt-8 mb-0">Setelah dikunci, isi rekam medis tidak dapat diubah —
                  sesuai PMK 24/2022. Perubahan hanya lewat addendum.</p>`}
@@ -1015,25 +1015,24 @@ const Periksa = (() => {
     const bpjs = kj.cara_bayar === 'BPJS';
 
     w.innerHTML = `<div class="table-wrap"><table class="tbl">
-      <thead><tr><th style="width:82px">Kode</th><th>Diagnosa</th>
-        <th style="width:118px">Jenis</th><th style="width:104px">Kasus</th>
-        ${terkunci ? '' : '<th style="width:1%"></th>'}</tr></thead>
+      <thead><tr><th class="col-w90">Kode</th><th>Diagnosa</th>
+        <th class="col-w120">Jenis</th><th class="col-w120">Kasus</th>
+        ${terkunci ? '' : '<th class="col-shrink"></th>'}</tr></thead>
       <tbody>${daftarDiagnosa.map((d, i) => `
-        <tr ${bpjs && i >= 3 ? 'style="opacity:.6"' : ''}>
+        <tr class="${bpjs && i >= 3 ? 'row-muted' : ''}">
           <td class="mono"><b>${UI.esc(d.kode)}</b>
-            ${bpjs ? `<div class="text-xs ${i < 3 ? 'text-muted' : ''}"
-              style="${i >= 3 ? 'color:var(--warn-700)' : ''}">${i < 3
+            ${bpjs ? `<div class="text-xs ${i < 3 ? 'text-muted' : 'text-warn'}">${i < 3
                 ? 'kdDiag' + (i + 1) : 'tidak terkirim'}</div>` : ''}</td>
           <td>${UI.esc(d.nama)}</td>
           <td>${terkunci
             ? `<span class="badge ${d.jenis === 'PRIMER' ? 'b-bpjs' : 'b-umum'}">${d.jenis}</span>`
-            : `<select data-jenis="${i}" style="padding:5px 8px;font-size:12.5px">
+            : `<select data-jenis="${i}" class="ctl-sm">
                  <option value="PRIMER" ${d.jenis === 'PRIMER' ? 'selected' : ''}>Primer</option>
                  <option value="SEKUNDER" ${d.jenis === 'SEKUNDER' ? 'selected' : ''}>Sekunder</option>
                </select>`}</td>
           <td>${terkunci
             ? UI.esc(d.kasus)
-            : `<select data-kasus="${i}" style="padding:5px 8px;font-size:12.5px">
+            : `<select data-kasus="${i}" class="ctl-sm">
                  <option value="BARU" ${d.kasus === 'BARU' ? 'selected' : ''}>Baru</option>
                  <option value="LAMA" ${d.kasus === 'LAMA' ? 'selected' : ''}>Lama</option>
                </select>`}</td>
@@ -1171,24 +1170,23 @@ const Periksa = (() => {
     const bpjs = kj.cara_bayar === 'BPJS';
 
     w.innerHTML = `<div class="table-wrap"><table class="tbl">
-      <thead><tr><th>Obat</th><th style="width:96px">Jumlah</th>
-        <th style="width:230px">Aturan pakai</th>
-        ${terkunci ? '' : '<th style="width:1%"></th>'}</tr></thead>
+      <thead><tr><th>Obat</th><th class="col-w90">Jumlah</th>
+        <th class="col-w230">Aturan pakai</th>
+        ${terkunci ? '' : '<th class="col-shrink"></th>'}</tr></thead>
       <tbody>${daftarResep.map((r, i) => `
         <tr>
           <td><b>${UI.esc(r.nama_obat)}</b>
             ${r.keterangan ? `<div class="text-xs text-muted">${UI.esc(r.keterangan)}</div>` : ''}</td>
           <td>${terkunci ? `${r.jumlah} ${UI.esc(r.satuan || '')}`
             : `<div class="flex gap-6 items-center">
-                 <input type="number" data-jml="${i}" value="${r.jumlah}" min="1" max="999"
-                        style="width:62px;padding:5px 7px;text-align:center">
+                 <input type="number" data-jml="${i}" value="${r.jumlah}" min="1" max="999" class="ctl-num">
                  <span class="text-xs text-muted">${UI.esc(r.satuan || '')}</span></div>`}</td>
           <td>${terkunci ? UI.esc(r.signa)
             : `<input list="signaOpsi" data-signa="${i}" value="${UI.esc(r.signa)}"
-                      style="padding:5px 8px;font-size:12.5px" placeholder="3 x sehari 1 tablet">`}
+                      class="ctl-sm" placeholder="3 x sehari 1 tablet">`}
             ${bpjs ? (r.frekuensi && r.dosis
               ? `<div class="text-xs text-muted mono">signa ${r.frekuensi} × ${r.dosis}</div>`
-              : `<div class="text-xs" style="color:var(--warn-700)">belum terbaca sebagai angka</div>`) : ''}</td>
+              : `<div class="text-xs text-warn">belum terbaca sebagai angka</div>`) : ''}</td>
           ${terkunci ? '' : `<td><button class="btn-icon" data-hapus-obat="${i}"
             title="Hapus">${UI.ikon('x',14)}</button></td>`}
         </tr>`).join('')}</tbody></table></div>
@@ -1377,25 +1375,24 @@ const Periksa = (() => {
       : '';
 
     w.innerHTML = `<div class="table-wrap"><table class="tbl">
-      <thead><tr><th style="width:76px">Kode</th><th>Tindakan</th>
-        ${poliGigi ? '<th style="width:96px">Gigi</th>' : ''}
-        <th style="width:78px">Jumlah</th>
-        ${terkunci ? '' : '<th style="width:1%"></th>'}</tr></thead>
+      <thead><tr><th class="col-w90">Kode</th><th>Tindakan</th>
+        ${poliGigi ? '<th class="col-w90">Gigi</th>' : ''}
+        <th class="col-w90">Jumlah</th>
+        ${terkunci ? '' : '<th class="col-shrink"></th>'}</tr></thead>
       <tbody>${daftarTindakan.map((t, i) => `
         <tr>
           <td class="mono"><b>${UI.esc(t.kode)}</b></td>
           <td>${UI.esc(t.nama)}
             ${t.perluGigi && !t.fdi && !terkunci
-              ? '<div class="text-xs" style="color:var(--warn-700)">Sebutkan nomor giginya</div>' : ''}</td>
+              ? '<div class="text-xs text-warn">Sebutkan nomor giginya</div>' : ''}</td>
           ${poliGigi ? `<td>${(terkunci || !t.perluGigi)
             ? (t.fdi || '<span class="muted" title="Tindakan ini tidak terkait satu gigi tertentu">—</span>')
-            : `<select data-fdi="${i}" style="padding:5px 7px;font-size:12.5px">
+            : `<select data-fdi="${i}" class="ctl-sm">
                  <option value="">—</option>
                  ${opsiGigi.replace(`value="${t.fdi}"`, `value="${t.fdi}" selected`)}
                </select>`}</td>` : ''}
           <td>${terkunci ? t.jumlah
-            : `<input type="number" data-jml-tindakan="${i}" value="${t.jumlah}" min="1" max="99"
-                      style="width:58px;padding:5px 7px;text-align:center">`}</td>
+            : `<input type="number" data-jml-tindakan="${i}" value="${t.jumlah}" min="1" max="99" class="ctl-num">`}</td>
           ${terkunci ? '' : `<td><button class="btn-icon" data-hapus-tindakan="${i}"
             title="Hapus">${UI.ikon('x',14)}</button></td>`}
         </tr>`).join('')}</tbody></table></div>`;
@@ -1422,12 +1419,12 @@ const Periksa = (() => {
       const isi = (lp.hasil || []).slice().sort((a, b) => (a.urutan || 0) - (b.urutan || 0));
       const r = LabCore.ringkasLembar(isi);
       return `
-        <div class="fieldset" style="margin-bottom:12px">
+        <div class="fieldset tight">
           <legend>${UI.esc(lp.no_lab)} · ${UI.tglPendek(lp.tanggal)}
             ${lp.asal === 'EKSTERNAL' ? '· ' + UI.esc(lp.nama_lab_luar || 'lab luar') : ''}</legend>
-          <div class="flex mb-8" style="gap:8px;align-items:center;flex-wrap:wrap">
+          <div class="flex items-center gap-8 flex-wrap mb-8">
             ${Lab.lencanaStatus(lp.status)}
-            <span class="text-muted" style="font-size:12.5px">${r.terisi} dari ${r.total} terisi</span>
+            <span class="text-muted text-sm">${r.terisi} dari ${r.total} terisi</span>
             ${r.kritis ? `<span class="badge b-danger">${r.kritis} nilai kritis</span>` : ''}
             <a href="#/lab/hasil/${lp.id}" class="btn btn-ghost btn-sm no-print">Buka lembar</a>
           </div>
@@ -1441,25 +1438,23 @@ const Periksa = (() => {
               const berat = (LabCore.TANDA[h.tanda] || {}).berat || 0;
               return `<tr>
                 <td>${UI.esc(h.nama)}</td>
-                <td class="num" ${berat >= 3 ? 'style="color:var(--danger);font-weight:700"'
-                                : berat >= 2 ? 'style="font-weight:700"' : ''}>
+                <td class="num ${berat >= 3 ? 'text-danger fw-700' : berat >= 2 ? 'fw-700' : ''}">
                   ${UI.esc(nilai)} <span class="text-muted">${UI.esc(h.satuan || '')}</span></td>
-                <td class="muted mono" style="font-size:12px">${UI.esc(h.rujukan_teks || '—')}</td>
+                <td class="muted mono text-xs">${UI.esc(h.rujukan_teks || '—')}</td>
                 <td>${Lab.lencanaTanda(h.tanda)}</td>
               </tr>`;
             }).join('')}</tbody></table></div>`
-            : `<p class="text-muted" style="margin:0;font-size:13px">Belum ada hasil yang masuk.</p>`}
+            : `<p class="text-muted text-sm mb-0">Belum ada hasil yang masuk.</p>`}
         </div>`;
     }).join('');
 
     const barisBacaan = bacaanKunjungan.map(b => `
-      <div class="fieldset" style="margin-bottom:12px">
+      <div class="fieldset tight">
         <legend>${UI.esc(LabCore.labelJenis(b.jenis))} · ${UI.tglPendek(b.tanggal)}
           ${b.daftar_gigi ? '· gigi ' + UI.esc(b.daftar_gigi) : ''}</legend>
-        ${b.temuan ? `<p style="margin:0 0 6px;font-size:13.5px">
-          <b>Temuan:</b> ${UI.esc(b.temuan)}</p>` : ''}
-        <p style="margin:0 0 6px;font-size:13.5px"><b>Kesan:</b> ${UI.esc(b.kesan)}</p>
-        ${b.saran ? `<p style="margin:0;font-size:13.5px"><b>Saran:</b> ${UI.esc(b.saran)}</p>` : ''}
+        ${b.temuan ? `<p class="mb-6"><b>Temuan:</b> ${UI.esc(b.temuan)}</p>` : ''}
+        <p class="mb-6"><b>Kesan:</b> ${UI.esc(b.kesan)}</p>
+        ${b.saran ? `<p class="mb-0"><b>Saran:</b> ${UI.esc(b.saran)}</p>` : ''}
       </div>`).join('');
 
     return `
@@ -1474,8 +1469,7 @@ const Periksa = (() => {
         </div>
         <div class="card-body">
           ${!adaLab && !adaBacaan
-            ? `<p class="text-muted" style="margin:0;font-size:13.5px">
-                 Belum ada pemeriksaan penunjang pada kunjungan ini.</p>`
+            ? `<p class="text-muted mb-0">Belum ada pemeriksaan penunjang pada kunjungan ini.</p>`
             : barisLab + barisBacaan}
         </div>
       </div>`;
@@ -1499,12 +1493,10 @@ const Periksa = (() => {
               ${UI.esc(pk.nama)}</button>`).join('')}
           </div></div>
         <div class="field"><label>Pemeriksaan</label>
-          <div style="max-height:260px;overflow-y:auto;border:1px solid var(--ink-200);
-                      border-radius:8px;padding:10px" id="dfLab">
+          <div class="scroll-box" id="dfLab">
             ${Object.entries(grup).map(([k, isi]) => `
-              <div style="margin-bottom:10px">
-                <div style="font-size:11px;font-weight:700;text-transform:uppercase;
-                      letter-spacing:.04em;color:var(--ink-500);margin-bottom:5px">${UI.esc(k)}</div>
+              <div class="mb-8">
+                <div class="group-label">${UI.esc(k)}</div>
                 <div class="form-row c3">
                   ${isi.map(m => `<label class="check">
                     <input type="checkbox" value="${m.id}">
@@ -1596,7 +1588,7 @@ const Periksa = (() => {
       ${p.galat.length ? `<div class="banner err mb-8"><div>
         <b>Belum bisa dikunci:</b> ${UI.esc(p.galat.join(', '))}.</div></div>` : ''}
       ${p.peringatan.length ? `<div class="banner warn mb-0"><div>
-        <ul style="margin:0;padding-left:18px">
+        <ul class="list-tight">
           ${p.peringatan.map(x => `<li>${UI.esc(x)}</li>`).join('')}
         </ul></div></div>` : ''}`;
   }
@@ -1617,8 +1609,8 @@ const Periksa = (() => {
         const baris = (k, v) => {
           const kosong = v === null || v === undefined || v === '';
           return `<tr>
-            <td class="mono" style="width:170px">${UI.esc(k)}</td>
-            <td ${kosong ? 'style="color:var(--warn-700)"' : ''}>${kosong
+            <td class="mono col-w170">${UI.esc(k)}</td>
+            <td class="${kosong ? 'text-warn' : ''}">${kosong
               ? 'belum terisi'
               : UI.esc(typeof v === 'object' ? JSON.stringify(v) : String(v))}</td></tr>`;
         };
@@ -1633,7 +1625,7 @@ const Periksa = (() => {
             <b>PCare /kunjungan</b>. Baris berwarna belum terisi — sebagian karena
             datanya kurang, sebagian karena pemetaan kode PCare belum diisi di
             Pengaturan.</p>
-          <div class="table-wrap" style="max-height:340px;overflow-y:auto">
+          <div class="table-wrap scroll-tall">
             <table class="tbl">${urut.map(k => baris(k, kn[k])).join('')}</table></div>
           ${pv.obat.length ? `<h3 class="mt-16 mb-8">Obat (${pv.obat.length})</h3>
             <div class="table-wrap"><table class="tbl">
@@ -1937,7 +1929,7 @@ const Periksa = (() => {
       <div class="mb-8">${kronisBuku.diagnosa.map(k =>
         `<span class="chip">${UI.esc(namaDiagnosa(k))}</span>`).join(' ')}</div>
       ${kronisBuku.obat.length
-        ? `<ul class="text-sm" style="margin:0 0 10px;padding-left:18px">
+        ? `<ul class="text-sm list-tight-10">
             ${kronisBuku.obat.map(o => `<li>${UI.esc(o.nama_obat)}${o.jumlah
               ? ` — ${UI.esc(String(o.jumlah))} ${UI.esc(o.satuan || '')}` : ''}${o.signa
               ? ` <span class="text-muted">(${UI.esc(o.signa)})</span>` : ''}</li>`).join('')}
@@ -1953,8 +1945,7 @@ const Periksa = (() => {
       ${bolehKelola ? `
         <div class="flex gap-8">
           <button class="btn btn-secondary btn-sm flex-1" id="btnUbahKronis">Ubah</button>
-          <button class="btn btn-ghost btn-sm" id="btnHentikanKronis"
-            style="color:var(--danger-700)">Hentikan</button>
+          <button class="btn btn-ghost btn-sm text-danger" id="btnHentikanKronis">Hentikan</button>
         </div>` : ''}`;
 
     const bu = w.querySelector('#btnUbahKronis');
@@ -1993,17 +1984,14 @@ const Periksa = (() => {
         return;
       }
       w.innerHTML = `<div class="table-wrap"><table class="tbl">
-        <thead><tr><th>Obat</th><th style="width:84px">Jumlah</th><th style="width:78px">Satuan</th>
-          <th style="width:180px">Aturan pakai</th><th style="width:1%"></th></tr></thead>
+        <thead><tr><th>Obat</th><th class="col-w90">Jumlah</th><th class="col-w90">Satuan</th>
+          <th class="col-w170">Aturan pakai</th><th class="col-shrink"></th></tr></thead>
         <tbody>${obatModal.map((o, i) => `
           <tr>
             <td>${UI.esc(o.nama_obat)}</td>
-            <td><input type="number" data-kjml="${i}" value="${o.jumlah || ''}" min="1"
-                  style="width:64px;padding:5px 7px;text-align:center"></td>
-            <td><input type="text" data-ksat="${i}" value="${UI.esc(o.satuan || '')}"
-                  style="width:64px;padding:5px 7px"></td>
-            <td><input type="text" data-ksigna="${i}" value="${UI.esc(o.signa || '')}"
-                  style="padding:5px 8px;font-size:12.5px"></td>
+            <td><input type="number" data-kjml="${i}" value="${o.jumlah || ''}" min="1" class="ctl-num"></td>
+            <td><input type="text" data-ksat="${i}" value="${UI.esc(o.satuan || '')}" class="ctl-num"></td>
+            <td><input type="text" data-ksigna="${i}" value="${UI.esc(o.signa || '')}" class="ctl-sm"></td>
             <td><button type="button" class="btn-icon" data-khapus="${i}"
                   title="Hapus">${UI.ikon('x', 14)}</button></td>
           </tr>`).join('')}</tbody></table></div>`;
@@ -2130,16 +2118,17 @@ const Periksa = (() => {
       const r = (await DB.daftarKunjungan({ pasien_id: kj.pasien_id, batas: 6 }))
         .filter(x => x.id !== kj.id);
       w.innerHTML = r.length === 0
-        ? `<div style="padding:16px" class="text-sm text-muted">Belum ada kunjungan sebelumnya.</div>`
-        : r.map(x => `
-            <a href="#/rekam/${x.id}" style="display:block;padding:10px 16px;
-               border-bottom:1px solid var(--ink-100);color:inherit;text-decoration:none">
-              <div class="flex justify-between items-center gap-8">
-                <b class="text-sm">${UI.tglPendek(x.tanggal)}</b>
-                <span class="text-xs text-muted">${UI.esc(x.nama_poli)}</span>
+        ? `<div class="empty sm">Belum ada kunjungan sebelumnya.</div>`
+        : `<div class="work-list">${r.map(x => `
+            <a href="#/rekam/${x.id}" class="work-row clickable">
+              <div class="wr-main">
+                <div class="flex justify-between items-center gap-8">
+                  <b class="text-sm">${UI.tglPendek(x.tanggal)}</b>
+                  <span class="text-xs text-muted">${UI.esc(x.nama_poli)}</span>
+                </div>
+                <div class="wr-sub">${UI.esc(x.daftar_diagnosa || 'Tanpa diagnosa')}</div>
               </div>
-              <div class="text-xs text-muted">${UI.esc(x.daftar_diagnosa || 'Tanpa diagnosa')}</div>
-            </a>`).join('');
+            </a>`).join('')}</div>`;
     } catch (e) { w.innerHTML = ''; }
   }
 

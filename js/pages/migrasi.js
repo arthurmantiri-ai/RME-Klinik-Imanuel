@@ -41,9 +41,13 @@ const Migrasi = (() => {
     if (param && param[0]) tabAktif = param[0];
 
     el.innerHTML = `
-      <div class="mb-16"><h1>Migrasi Portal</h1>
-        <p class="text-muted mb-0">Memindahkan pemantauan obat kronis, lab rutin,
-          dan jadwal kontrol dari portal sipantau ke rekam medis.</p></div>
+      <div class="page-header mb-16">
+        <div class="page-heading">
+          <h1>Migrasi Portal</h1>
+          <div class="page-sub">Memindahkan pemantauan obat kronis, lab rutin,
+            dan jadwal kontrol dari portal sipantau ke rekam medis.</div>
+        </div>
+      </div>
 
       <div id="ringkasMigrasi" class="mb-16"></div>
 
@@ -92,13 +96,13 @@ const Migrasi = (() => {
           <div class="val tabular">${persen}%</div></div>
       </div>
       ${Number(r.menunggu_tanpa_bpjs || 0) > 0 ? `
-      <div class="banner warn" style="margin-top:12px">
+      <div class="banner warn mt-12">
         ${UI.ikon('peringatan')}
         <div><b>${Number(r.menunggu_tanpa_bpjs)} orang tidak punya nomor BPJS di portal.</b>
           Mereka tidak akan pernah bisa ditempel otomatis — satu-satunya penolongnya
           kemiripan nama, dan kemiripan nama bukan bukti. Kerjakan yang ini pelan-pelan.</div>
       </div>` : ''}
-      <div class="text-muted" style="margin-top:8px;font-size:.85rem">
+      <div class="text-muted mt-8 text-sm">
         Baris riwayat tertampung: ${Number(r.baris_obat || 0)} pengambilan obat,
         ${Number(r.baris_lab || 0)} pemeriksaan lab,
         ${Number(r.baris_kontrol || 0)} jadwal kontrol.</div>`;
@@ -123,7 +127,7 @@ const Migrasi = (() => {
       <div class="card">
         <div class="card-head"><h3>Unggah berkas ekspor portal</h3></div>
         <div class="card-body">
-          <ol class="text-muted" style="margin:0 0 14px 18px;line-height:1.7">
+          <ol class="text-muted mt-0 mb-14 ml-18 lh-17">
             <li>Buka Supabase project <b>portal sipantau</b> &rarr; SQL Editor.</li>
             <li>Jalankan <code>migrasi/ekspor-portal.sql</code> bagian per bagian,
                 dan tekan <b>Download CSV</b> tiap kali selesai.</li>
@@ -131,7 +135,7 @@ const Migrasi = (() => {
                 jenisnya dikenali dari isinya, bukan dari nama berkasnya.</li>
           </ol>
           <input type="file" id="berkasCsv" class="w-full" multiple accept=".csv,text/csv">
-          <div id="pratinjauBerkas" style="margin-top:14px"></div>
+          <div id="pratinjauBerkas" class="mt-14"></div>
         </div>
         <div class="card-foot">
           <button class="btn btn-primary" id="btnKirim" disabled>
@@ -140,7 +144,7 @@ const Migrasi = (() => {
         </div>
       </div>
 
-      <div class="card" style="margin-top:16px">
+      <div class="card mt-16">
         <div class="card-head"><h3>Membersihkan titipan</h3></div>
         <div class="card-body text-muted">
           Baris yang sudah tertempel maupun diabaikan boleh dibuang dari titipan.
@@ -270,10 +274,10 @@ const Migrasi = (() => {
       }
       UI.modal({
         judul: 'Data portal masuk ke titipan',
-        isi: `<ul style="margin:0 0 0 18px;line-height:1.8">
+        isi: `<ul class="mt-0 mb-0 ml-18 lh-18">
                 ${hasil.map(h => `<li>${UI.esc(h)}</li>`).join('')}
               </ul>
-              <p class="text-muted" style="margin-top:12px">Lanjutkan ke tab
+              <p class="text-muted mt-12">Lanjutkan ke tab
                 <b>2. Cocokkan Pasien</b>.</p>`,
         tombol: [{ teks: 'Tutup', kelas: 'btn-primary' }]
       });
@@ -306,20 +310,20 @@ const Migrasi = (() => {
                 <option value="ABAIKAN">Diabaikan</option>
               </select>
             </div>
-            <div class="field" style="flex:2">
+            <div class="field field-flex-2">
               <label>Cari nama</label>
               <input type="search" id="fCari" placeholder="Nama pasien di portal…">
             </div>
-            <div class="field" style="align-self:flex-end">
+            <div class="field field-align-end">
               <button class="btn btn-secondary" id="btnOtomatis">
                 Tempel otomatis yang BPJS-nya cocok</button>
             </div>
           </div>
         </div>
       </div>
-      <div class="split" style="margin-top:16px">
-        <div id="daftarTitipan" style="flex:1;min-width:280px">${UI.memuat(4)}</div>
-        <div id="kartuCocok" style="flex:1.4;min-width:320px"></div>
+      <div class="split mt-16">
+        <div id="daftarTitipan" class="split-primary">${UI.memuat(4)}</div>
+        <div id="kartuCocok" class="split-secondary"></div>
       </div>`;
 
     const sel = w.querySelector('#fStatus');
@@ -352,20 +356,20 @@ const Migrasi = (() => {
     }
 
     wd.innerHTML = `
-      <div class="card"><div class="card-body" style="padding:0">
+      <div class="card"><div class="card-body tight">
         <div class="table-wrap"><table>
           <thead><tr><th>Nama di portal</th><th>Riwayat</th><th></th></tr></thead>
           <tbody>${daftar.map(d => `
-            <tr data-id="${d.id}" style="cursor:pointer${terpilih && terpilih.id === d.id
-                  ? ';background:var(--pilih,#eef4ff)' : ''}">
+            <tr data-id="${d.id}" class="row-clickable${terpilih && terpilih.id === d.id
+                  ? ' row-selected' : ''}">
               <td>
                 <b>${UI.esc(d.nama_pasien)}</b>
-                <div class="text-muted mono" style="font-size:.8rem">
+                <div class="text-muted mono text-sm">
                   ${d.no_bpjs ? UI.esc(d.no_bpjs) : 'tanpa BPJS'}</div>
-                ${d.pasien ? `<div class="badge b-ok" style="margin-top:4px">&rarr;
+                ${d.pasien ? `<div class="badge b-ok mt-4">&rarr;
                    ${UI.esc(d.pasien.nama)} (${UI.esc(d.pasien.no_rm)})</div>` : ''}
               </td>
-              <td class="text-muted" style="font-size:.82rem">
+              <td class="text-muted text-sm">
                 ${d.punya_terapi ? 'terapi · ' : ''}${d.jml_obat} obat ·
                 ${d.jml_lab} lab · ${d.jml_kontrol} kontrol</td>
               <td>${UI.ikon('kembali', 14)}</td>
@@ -415,7 +419,7 @@ const Migrasi = (() => {
               : d.status === 'ABAIKAN' ? 'b-batal' : 'b-menunggu'}">${UI.esc(d.status)}</span>
         </div>
         <div class="card-body">
-          <div class="grid grid-3" style="margin-bottom:12px">
+          <div class="grid grid-3 mb-12">
             <div><div class="lbl text-muted">No. BPJS</div>
               <div class="mono">${d.no_bpjs ? UI.esc(d.no_bpjs) : '—'}</div></div>
             <div><div class="lbl text-muted">Telepon</div>
@@ -423,18 +427,18 @@ const Migrasi = (() => {
             <div><div class="lbl text-muted">Diagnosis portal</div>
               <div>${d.diagnosis_teks ? UI.esc(d.diagnosis_teks) : '—'}</div></div>
           </div>
-          ${kode.length ? `<div class="chip-list" style="margin-bottom:12px">
+          ${kode.length ? `<div class="chip-list mb-12">
               ${kode.map(k => `<span class="chip">${UI.esc(k)}</span>`).join('')}</div>` : ''}
           ${resep.length ? `<div class="lbl text-muted">Resep rutin di portal</div>
-            <ul class="mono" style="margin:4px 0 12px 18px;font-size:.85rem">
+            <ul class="mono mt-4 mb-12 ml-18 text-sm">
               ${resep.map(x => `<li>${UI.esc(x)}</li>`).join('')}</ul>` : ''}
-          <div class="text-muted" style="font-size:.85rem">
+          <div class="text-muted text-sm">
             ${d.jml_obat} pengambilan obat · ${d.jml_lab} pemeriksaan lab ·
             ${d.jml_kontrol} jadwal kontrol${riwayatTerbaru(baris)}</div>
         </div>
       </div>
 
-      <div class="card" style="margin-top:14px">
+      <div class="card mt-14">
         <div class="card-head"><h3>${d.status === 'COCOK'
             ? 'Tertempel ke pasien' : 'Pasien mana orang ini?'}</h3></div>
         <div class="card-body" id="isiCocok"></div>
@@ -463,7 +467,7 @@ const Migrasi = (() => {
           Riwayat portal sudah menempel ke <b>${UI.esc(p.nama)}</b>
           (${UI.esc(p.no_rm)}${p.tanggal_lahir ? ', ' + UI.umurTeks(p.tanggal_lahir) : ''}).
         </div></div>` : ''}
-      <p class="text-muted" style="margin:12px 0">
+      <p class="text-muted mt-12 mb-12">
         Kalau tempelannya keliru, batalkan di sini. Riwayat yang berasal dari
         baris titipan ini akan dicabut kembali, dan barisnya kembali menunggu.</p>
       <button class="btn btn-danger" id="btnBatalCocok">Batalkan pencocokan</button>`;
@@ -492,13 +496,12 @@ const Migrasi = (() => {
         menunjuk satu pasien. Baris ini bisa ditempel lewat tombol
         <b>Tempel otomatis</b> di atas.</div></div>` : ''}
       <div id="daftarUsulan">${usulan.map((u, i) => `
-        <div class="card" style="margin-bottom:8px">
-          <div class="card-body" style="display:flex;align-items:center;gap:12px">
-            <div style="flex:1">
+        <div class="card mb-8">
+          <div class="card-body flex items-center gap-12">
+            <div class="flex-1">
               <b>${UI.esc(u.nama)}</b>
-              <span class="badge b-${KronisCore.warnaSkor(u.skor)}"
-                style="margin-left:6px">${UI.esc(KronisCore.labelSkor(u.skor))}</span>
-              <div class="text-muted" style="font-size:.82rem">
+              <span class="badge b-${KronisCore.warnaSkor(u.skor)} ml-6">${UI.esc(KronisCore.labelSkor(u.skor))}</span>
+              <div class="text-muted text-sm">
                 ${UI.esc(u.no_rm)} · ${UI.esc(u.jenis_kelamin)} ·
                 ${u.tanggal_lahir ? UI.esc(UI.umurTeks(u.tanggal_lahir)) : '—'}
                 ${u.no_bpjs ? ' · BPJS ' + UI.esc(u.no_bpjs) : ''}
@@ -515,7 +518,7 @@ const Migrasi = (() => {
         <label>Cari pasien lain</label>
         <div id="cariPasienLain"></div>
       </div>
-      <div class="btn-group" style="margin-top:12px">
+      <div class="btn-group mt-12">
         <button class="btn btn-ghost" id="btnAbaikan">Bukan pasien klinik ini</button>
       </div>`;
 

@@ -66,17 +66,17 @@ const Apotek = (() => {
     const resepLangsung = (param && param[0]) || null;
 
     el.innerHTML = `
-      <div class="flex items-center justify-between mb-16 flex-wrap gap-12">
-        <div>
+      <div class="page-header">
+        <div class="page-heading">
           <h1>Apotek</h1>
-          <p class="text-muted mb-0">Antrean resep, stok batch, dan laporan pemakaian obat.</p>
+          <div class="page-sub">Antrean resep, stok batch, dan laporan pemakaian obat.</div>
         </div>
-        <div class="btn-group">
-          <button class="btn btn-secondary" id="btnEkspor">${UI.ikon('unduh',16)} Ekspor Excel</button>
+        <div class="page-actions">
+          <button class="btn btn-secondary btn-sm" id="btnEkspor">${UI.ikon('unduh',16)} Ekspor Excel</button>
           ${bolehTulis() ? `
-          <button class="btn btn-secondary" id="btnImpor">${UI.ikon('rekam',16)} Impor Excel</button>
-          <button class="btn btn-secondary" id="btnKeluar">${UI.ikon('pil',16)} Obat keluar</button>
-          <button class="btn btn-primary" id="btnMasuk">${UI.ikon('plus',16)} Obat masuk</button>` : ''}
+          <button class="btn btn-secondary btn-sm" id="btnImpor">${UI.ikon('rekam',16)} Impor Excel</button>
+          <button class="btn btn-secondary btn-sm" id="btnKeluar">${UI.ikon('pil',16)} Obat keluar</button>
+          <button class="btn btn-primary btn-sm" id="btnMasuk">${UI.ikon('plus',16)} Obat masuk</button>` : ''}
         </div>
       </div>
 
@@ -134,7 +134,7 @@ const Apotek = (() => {
       </div>
       <div class="stat">
         <div class="lbl">Perlu perhatian</div>
-        <div class="val" style="color:var(--danger-700)">${r.kadaluwarsa}</div>
+        <div class="val text-danger">${r.kadaluwarsa}</div>
         <div class="hint">${r.kadaluwarsa} kadaluwarsa, ${r.segera} habis dalam 30 hari</div>
       </div>`;
     const h = document.getElementById('hitAntrean');
@@ -177,7 +177,7 @@ const Apotek = (() => {
 
   function gambarTabelAntrean(wadah, data, selesai) {
     if (!data.length) {
-      wadah.innerHTML = `<div class="empty" style="padding:34px 16px">${UI.ikon('pil',40)}
+      wadah.innerHTML = `<div class="empty compact">${UI.ikon('pil',40)}
         <h3>${selesai ? 'Belum ada penyerahan' : 'Tidak ada resep menunggu'}</h3>
         <p>${selesai ? 'Resep yang sudah diserahkan akan muncul di sini.'
                      : 'Resep yang ditulis dokter akan muncul di sini secara otomatis.'}</p></div>`;
@@ -185,18 +185,18 @@ const Apotek = (() => {
     }
     wadah.innerHTML = `<div class="table-wrap"><table class="tbl">
       <thead><tr>
-        <th style="width:56px">No.</th><th>Pasien</th><th>Obat</th>
-        <th>Poli / dokter</th><th>Bayar</th><th>Status</th><th style="width:1%"></th>
+        <th class="col-w56">No.</th><th>Pasien</th><th>Obat</th>
+        <th>Poli / dokter</th><th>Bayar</th><th>Status</th><th class="col-shrink"></th>
       </tr></thead><tbody>${data.map(a => `
         <tr>
           <td><div class="queue-no">${a.no_antrian ?? '-'}</div></td>
           <td><b>${UI.esc(a.nama_pasien)}</b>
             <div class="text-xs text-muted">${UI.esc(a.no_rm)} · ${UI.umurTeks(a.tanggal_lahir)}
               · ${UI.esc(a.no_resep || '')}</div></td>
-          <td style="max-width:280px">
+          <td class="col-max-280">
             <div class="text-xs">${UI.esc(a.daftar_obat || '—')}</div>
             ${a.item_tanpa_master > 0
-              ? `<div class="text-xs" style="color:var(--warn-700)">
+              ? `<div class="text-xs text-warn">
                    ${a.item_tanpa_master} butir belum tertaut master obat</div>` : ''}</td>
           <td class="text-xs">${UI.esc(a.nama_poli)}<div class="text-muted">${UI.esc(a.nama_dokter || '—')}</div></td>
           <td>${UI.badgeBayar(a.cara_bayar)}</td>
@@ -232,19 +232,22 @@ const Apotek = (() => {
 
   function gambarStok(el) {
     el.innerHTML = `
-      <div class="card">
-        <div class="card-head">
-          <div class="search-box" style="flex:1">
-            <span class="ico">${UI.ikon('cari',16)}</span>
-            <input type="text" id="cariStok" placeholder="Cari nama obat, PBF, atau no. faktur…"
-                   value="${UI.esc(cari)}">
-          </div>
-          <select id="fKolamStok" style="width:auto">
+      <div class="filter-bar">
+        <div class="search-box filter-search">
+          <span class="ico">${UI.ikon('cari',16)}</span>
+          <input type="text" id="cariStok" placeholder="Cari nama obat, PBF, atau no. faktur…"
+                 value="${UI.esc(cari)}">
+        </div>
+        <div class="field">
+          <label for="fKolamStok">Kolam</label>
+          <select id="fKolamStok" class="control-auto">
             <option value="">Semua kolam</option>
             ${K.KOLAM.map(k => `<option value="${k.kunci}">${UI.esc(k.label)}</option>`).join('')}
           </select>
         </div>
-        <div class="banner info" style="margin:14px 18px 0"><div>
+      </div>
+      <div class="card">
+        <div class="banner info mb-0"><div>
           Stok dikelompokkan per obat. Klik nama obat untuk melihat rincian batch.
           Urutan batch = urutan keluar <b>FEFO</b>: yang paling dekat kadaluwarsa keluar lebih
           dulu, tanggal masuk hanya jadi pemutus seri. <b>Kolam</b> hanya pencatatan — bukan
@@ -274,7 +277,7 @@ const Apotek = (() => {
       (b.no_faktur || '').toLowerCase().includes(q));
 
     if (!list.length) {
-      wadah.innerHTML = `<div class="empty" style="padding:40px 16px">${UI.ikon('pil',40)}
+      wadah.innerHTML = `<div class="empty compact">${UI.ikon('pil',40)}
         <h3>${q ? 'Tidak ada yang cocok' : 'Belum ada stok'}</h3>
         <p>${q ? 'Coba kata kunci lain.'
                : 'Gunakan tombol Obat masuk untuk mencatat penerimaan pertama.'}</p></div>`;
@@ -285,10 +288,10 @@ const Apotek = (() => {
     list.forEach(b => { (grup[b.obat_id] = grup[b.obat_id] || []).push(b); });
 
     let html = `<div class="table-wrap"><table class="tbl"><thead><tr>
-      <th style="width:30%">Obat / batch</th><th>Faktur</th><th>PBF</th>
+      <th class="col-w30p">Obat / batch</th><th>Faktur</th><th>PBF</th>
       <th>Masuk</th><th>Kadaluwarsa</th><th class="text-right">Harga beli</th>
       <th class="text-right">Sisa</th><th class="text-right">Nilai</th>
-      <th>Status</th><th style="width:1%"></th></tr></thead><tbody>`;
+      <th>Status</th><th class="col-shrink"></th></tr></thead><tbody>`;
 
     Object.keys(grup)
       .sort((a, b) => String(grup[a][0].nama_obat).localeCompare(String(grup[b][0].nama_obat)))
@@ -306,7 +309,7 @@ const Apotek = (() => {
            salah satunya di sana membuat orang membaca faktur batch
            pertama sebagai faktur seluruh stok obat tersebut. */
         const terdekat = bs[0];
-        html += `<tr class="grup-row" data-grup="${UI.esc(obatId)}" style="cursor:pointer;background:var(--ink-50)">
+        html += `<tr class="grup-row clickable row-tint summary" data-grup="${UI.esc(obatId)}">
           <td><b>${UI.esc(bs[0].nama_obat)}</b>
             <span class="text-xs text-muted">(${bs.length} batch)</span>
             <div class="text-xs text-muted">
@@ -324,9 +327,8 @@ const Apotek = (() => {
 
         bs.forEach((b, i) => {
           const exp = String(b.tgl_expired) <= hariIni;
-          html += `<tr class="batch-row" data-induk="${UI.esc(obatId)}"
-                       style="${buka ? '' : 'display:none'}">
-            <td style="padding-left:32px" class="text-xs text-muted">
+          html += `<tr class="batch-row" data-induk="${UI.esc(obatId)}" ${buka ? '' : 'hidden'}>
+            <td class="text-xs text-muted col-indent">
               Batch ${i + 1}${b.no_batch ? ' · ' + UI.esc(b.no_batch) : ''}
               ${b.kolam === 'kronis' ? '<span class="badge b-info">Kronis</span>' : ''}
               ${i === 0 && !exp ? '<span class="badge b-info">keluar duluan</span>' : ''}</td>
@@ -356,7 +358,7 @@ const Apotek = (() => {
         const buka = grupTerbuka.has(id);
         if (buka) grupTerbuka.delete(id); else grupTerbuka.add(id);
         wadah.querySelectorAll(`.batch-row[data-induk="${CSS.escape(id)}"]`)
-          .forEach(r => { r.style.display = buka ? 'none' : ''; });
+          .forEach(r => { r.hidden = buka; });
       });
     });
     wadah.querySelectorAll('[data-edit]').forEach(b =>
@@ -370,23 +372,32 @@ const Apotek = (() => {
 
   function gambarRiwayat(el) {
     el.innerHTML = `
-      <div class="card">
-        <div class="card-head">
-          <div style="flex:1"><h2>Riwayat transaksi</h2>
-            <div class="sub">${HARI_RIWAYAT} hari terakhir. Salah input bisa dibatalkan
-              selama belum lewat 7 hari; pembatalan mengembalikan stok dan membuka
-              kembali resepnya.</div></div>
-          <select id="fJenis" style="width:auto">
+      <div class="banner info">
+        <div>Riwayat ${HARI_RIWAYAT} hari terakhir. Salah input bisa dibatalkan selama
+          belum lewat 7 hari; pembatalan mengembalikan stok dan membuka kembali resepnya.</div>
+      </div>
+      <div class="filter-bar">
+        <div class="field">
+          <label for="fJenis">Jenis</label>
+          <select id="fJenis" class="control-auto">
             <option value="">Semua jenis</option>
             <option value="MASUK">Masuk</option>
             <option value="KELUAR">Keluar</option>
           </select>
-          <select id="fKolamRiwayat" style="width:auto">
+        </div>
+        <div class="field">
+          <label for="fKolamRiwayat">Kolam</label>
+          <select id="fKolamRiwayat" class="control-auto">
             <option value="">Semua kolam</option>
             ${K.KOLAM.map(k => `<option value="${k.kunci}">${UI.esc(k.label)}</option>`).join('')}
           </select>
-          <input type="month" id="fBulan" style="width:auto" value="${UI.esc(filterRiwayat.bulan)}">
         </div>
+        <div class="field">
+          <label for="fBulan">Bulan</label>
+          <input type="month" id="fBulan" class="control-auto" value="${UI.esc(filterRiwayat.bulan)}">
+        </div>
+      </div>
+      <div class="card">
         <div class="card-body tight" id="isiRiwayat"></div>
       </div>`;
 
@@ -428,13 +439,13 @@ const Apotek = (() => {
     wadah.innerHTML = `<div class="table-wrap"><table class="tbl"><thead><tr>
       <th>Tanggal</th><th>Jenis</th><th>Kategori</th><th>Obat</th><th>Kolam</th>
       <th class="text-right">Jumlah</th><th class="text-right">Nilai</th>
-      <th>Keterangan</th><th style="width:1%"></th></tr></thead><tbody>
+      <th>Keterangan</th><th class="col-shrink"></th></tr></thead><tbody>
       ${d.map(t => {
         urutDalamGrup[t.grup_id] = (urutDalamGrup[t.grup_id] || 0) + 1;
         const n = hitGrup[t.grup_id] || 1;
         const umur = hariSelisih(t.tanggal);
         const bisaBatal = !t.dibatalkan && umur <= 7 && bolehTulis();
-        return `<tr${t.dibatalkan ? ' style="opacity:.45;text-decoration:line-through"' : ''}>
+        return `<tr${t.dibatalkan ? ' class="row-void"' : ''}>
           <td class="mono text-xs">${UI.tglPendek(t.tanggal)}</td>
           <td>${t.jenis === 'MASUK'
                 ? '<span class="badge b-ok">Masuk</span>'
@@ -445,7 +456,7 @@ const Apotek = (() => {
           <td class="text-xs">${t.kolam === 'kronis' ? '<span class="badge b-info">Kronis</span>' : 'Reguler'}</td>
           <td class="text-right">${t.jumlah} <small>${UI.esc(t.satuan)}</small></td>
           <td class="text-right">${rp(t.total_nilai)}</td>
-          <td class="text-xs text-muted" style="max-width:200px">${UI.esc(t.keterangan || t.no_faktur || '—')}</td>
+          <td class="text-xs text-muted col-max-200">${UI.esc(t.keterangan || t.no_faktur || '—')}</td>
           <td class="nowrap">${
             t.dibatalkan ? '<span class="text-xs text-muted">dibatalkan</span>'
             : bisaBatal ? `<button class="btn btn-secondary btn-sm" data-batal="${UI.esc(t.grup_id)}">Batalkan</button>`
@@ -471,29 +482,24 @@ const Apotek = (() => {
     if (!kartu.obatId && daftar.length) kartu.obatId = daftar[0].obat_id;
 
     el.innerHTML = `
-      <div class="card">
-        <div class="card-head">
-          <div style="flex:1"><h2>Kartu stok harian</h2>
-            <div class="sub">Pengganti buku catatan: berapa masuk, berapa keluar, sisa berapa.
-              Saldo ditarik mundur dari stok yang ada sekarang, jadi baris terakhir bulan
-              berjalan selalu cocok dengan tab Stok saat ini.</div></div>
-        </div>
-        <div class="card-body">
-          <div class="form-row c3">
-            <div class="field"><label>Tampilan</label>
-              <select id="kMode">
-                <option value="obat">Per obat — satu bulan</option>
-                <option value="tanggal">Per tanggal — semua obat</option>
-              </select></div>
-            <div class="field" id="wrapObat"><label>Obat</label>
-              <select id="kObat">${daftar.map(o =>
-                `<option value="${UI.esc(o.obat_id)}">${UI.esc(o.nama)}</option>`).join('')}</select></div>
-            <div class="field" id="wrapWaktu"></div>
-          </div>
-          <div id="kartuRingkas" class="grid grid-4 mb-16"></div>
-          <div id="kartuTabel"></div>
-        </div>
-      </div>`;
+      <div class="banner info">
+        <div>Pengganti buku catatan: berapa masuk, berapa keluar, sisa berapa.
+          Saldo ditarik mundur dari stok yang ada sekarang, jadi baris terakhir bulan
+          berjalan selalu cocok dengan tab Stok saat ini.</div>
+      </div>
+      <div class="filter-bar">
+        <div class="field"><label>Tampilan</label>
+          <select id="kMode" class="control-auto">
+            <option value="obat">Per obat — satu bulan</option>
+            <option value="tanggal">Per tanggal — semua obat</option>
+          </select></div>
+        <div class="field" id="wrapObat"><label>Obat</label>
+          <select id="kObat">${daftar.map(o =>
+            `<option value="${UI.esc(o.obat_id)}">${UI.esc(o.nama)}</option>`).join('')}</select></div>
+        <div class="field" id="wrapWaktu"></div>
+      </div>
+      <div class="grid grid-4 mb-16" id="kartuRingkas"></div>
+      <div class="card"><div class="card-body" id="kartuTabel"></div></div>`;
 
     el.querySelector('#kMode').value = kartu.mode;
     el.querySelector('#kObat').value = kartu.obatId;
@@ -511,7 +517,7 @@ const Apotek = (() => {
         kartu.bulan = e.target.value; hitungKartu();
       });
     } else {
-      el.querySelector('#wrapObat').style.display = 'none';
+      el.querySelector('#wrapObat').hidden = true;
       w.innerHTML = `<label>Tanggal</label><input type="date" id="kTanggal" value="${kartu.tanggal}">`;
       w.querySelector('#kTanggal').addEventListener('change', (e) => {
         kartu.tanggal = e.target.value; hitungKartu();
@@ -550,7 +556,7 @@ const Apotek = (() => {
           <td class="text-right text-xs text-muted">${
             (b.perKat['Obat Expired'].qty + b.perKat['Obat Rusak'].qty) || '—'}</td>
           <td class="text-right"><b>${b.saldo}</b></td></tr>`).join('')}
-        <tr style="background:var(--ink-50);font-weight:600">
+        <tr class="row-tint summary">
           <td>Jumlah</td><td class="text-right">${k.total.masukQty}</td>
           <td class="text-right">${k.total.keluarQty}</td><td colspan="2"></td>
           <td class="text-right">${k.saldoAkhir}</td></tr>
@@ -592,21 +598,30 @@ const Apotek = (() => {
       : transaksi;
     const lap = K.laporanBulan(sumberLap, bulanLaporan);
     el.innerHTML = `
-      <div class="card">
-        <div class="card-head">
-          <div style="flex:1"><h2>Laporan ${UI.labelBulan(bulanLaporan)}</h2>
-            <div class="sub">${lap.jumlahTransaksi} transaksi
-              ${filterKolamLaporan ? ' · kolam ' + K.labelKolam(filterKolamLaporan) : ''}.</div></div>
-          <select id="lapKolam" style="width:auto">
+      <div class="filter-bar">
+        <div class="field flex-1">
+          <label>Laporan</label>
+          <div class="text-sm"><b>${UI.labelBulan(bulanLaporan)}</b> ·
+            ${lap.jumlahTransaksi} transaksi
+            ${filterKolamLaporan ? ' · kolam ' + K.labelKolam(filterKolamLaporan) : ''}</div>
+        </div>
+        <div class="field">
+          <label for="lapKolam">Kolam</label>
+          <select id="lapKolam" class="control-auto">
             <option value="">Semua kolam</option>
             ${K.KOLAM.map(k => `<option value="${k.kunci}">${UI.esc(k.label)}</option>`).join('')}
           </select>
+        </div>
+        <div class="field">
+          <label for="lapBulan">Bulan</label>
           <div class="btn-group">
             <button class="btn btn-secondary btn-sm" id="lapPrev">‹</button>
-            <input type="month" id="lapBulan" style="width:auto" value="${bulanLaporan}">
+            <input type="month" id="lapBulan" class="control-auto" value="${bulanLaporan}">
             <button class="btn btn-secondary btn-sm" id="lapNext">›</button>
           </div>
         </div>
+      </div>
+      <div class="card">
         <div class="card-body">
           <div class="grid grid-3 mb-16">
             <div class="stat"><div class="lbl">Pembelian obat</div>
@@ -627,7 +642,7 @@ const Apotek = (() => {
             sebelum sistem dipakai, jadi memasukkannya ke angka belanja akan membuat
             bulan ini mustahil dibandingkan dengan bulan berikutnya.</div></div>` : ''}
 
-          <h3 style="font-size:14px;margin-bottom:8px">Obat keluar per kategori</h3>
+          <h3 class="subhead">Obat keluar per kategori</h3>
           <div class="table-wrap mb-16"><table class="tbl"><tbody>
             ${Object.entries(lap.perKategori).filter(([, v]) => v.qty > 0).map(([k, v]) =>
               `<tr><td>${UI.esc(k)}</td>
@@ -636,7 +651,7 @@ const Apotek = (() => {
               || '<tr><td class="text-muted">Belum ada obat keluar bulan ini.</td></tr>'}
           </tbody></table></div>
 
-          <h3 style="font-size:14px;margin-bottom:8px">Rincian per obat</h3>
+          <h3 class="subhead">Rincian per obat</h3>
           <div class="table-wrap"><table class="tbl"><thead><tr>
             <th>Obat</th><th class="text-right">Masuk</th><th class="text-right">Keluar</th>
             <th class="text-right">Resep</th><th class="text-right">Expired</th>
@@ -961,14 +976,13 @@ const Apotek = (() => {
         <td>
           <b>${UI.esc(it.nama_obat)}</b>
           <div class="text-xs text-muted">${UI.esc(it.signa || '')}${it.rute ? ' · ' + UI.esc(it.rute) : ''}</div>
-          ${!it.obat_id ? `<div class="text-xs" style="color:var(--danger-700)">
+          ${!it.obat_id ? `<div class="text-xs text-danger">
             Belum tertaut master obat — stok tidak bisa dipotong.</div>` : ''}
         </td>
         <td class="text-right">${it.jumlah} <small>${UI.esc(it.satuan || '')}</small></td>
-        <td class="text-right ${kurang ? '' : 'text-muted'}"
-            style="${kurang ? 'color:var(--danger-700);font-weight:600' : ''}">
+        <td class="text-right ${kurang ? 'text-danger fw-700' : 'text-muted'}">
           ${it.obat_id ? layak : '—'}</td>
-        <td style="width:120px">
+        <td class="col-w120">
           <input type="number" data-item="${UI.esc(it.id)}" min="0" step="any"
                  max="${it.obat_id ? layak : 0}" value="${nilaiAwal}"
                  ${bacaSaja || !it.obat_id ? 'disabled' : ''}></td>
@@ -1017,7 +1031,7 @@ const Apotek = (() => {
                    : `Serahkan resep ${r.no_resep || ''}`,
       lebar: true,
       isi: `
-        <div class="patient-bar" style="margin-bottom:14px">
+        <div class="patient-bar mb-14">
           <div class="pb-avatar">${UI.inisial(p.nama)}</div>
           <div class="pb-main"><b>${UI.esc(p.nama || '—')}</b>
             <span>No. RM ${UI.esc(p.no_rm || '—')} · ${UI.umurTeks(p.tanggal_lahir)}
@@ -1040,9 +1054,9 @@ const Apotek = (() => {
           <th class="text-right">Stok layak</th><th>Diserahkan</th>
         </tr></thead><tbody>${baris || '<tr><td colspan="4">Resep tanpa butir obat.</td></tr>'}</tbody></table></div>
 
-        ${r.catatan ? `<div class="field mt-0" style="margin-top:14px">
+        ${r.catatan ? `<div class="field mt-14">
           <label>Catatan dokter</label><div class="text-xs">${UI.esc(r.catatan)}</div></div>` : ''}
-        ${bacaSaja ? '' : `<div class="field" style="margin-top:14px">
+        ${bacaSaja ? '' : `<div class="field mt-14">
           <label>Catatan apoteker</label><input type="text" name="catatan"></div>`}`,
       tombol: bacaSaja
         ? [{ teks: 'Tutup', nilai: null }]
@@ -1154,7 +1168,7 @@ const Apotek = (() => {
                 ? ` <span class="text-xs text-muted">(terpecah ke ${baris.length} batch — dibatalkan serentak)</span>` : ''}</td></tr>
           <tr><td class="text-muted">Tanggal</td><td>${UI.tglIndo(t0.tanggal)}</td></tr>
         </tbody></table></div>
-        <div class="field" style="margin-top:14px"><label>Alasan pembatalan</label>
+        <div class="field mt-14"><label>Alasan pembatalan</label>
           <input type="text" name="alasan" placeholder="Salah input, pasien membatalkan, …"></div>`,
       tombol: [
         { teks: 'Tidak', nilai: false },
@@ -1234,17 +1248,17 @@ const Apotek = (() => {
 
         <div class="field"><label>Lembar yang disertakan</label>
           <div class="form-row c2">
-            <label class="check" style="margin-bottom:8px"><input type="checkbox" name="l_obat" checked>
+            <label class="check mb-8"><input type="checkbox" name="l_obat" checked>
               <span>Stok per obat</span></label>
-            <label class="check" style="margin-bottom:8px"><input type="checkbox" name="l_batch" checked>
+            <label class="check mb-8"><input type="checkbox" name="l_batch" checked>
               <span>Stok per batch</span></label>
-            <label class="check" style="margin-bottom:8px"><input type="checkbox" name="l_ringkas" checked>
+            <label class="check mb-8"><input type="checkbox" name="l_ringkas" checked>
               <span>Ringkasan &amp; perhatian</span></label>
-            <label class="check" style="margin-bottom:8px"><input type="checkbox" name="l_riwayat" checked>
+            <label class="check mb-8"><input type="checkbox" name="l_riwayat" checked>
               <span>Riwayat transaksi</span></label>
-            <label class="check" style="margin-bottom:8px"><input type="checkbox" name="l_rekap" checked>
+            <label class="check mb-8"><input type="checkbox" name="l_rekap" checked>
               <span>Rekap 12 bulan</span></label>
-            <label class="check" style="margin-bottom:8px"><input type="checkbox" name="l_kartu">
+            <label class="check mb-8"><input type="checkbox" name="l_kartu">
               <span>Kartu stok satu obat</span></label>
           </div>
           <div class="hint">Lembar <b>Stok per batch</b> memakai judul kolom yang sama
@@ -1258,7 +1272,7 @@ const Apotek = (() => {
             <input type="date" name="sampai" value="${UI.hariIni()}"></div>
         </div>
 
-        <div class="form-row c2" id="barisKartu" style="display:none">
+        <div class="form-row c2" id="barisKartu" hidden>
           <div class="field"><label>Kartu stok untuk obat</label>
             <select name="kartu_obat">${daftar.map(o =>
               `<option value="${UI.esc(o.obat_id)}">${UI.esc(o.nama)}</option>`).join('')}</select></div>
@@ -1268,7 +1282,7 @@ const Apotek = (() => {
       siap: (badan) => {
         const c = badan.querySelector('[name=l_kartu]');
         const baris = badan.querySelector('#barisKartu');
-        c.addEventListener('change', () => { baris.style.display = c.checked ? '' : 'none'; });
+        c.addEventListener('change', () => { baris.hidden = !c.checked; });
       },
       tombol: [
         { teks: 'Batal', nilai: null },
@@ -1362,17 +1376,17 @@ const Apotek = (() => {
   function pasangLangkahAwal(badan) {
     const awal = badan.querySelector('#langkahAwal');
     awal.innerHTML = `
-      <div class="card" style="margin-bottom:14px"><div class="card-body">
-        <b style="font-size:13px">Langkah 1 — unduh template</b>
-        <p class="text-xs text-muted" style="margin:4px 0 10px">Berisi lembar Data
+      <div class="card mb-14"><div class="card-body">
+        <b class="text-sm">Langkah 1 — unduh template</b>
+        <p class="text-xs text-muted step-note">Berisi lembar Data
           dengan judul kolom yang benar, satu baris contoh, dan lembar Petunjuk.</p>
         <button class="btn btn-secondary btn-sm" id="btnTemplate">
           ${UI.ikon('unduh',15)} Unduh template Excel</button>
       </div></div>
 
-      <div class="card" style="margin-bottom:14px"><div class="card-body">
-        <b style="font-size:13px">Langkah 2 — unggah berkas yang sudah diisi</b>
-        <p class="text-xs text-muted" style="margin:4px 0 10px">Semua baris diperiksa
+      <div class="card mb-14"><div class="card-body">
+        <b class="text-sm">Langkah 2 — unggah berkas yang sudah diisi</b>
+        <p class="text-xs text-muted step-note">Semua baris diperiksa
           dulu dan ditampilkan. <b>Tidak ada yang tersimpan</b> sebelum Anda menekan
           Proses di bawah.</p>
         <input type="file" id="berkasImpor" accept=".xlsx,.xls,.csv">
@@ -1434,7 +1448,7 @@ const Apotek = (() => {
     const awal = badan.querySelector('#langkahAwal');
     if (awal && !awal.dataset.ringkas) {
       awal.dataset.ringkas = '1';
-      awal.innerHTML = `<div class="banner ok mb-16" style="align-items:center"><div style="flex:1">
+      awal.innerHTML = `<div class="banner ok mb-16 items-center"><div class="flex-1">
           Berkas terbaca: <b>${UI.esc(imp.namaBerkas)}</b></div>
           <button class="btn btn-secondary btn-sm" id="btnGantiBerkas">Ganti berkas</button>
         </div>`;
@@ -1448,22 +1462,22 @@ const Apotek = (() => {
 
     kotak.innerHTML = `
       <div class="card"><div class="card-head">
-        <div style="flex:1"><h2>Periksa lalu proses</h2>
+        <div class="flex-1"><h2>Periksa lalu proses</h2>
           <div class="sub">${UI.esc(imp.namaBerkas)} · lembar "${UI.esc(imp.namaLembar)}"
             · ${h.baris.length} baris berisi data</div></div>
       </div>
       <div class="card-body">
         <div class="grid grid-4 mb-16">
           <div class="stat"><div class="lbl">Siap diproses</div>
-            <div class="val" style="color:var(--ok-700,#166534)">${r.siap}</div></div>
+            <div class="val text-ok">${r.siap}</div></div>
           <div class="stat"><div class="lbl">Perlu diperbaiki</div>
-            <div class="val" style="color:${r.galat ? 'var(--danger-700)' : 'inherit'}">${r.galat}</div></div>
+            <div class="val ${r.galat ? 'text-danger' : ''}">${r.galat}</div></div>
           <div class="stat"><div class="lbl">Obat baru</div>
             <div class="val">${r.obatBaru}</div>
-            ${r.tertunda ? `<div class="hint" style="color:var(--warn-700)">
+            ${r.tertunda ? `<div class="hint text-warn">
               ${r.tertunda} belum dicentang</div>` : ''}</div>
           <div class="stat"><div class="lbl">Nilai yang masuk</div>
-            <div class="val" style="font-size:20px">${rp(r.nilai)}</div></div>
+            <div class="val sm">${rp(r.nilai)}</div></div>
         </div>
 
         ${h.kolomTakDikenal.length ? `<div class="banner warn mb-16"><div>
@@ -1482,19 +1496,19 @@ const Apotek = (() => {
           yang sudah ada. Selama masih ada yang belum diputuskan, tombol Proses
           tetap terkunci.</div></div>` : ''}
 
-        <div class="table-wrap" style="max-height:380px;overflow-y:auto">
+        <div class="table-wrap scroll-tall">
           <table class="tbl"><thead><tr>
-            <th style="width:44px">Baris</th><th>Obat</th>
+            <th class="col-w56">Baris</th><th>Obat</th>
             <th class="text-right">Jumlah</th><th class="text-right">Harga beli</th>
             <th>Kadaluwarsa</th><th>PBF / faktur</th><th>Kolam</th>
-            <th style="width:52px">Buat</th><th>Catatan</th>
+            <th class="col-w56">Buat</th><th>Catatan</th>
           </tr></thead><tbody>${h.baris.map((b, i) => barisPratinjau(b, i)).join('')}</tbody></table>
         </div>
 
-        <div class="btn-group" style="margin-top:14px">
+        <div class="btn-group items-center mt-14">
           <button class="btn btn-primary" id="btnProses" ${r.bisaDiproses ? '' : 'disabled'}>
             Proses ${r.siap} baris sebagai ${UI.esc(jenisLabel)}</button>
-          ${r.galat ? `<span class="hint" style="align-self:center;color:var(--danger-700)">
+          ${r.galat ? `<span class="hint text-danger">
             Perbaiki ${r.galat} baris bergalat di Excel, lalu unggah ulang.</span>` : ''}
         </div>
       </div></div>`;
@@ -1522,20 +1536,19 @@ const Apotek = (() => {
 
   function barisPratinjau(b, i) {
     const s = ApotekExcel.statusBaris(b);
-    const warna = { galat: 'background:var(--danger-50,#fef2f2)',
-                    tertunda: 'background:var(--warn-50,#fffbeb)' }[s] || '';
+    const kelasBaris = { galat: 'row-galat', tertunda: 'row-tertunda' }[s] || '';
     const catatan = [
-      ...b.galat.map(g => `<div style="color:var(--danger-700)">${UI.esc(g)}</div>`),
+      ...b.galat.map(g => `<div class="text-danger">${UI.esc(g)}</div>`),
       ...b.peringatan.map(p => `<div class="text-muted">${UI.esc(p)}</div>`)
     ].join('') || '<span class="text-muted">—</span>';
 
     const mirip = (!b.obat && b.mirip && b.mirip.length)
       ? `<div class="chip-list">${b.mirip.map(m =>
-          `<button type="button" class="chip" data-pakai="${i}|${UI.esc(m.obat.id)}"
-             style="cursor:pointer;border:none">pakai: ${UI.esc(m.obat.nama)}</button>`).join('')}</div>`
+          `<button type="button" class="chip chip-btn" data-pakai="${i}|${UI.esc(m.obat.id)}"
+             >pakai: ${UI.esc(m.obat.nama)}</button>`).join('')}</div>`
       : '';
 
-    return `<tr style="${warna}">
+    return `<tr class="${kelasBaris}">
       <td class="text-xs text-muted">${b.nomorBaris}</td>
       <td><b>${UI.esc(b.nama_obat || '—')}</b>
         ${b.obat && b.obat.nama !== b.nama_obat
@@ -1546,15 +1559,15 @@ const Apotek = (() => {
       <td class="text-right">${b.harga_beli === null ? '—' : rp(b.harga_beli)}</td>
       <td class="text-xs">${b.tgl_expired
         ? UI.tglIndo(b.tgl_expired) + (b.tglAmbigu
-            ? '<div style="color:var(--warn-700)">dibaca hari-bulan</div>' : '')
-        : '<span style="color:var(--danger-700)">tidak terbaca</span>'}</td>
+            ? '<div class="text-warn">dibaca hari-bulan</div>' : '')
+        : '<span class="text-danger">tidak terbaca</span>'}</td>
       <td class="text-xs">${UI.esc(b.pbf || '—')}
         ${b.no_faktur ? `<div class="text-muted">${UI.esc(b.no_faktur)}</div>` : ''}</td>
       <td class="text-xs">${b.kolam === 'kronis' ? '<span class="badge b-info">Kronis</span>' : 'Reguler'}</td>
       <td class="text-center">${b.obat ? '<span class="text-muted">—</span>'
         : `<input type="checkbox" data-buat="${i}" ${b.buatObat ? 'checked' : ''}
              title="Buat obat ini di Master Data">`}</td>
-      <td class="text-xs" style="max-width:260px">${catatan}</td>
+      <td class="text-xs col-max-260">${catatan}</td>
     </tr>`;
   }
 
@@ -1602,7 +1615,7 @@ const Apotek = (() => {
         judul: 'Impor dibatalkan',
         isi: `<div class="banner err"><div><b>Tidak ada satu baris pun yang tersimpan.</b><br>
             ${UI.esc(e.message || e)}</div></div>
-          <p class="text-xs text-muted" style="margin-top:12px">Perbaiki baris tersebut di
+          <p class="text-xs text-muted mt-12">Perbaiki baris tersebut di
             berkas Excel, simpan, lalu unggah ulang. Karena tidak ada yang tersimpan,
             berkasnya bisa diunggah utuh tanpa risiko stok tercatat dua kali.</p>`,
         tombol: [{ teks: 'Mengerti', nilai: null }]

@@ -407,9 +407,12 @@ const Surat = (() => {
       : '';
   }
 
+  const KELAS_SPAN = { 3: 'field-compact', 4: 'field-span-4', 6: 'field-half',
+                        8: 'field-span-8', 12: 'field-full' };
+
   function medanHtml(f, nilai) {
     const id = 'm_' + f.nama;
-    const span = `style="grid-column: span ${f.kolom || 12}"`;
+    const kelasSpan = KELAS_SPAN[f.kolom] || 'field-full';
     const bantuan = f.bantuan ? `<div class="hint">${UI.esc(f.bantuan)}</div>` : '';
     const wajib = f.wajib ? ' <span class="req">*</span>' : '';
     const daftarId = f.saran ? id + '_saran' : null;
@@ -441,7 +444,7 @@ const Surat = (() => {
                    </select>`;
         break;
       case 'centang':
-        return `<div class="field" ${span} data-bungkus="${f.nama}">
+        return `<div class="field ${kelasSpan}" data-bungkus="${f.nama}">
                   <label class="check"><input type="checkbox" id="${id}" data-medan="${f.nama}"
                     ${nilai ? 'checked' : ''}><span>${UI.esc(f.label)}</span></label>
                   ${bantuan}</div>`;
@@ -451,7 +454,7 @@ const Surat = (() => {
                      placeholder="${UI.esc(f.contoh || '')}">`;
     }
 
-    return `<div class="field" ${span} data-bungkus="${f.nama}">
+    return `<div class="field ${kelasSpan}" data-bungkus="${f.nama}">
       <label for="${id}">${UI.esc(f.label)}${wajib}</label>
       ${kendali}${datalist}${bantuan}</div>`;
   }
@@ -465,7 +468,7 @@ const Surat = (() => {
     j.isian.forEach(f => {
       if (!f.tampilJika) return;
       const bungkus = document.querySelector(`[data-bungkus="${f.nama}"]`);
-      if (bungkus) bungkus.style.display = F.data[f.tampilJika] ? '' : 'none';
+      if (bungkus) bungkus.hidden = !F.data[f.tampilJika];
     });
   }
 
@@ -661,7 +664,7 @@ const Surat = (() => {
     if (pesan.length) {
       wGalat.innerHTML = `<div class="banner err mb-12"><div>
         <b>Surat belum bisa diterbitkan:</b>
-        <ul style="margin:6px 0 0 16px;padding:0">${pesan.map(p =>
+        <ul class="list-tight-mt6">${pesan.map(p =>
           `<li>${UI.esc(p)}</li>`).join('')}</ul></div></div>`;
       wGalat.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       return;
@@ -731,43 +734,39 @@ const Surat = (() => {
     }
 
     w.innerHTML = `
+      <div class="page-header">
+        <div class="page-heading">
+          <h2>Riwayat surat</h2>
+          <div class="page-sub">Semua surat yang pernah terbit — bisa dicetak ulang
+            atau diunduh kapan saja</div>
+        </div>
+        ${bolehTerbit() ? `<div class="page-actions">
+          <button class="btn btn-primary btn-sm" id="btnSuratBaru">
+            ${UI.ikon('plus', 15)} Buat surat</button></div>` : ''}
+      </div>
+      <div class="filter-bar">
+        <div class="field"><label>Dari tanggal</label>
+          <input type="date" id="rDari" value="${filter.dari}" class="control-auto"></div>
+        <div class="field"><label>Sampai</label>
+          <input type="date" id="rSampai" value="${filter.sampai}" class="control-auto"></div>
+        <div class="field"><label>Jenis surat</label>
+          <select id="rJenis" class="control-auto"><option value="">Semua jenis</option>
+            ${jenisMaster.map(j => `<option value="${j.kode}"
+              ${filter.jenis === j.kode ? 'selected' : ''}>${UI.esc(j.nama)}</option>`).join('')}
+          </select></div>
+        <div class="field"><label>Status</label>
+          <select id="rStatus" class="control-auto">
+            <option value="">Semua</option>
+            <option value="AKTIF" ${filter.status === 'AKTIF' ? 'selected' : ''}>Berlaku</option>
+            <option value="BATAL" ${filter.status === 'BATAL' ? 'selected' : ''}>Dibatalkan</option>
+          </select></div>
+        <div class="field flex-1"><label>Cari</label>
+          <div class="search-box"><span class="ico">${UI.ikon('cari', 16)}</span>
+            <input type="search" id="rKata" value="${UI.esc(filter.kata)}"
+              placeholder="Nomor surat, nama pasien, atau perihal…"></div></div>
+        <button class="btn btn-secondary" id="btnMuatSurat">Tampilkan</button>
+      </div>
       <div class="card">
-        <div class="card-head">
-          <div class="flex-1">
-            <h2>Riwayat surat</h2>
-            <div class="sub">Semua surat yang pernah terbit — bisa dicetak ulang
-              atau diunduh kapan saja</div>
-          </div>
-          ${bolehTerbit() ? `<button class="btn btn-primary btn-sm" id="btnSuratBaru">
-            ${UI.ikon('plus', 15)} Buat surat</button>` : ''}
-        </div>
-        <div class="card-body">
-          <div class="form-row c4">
-            <div class="field mb-0"><label>Dari tanggal</label>
-              <input type="date" id="rDari" value="${filter.dari}"></div>
-            <div class="field mb-0"><label>Sampai</label>
-              <input type="date" id="rSampai" value="${filter.sampai}"></div>
-            <div class="field mb-0"><label>Jenis surat</label>
-              <select id="rJenis"><option value="">Semua jenis</option>
-                ${jenisMaster.map(j => `<option value="${j.kode}"
-                  ${filter.jenis === j.kode ? 'selected' : ''}>${UI.esc(j.nama)}</option>`).join('')}
-              </select></div>
-            <div class="field mb-0"><label>Status</label>
-              <select id="rStatus">
-                <option value="">Semua</option>
-                <option value="AKTIF" ${filter.status === 'AKTIF' ? 'selected' : ''}>Berlaku</option>
-                <option value="BATAL" ${filter.status === 'BATAL' ? 'selected' : ''}>Dibatalkan</option>
-              </select></div>
-          </div>
-          <div class="form-row c2 mt-12">
-            <div class="field mb-0"><label>Cari</label>
-              <div class="search-box"><span class="ico">${UI.ikon('cari', 16)}</span>
-                <input type="search" id="rKata" value="${UI.esc(filter.kata)}"
-                  placeholder="Nomor surat, nama pasien, atau perihal…"></div></div>
-            <div class="field mb-0"><label>&nbsp;</label>
-              <button class="btn btn-secondary" id="btnMuatSurat">Tampilkan</button></div>
-          </div>
-        </div>
         <div class="card-body tight" id="tabelSurat">${UI.memuat(4)}</div>
       </div>`;
 
@@ -857,7 +856,7 @@ const Surat = (() => {
       isi: `
         ${s.status === 'BATAL' ? `<div class="banner err mb-12"><div>
           <b>Surat ini dibatalkan.</b> ${UI.esc(s.alasan_batal || '')}</div></div>` : ''}
-        <div class="surat-pratinjau-wrap" id="wadahLihat" style="max-width:100%">
+        <div class="surat-pratinjau-wrap full-width" id="wadahLihat">
           <iframe class="surat-pratinjau" id="frameLihat" title="Surat"></iframe>
         </div>`,
       siap: (badan) => {

@@ -12,9 +12,11 @@ const Pendaftaran = (() => {
     }
 
     el.innerHTML = `
-      <div class="mb-16">
-        <h1>Pendaftaran Pasien</h1>
-        <p class="text-muted mb-0">Cari pasien lama, atau daftarkan pasien baru bila belum pernah berobat.</p>
+      <div class="page-header">
+        <div class="page-heading">
+          <h1>Pendaftaran Pasien</h1>
+          <div class="page-sub">Cari pasien lama, atau daftarkan pasien baru bila belum pernah berobat.</div>
+        </div>
       </div>
 
       <div class="split">
@@ -23,9 +25,9 @@ const Pendaftaran = (() => {
           <div class="card" id="kartuKunjungan"></div>
         </div>
 
-        <div class="card">
-          <div class="card-head"><h2>Antrian hari ini</h2></div>
-          <div class="card-body tight" id="antrianRingkas">${UI.memuat(3)}</div>
+        <div class="work-panel">
+          <div class="work-panel-head"><h2>Antrian hari ini</h2></div>
+          <div id="antrianRingkas">${UI.memuat(3)}</div>
         </div>
       </div>`;
 
@@ -41,16 +43,16 @@ const Pendaftaran = (() => {
     if (pasienTerpilih) {
       const p = pasienTerpilih;
       k.innerHTML = `
-        <div class="card-head">
-          <div class="flex-1"><h2>1. Pasien</h2><div class="sub">Sudah dipilih</div></div>
+        <div class="card-head done">
+          <div class="flex-1"><div class="step-head"><span class="step-badge">${UI.ikon('cek',13)}</span>
+            <h2>Pasien</h2></div><div class="sub">Sudah dipilih</div></div>
           <button class="btn btn-secondary btn-sm" id="btnGanti">Ganti pasien</button>
         </div>
         <div class="card-body">
-          <div class="flex items-center gap-12 flex-wrap">
-            <div class="avatar" style="width:44px;height:44px;font-size:15px;background:var(--brand-700)">
-              ${UI.inisial(p.nama)}</div>
-            <div class="flex-1" style="min-width:170px">
-              <b style="font-size:16px">${UI.esc(p.nama)}</b>
+          <div class="patient-mini">
+            <div class="avatar lg">${UI.inisial(p.nama)}</div>
+            <div class="pm-main">
+              <b class="pm-name">${UI.esc(p.nama)}</b>
               <div class="text-sm text-muted">No. RM ${UI.esc(p.no_rm)} ·
                 ${p.jenis_kelamin === 'L' ? 'Laki-laki' : 'Perempuan'} · ${UI.umurTeks(p.tanggal_lahir)}</div>
             </div>
@@ -60,9 +62,9 @@ const Pendaftaran = (() => {
             </div>
           </div>
           ${p.catatan_penting ? `<div class="banner warn mt-12 mb-0">
-            ${UI.ikon('peringatan',16)}<div><b>Catatan penting:</b> ${UI.esc(p.catatan_penting)}</div></div>` : ''}
+            ${UI.ikon('peringatan',16)}<div class="banner-txt"><b>Catatan penting:</b> ${UI.esc(p.catatan_penting)}</div></div>` : ''}
           ${!p.no_bpjs ? `<div class="banner info mt-12 mb-0">
-            <div>Pasien ini belum punya nomor BPJS tersimpan. Pilih cara bayar
+            <div class="banner-txt">Pasien ini belum punya nomor BPJS tersimpan. Pilih cara bayar
             <b>Umum</b>, atau lengkapi nomor BPJS lebih dulu.</div></div>` : ''}
         </div>`;
       k.querySelector('#btnGanti').addEventListener('click', () => {
@@ -72,7 +74,8 @@ const Pendaftaran = (() => {
     }
 
     k.innerHTML = `
-      <div class="card-head"><div class="flex-1"><h2>1. Pilih pasien</h2>
+      <div class="card-head"><div class="flex-1"><div class="step-head">
+        <span class="step-badge">1</span><h2>Pilih pasien</h2></div>
         <div class="sub">Ketik minimal 2 huruf untuk mencari</div></div></div>
       <div class="card-body">
         <div class="search-box mb-12">
@@ -93,13 +96,13 @@ const Pendaftaran = (() => {
       hasil.innerHTML = UI.memuat(2);
       const d = await DB.cariPasien(kata, 12);
       if (!d.length) {
-        hasil.innerHTML = `<div class="banner info mb-0"><div>Tidak ada pasien cocok dengan
+        hasil.innerHTML = `<div class="banner info mb-0"><div class="banner-txt">Tidak ada pasien cocok dengan
           "<b>${UI.esc(kata)}</b>". Pastikan ejaan benar, atau daftarkan sebagai pasien baru.</div></div>`;
         return;
       }
-      hasil.innerHTML = `<div style="border:1px solid var(--ink-200);border-radius:var(--radius);overflow:hidden">
+      hasil.innerHTML = `<div class="result-list">
         ${d.map(p => `
-          <div class="combo-item" data-id="${p.id}" style="border-color:var(--ink-100)">
+          <div class="combo-item" data-id="${p.id}">
             <b>${UI.esc(p.nama)}</b>
             <span>No. RM ${UI.esc(p.no_rm)} · ${p.jenis_kelamin} · ${UI.umurTeks(p.tanggal_lahir)}
               ${p.no_bpjs ? ' · BPJS ' + UI.esc(p.no_bpjs) : ''}</span>
@@ -132,18 +135,19 @@ const Pendaftaran = (() => {
     const dokterSaya = App.siapa().peran === 'dokter' ? App.siapa().id : '';
 
     k.innerHTML = `
-      <div class="card-head"><div class="flex-1"><h2>2. Data kunjungan</h2>
+      <div class="card-head"><div class="flex-1"><div class="step-head">
+        <span class="step-badge">2</span><h2>Data kunjungan</h2></div>
         <div class="sub">Nomor antrian dibuat otomatis</div></div></div>
       <div class="card-body">
         <div id="galatKunjungan"></div>
-        <div class="form-row c2">
-          <div class="field">
+        <div class="form-grid">
+          <div class="field field-compact">
             <label for="k-poli">Poli tujuan <span class="req">*</span></label>
             <select id="k-poli" name="poli_id" required>
               ${daftarPoli.map(o => `<option value="${o.id}">${UI.esc(o.nama)}</option>`).join('')}
             </select>
           </div>
-          <div class="field">
+          <div class="field field-wide">
             <label for="k-dokter">Dokter pemeriksa</label>
             <select id="k-dokter" name="dokter_id"></select>
             <div class="hint" id="hintDokter"></div>
@@ -215,10 +219,10 @@ const Pendaftaran = (() => {
       const galat = k.querySelector('#galatKunjungan');
       const d = UI.nilaiForm(k);
 
-      if (!d.poli_id) { galat.innerHTML = '<div class="banner err">Poli tujuan wajib dipilih.</div>'; return; }
+      if (!d.poli_id) { galat.innerHTML = '<div class="banner err"><div class="banner-txt">Poli tujuan wajib dipilih.</div></div>'; return; }
       if (d.cara_bayar === 'BPJS' && !p.no_bpjs) {
-        galat.innerHTML = `<div class="banner err">Pasien belum punya nomor BPJS tersimpan.
-          Ubah data pasien lebih dulu, atau pilih cara bayar Umum.</div>`;
+        galat.innerHTML = `<div class="banner err"><div class="banner-txt">Pasien belum punya nomor BPJS tersimpan.
+          Ubah data pasien lebih dulu, atau pilih cara bayar Umum.</div></div>`;
         return;
       }
 
@@ -239,7 +243,7 @@ const Pendaftaran = (() => {
         pasienTerpilih = null;
         App.pergi('#/antrian');
       } catch (e) {
-        galat.innerHTML = `<div class="banner err">${UI.esc(e.message || 'Gagal mendaftarkan.')}</div>`;
+        galat.innerHTML = `<div class="banner err"><div class="banner-txt">${UI.esc(e.message || 'Gagal mendaftarkan.')}</div></div>`;
         btn.disabled = false; btn.innerHTML = `${UI.ikon('cek',16)} Daftarkan &amp; buat nomor antrian`;
       }
     });
@@ -252,15 +256,12 @@ const Pendaftaran = (() => {
     await UI.modal({
       judul: 'Pasien berhasil didaftarkan',
       isi: `
-        <div id="bukti" style="text-align:center;padding:8px 0 4px">
-          <div style="font-weight:700;font-size:15px">${UI.esc(f.nama)}</div>
-          <div class="text-sm text-muted mb-16">${UI.tglIndo(kj.tanggal, true)}</div>
-          <div style="font-size:12px;color:var(--ink-500);text-transform:uppercase;letter-spacing:.08em">
-            Nomor Antrian</div>
-          <div style="font-size:60px;font-weight:700;line-height:1;color:var(--brand-700);
-                      margin:6px 0 14px">${kj.no_antrian}</div>
-          <div style="border-top:1px dashed var(--ink-300);padding-top:14px;text-align:left;
-                      display:grid;gap:6px;font-size:13.5px">
+        <div id="bukti" class="receipt">
+          <div class="receipt-clinic">${UI.esc(f.nama)}</div>
+          <div class="receipt-date">${UI.tglIndo(kj.tanggal, true)}</div>
+          <div class="receipt-label">Nomor Antrian</div>
+          <div class="receipt-number">${kj.no_antrian}</div>
+          <div class="receipt-rows">
             <div class="flex justify-between"><span class="text-muted">Nama</span>
               <b>${UI.esc(p.nama)}</b></div>
             <div class="flex justify-between"><span class="text-muted">No. RM</span>
@@ -286,7 +287,18 @@ const Pendaftaran = (() => {
       <style>body{font-family:system-ui,-apple-system,Arial,sans-serif;padding:16px;font-size:13px}
       .flex{display:flex}.justify-between{justify-content:space-between}
       .text-muted{color:#666}.text-sm{font-size:12px}.mb-16{margin-bottom:16px}
-      .mono{font-family:monospace}</style></head>
+      .mono{font-family:monospace}
+      /* Berkas ini adalah dokumen cetak berdiri sendiri (window.open), jadi
+         TIDAK bisa memuat css/style.css — kelas .receipt-* dari #bukti
+         disalin ulang secukupnya di sini supaya tata letaknya tetap sama
+         persis dengan pratinjau di modal. */
+      .receipt{text-align:center;padding:8px 0 4px}
+      .receipt-clinic{font-weight:700;font-size:15px}
+      .receipt-date{font-size:12.5px;color:#666;margin-bottom:16px}
+      .receipt-label{font-size:12px;color:#666;text-transform:uppercase;letter-spacing:.08em}
+      .receipt-number{font-size:60px;font-weight:700;line-height:1;color:#0B6E64;margin:6px 0 14px}
+      .receipt-rows{border-top:1px dashed #ccc;padding-top:14px;text-align:left;display:grid;gap:6px;font-size:13.5px}
+      </style></head>
       <body>${html}</body></html>`);
     w.document.close();
     w.focus();
@@ -300,17 +312,16 @@ const Pendaftaran = (() => {
       const a = await DB.antrianHariIni();
       const aktif = a.filter(x => !['SELESAI','BATAL'].includes(x.status));
       w.innerHTML = aktif.length === 0
-        ? `<div class="empty" style="padding:26px 16px"><p class="mb-0">Belum ada antrian hari ini.</p></div>`
-        : aktif.slice(0, 10).map(x => `
-            <div style="display:flex;gap:11px;align-items:center;padding:10px 16px;
-                        border-bottom:1px solid var(--ink-100)">
-              <div class="queue-no" style="width:30px;height:30px;font-size:13px">${x.no_antrian}</div>
-              <div class="flex-1" style="min-width:0">
-                <b style="display:block;font-size:13px">${UI.esc(x.nama_pasien)}</b>
-                <span class="text-xs text-muted">${UI.esc(x.nama_poli)}</span>
+        ? `<div class="empty sm"><p class="mb-0">Belum ada antrian hari ini.</p></div>`
+        : `<div class="work-list">${aktif.slice(0, 10).map(x => `
+            <div class="work-row">
+              <div class="wr-lead"><div class="queue-no sm">${x.no_antrian}</div></div>
+              <div class="wr-main">
+                <div class="wr-title">${UI.esc(x.nama_pasien)}</div>
+                <div class="wr-sub">${UI.esc(x.nama_poli)}</div>
               </div>
-              ${UI.badgeStatus(x.status)}
-            </div>`).join('');
+              <div class="wr-actions">${UI.badgeStatus(x.status)}</div>
+            </div>`).join('')}</div>`;
     } catch (e) { w.innerHTML = ''; }
   }
 

@@ -80,14 +80,16 @@ const Kasir = (() => {
     const langsung = (param && param[0]) || null;
 
     el.innerHTML = `
-      <div class="flex items-center justify-between mb-16 flex-wrap gap-12">
-        <div>
+      <div class="page-header">
+        <div class="page-heading">
           <h1>Kasir</h1>
-          <p class="text-muted mb-0">Tagihan disusun dari tindakan dokter dan obat yang
-            benar-benar diserahkan apotek.</p>
+          <div class="page-sub">Tagihan disusun dari tindakan dokter dan obat yang
+            benar-benar diserahkan apotek.</div>
         </div>
-        ${bolehTulis() ? `<button class="btn btn-secondary" id="btnBebas">
-          ${UI.ikon('plus',16)} Penjualan bebas</button>` : ''}
+        ${bolehTulis() ? `<div class="page-actions">
+          <button class="btn btn-secondary btn-sm" id="btnBebas">
+            ${UI.ikon('plus',16)} Penjualan bebas</button>
+        </div>` : ''}
       </div>
 
       <div class="grid grid-4 mb-16" id="ringkasKasir"></div>
@@ -129,7 +131,7 @@ const Kasir = (() => {
         <div class="val">${menunggu.length}</div>
         <div class="hint">kunjungan belum punya tagihan</div></div>
       <div class="stat"><div class="lbl">Belum lunas</div>
-        <div class="val" style="color:var(--warn-700)">${rp(piutang)}</div>
+        <div class="val text-warn">${rp(piutang)}</div>
         <div class="hint">${daftar.filter(t => t.status_bayar !== 'lunas').length} tagihan</div></div>
       <div class="stat"><div class="lbl">Nilai layanan BPJS</div>
         <div class="val">${rp(bpjs)}</div>
@@ -161,8 +163,8 @@ const Kasir = (() => {
         <div class="sub">Menyusun tagihan menarik tindakan dari catatan dokter dan obat
           dari apa yang sudah diserahkan apotek.</div></div></div>
       <div class="card-body tight"><div class="table-wrap"><table class="tbl">
-        <thead><tr><th style="width:56px">No.</th><th>Pasien</th><th>Poli / dokter</th>
-          <th>Bayar</th><th>Isi</th><th>Status</th><th style="width:1%"></th></tr></thead>
+        <thead><tr><th class="col-w56">No.</th><th>Pasien</th><th>Poli / dokter</th>
+          <th>Bayar</th><th>Isi</th><th>Status</th><th class="col-shrink"></th></tr></thead>
         <tbody>${menunggu.map(m => `<tr>
           <td><div class="queue-no">${m.no_antrian ?? '-'}</div></td>
           <td><b>${UI.esc(m.nama_pasien)}</b>
@@ -217,19 +219,23 @@ const Kasir = (() => {
      TAB 2 — DAFTAR TAGIHAN
      ------------------------------------------------------------------ */
   function gambarDaftar(el) {
-    el.innerHTML = `<div class="card">
-      <div class="card-head">
-        <div style="flex:1"><h2>Tagihan</h2></div>
-        <input type="date" id="fDari" style="width:auto" value="${filter.dari}">
-        <input type="date" id="fSampai" style="width:auto" value="${filter.sampai}">
-        <select id="fStatus" style="width:auto">
-          <option value="">Semua status</option>
-          <option value="belum_lunas">Belum lunas</option>
-          <option value="sebagian">Bayar sebagian</option>
-          <option value="lunas">Lunas</option>
-        </select>
+    el.innerHTML = `
+      <div class="filter-bar">
+        <div class="field"><label for="fDari">Dari tanggal</label>
+          <input type="date" id="fDari" class="control-auto" value="${filter.dari}"></div>
+        <div class="field"><label for="fSampai">Sampai tanggal</label>
+          <input type="date" id="fSampai" class="control-auto" value="${filter.sampai}"></div>
+        <div class="field"><label for="fStatus">Status</label>
+          <select id="fStatus" class="control-auto">
+            <option value="">Semua status</option>
+            <option value="belum_lunas">Belum lunas</option>
+            <option value="sebagian">Bayar sebagian</option>
+            <option value="lunas">Lunas</option>
+          </select></div>
       </div>
-      <div class="card-body tight" id="isiDaftar"></div></div>`;
+      <div class="card">
+        <div class="card-body tight" id="isiDaftar"></div>
+      </div>`;
 
     el.querySelector('#fStatus').value = filter.status;
     ['fDari', 'fSampai', 'fStatus'].forEach(id =>
@@ -246,7 +252,7 @@ const Kasir = (() => {
     w.innerHTML = `<div class="table-wrap"><table class="tbl"><thead><tr>
       <th>Nomor</th><th>Pasien</th><th>Tanggal</th><th>Penjamin</th>
       <th class="text-right">Total</th><th class="text-right">Dibayar</th>
-      <th class="text-right">Sisa</th><th>Status</th><th style="width:1%"></th>
+      <th class="text-right">Sisa</th><th>Status</th><th class="col-shrink"></th>
       </tr></thead><tbody>${daftar.map(t => `<tr>
         <td class="mono text-xs">${UI.esc(t.nomor)}</td>
         <td><b>${UI.esc(t.nama_pasien || t.nama_pembayar)}</b>
@@ -259,7 +265,7 @@ const Kasir = (() => {
             ? `<div class="text-xs text-muted">nilai ${rp(t.subtotal)}</div>` : ''}</td>
         <td class="text-right">${rp(t.amount_paid)}</td>
         <td class="text-right">${Number(t.sisa) > 0
-          ? `<b style="color:var(--warn-700)">${rp(t.sisa)}</b>` : '—'}</td>
+          ? `<b class="text-warn">${rp(t.sisa)}</b>` : '—'}</td>
         <td>${lencana(t.status_bayar)}</td>
         <td class="nowrap"><button class="btn btn-secondary btn-sm" data-buka="${t.id}">Buka</button></td>
       </tr>`).join('')}</tbody></table></div>`;
@@ -282,14 +288,17 @@ const Kasir = (() => {
     });
     const total = Object.values(perMetode).reduce((s, v) => s + v, 0);
 
-    el.innerHTML = `<div class="card">
-      <div class="card-head">
-        <div style="flex:1"><h2>Rekap kas</h2>
-          <div class="sub">Uang yang benar-benar diterima pada rentang ini — bukan
-            tagihan yang terbit. Ini angka yang dicocokkan saat menutup laci.</div></div>
-        <input type="date" id="rDari" style="width:auto" value="${filter.dari}">
-        <input type="date" id="rSampai" style="width:auto" value="${filter.sampai}">
+    el.innerHTML = `
+      <div class="filter-bar">
+        <div class="field flex-1"><label>Rekap kas</label>
+          <div class="text-sm text-muted">Uang yang benar-benar diterima pada rentang ini —
+            bukan tagihan yang terbit. Ini angka yang dicocokkan saat menutup laci.</div></div>
+        <div class="field"><label for="rDari">Dari tanggal</label>
+          <input type="date" id="rDari" class="control-auto" value="${filter.dari}"></div>
+        <div class="field"><label for="rSampai">Sampai tanggal</label>
+          <input type="date" id="rSampai" class="control-auto" value="${filter.sampai}"></div>
       </div>
+      <div class="card">
       <div class="card-body">
         <div class="grid grid-3 mb-16">
           <div class="stat accent"><div class="lbl">Total diterima</div>
@@ -335,7 +344,7 @@ const Kasir = (() => {
       judul: `Tagihan ${t.nomor}`,
       lebar: true,
       isi: `
-        <div class="patient-bar" style="margin-bottom:14px">
+        <div class="patient-bar mb-14">
           <div class="pb-avatar">${UI.inisial(t.nama_pasien || t.nama_pembayar)}</div>
           <div class="pb-main"><b>${UI.esc(t.nama_pasien || t.nama_pembayar)}</b>
             <span>${t.no_rm ? 'No. RM ' + UI.esc(t.no_rm) + ' · ' : ''}
@@ -356,13 +365,13 @@ const Kasir = (() => {
 
         <div id="isiItem"></div>
 
-        ${bolehTulis() && !terkunci ? `<div class="btn-group" style="margin:12px 0">
+        ${bolehTulis() && !terkunci ? `<div class="btn-group mt-12 mb-12">
           <button class="btn btn-secondary btn-sm" id="btnItemManual">+ Baris manual</button>
           ${t.kunjungan_id ? `<button class="btn btn-secondary btn-sm" id="btnSusunUlang">
             Susun ulang dari kunjungan</button>` : ''}
         </div>` : ''}
 
-        <div id="isiBayar" style="margin-top:16px"></div>`,
+        <div id="isiBayar" class="mt-16"></div>`,
       siap: (badan) => {
         gambarItem(badan, d, terkunci, bpjs);
         gambarBayar(badan, d, rb);
@@ -427,13 +436,13 @@ const Kasir = (() => {
     wadah.innerHTML = `<div class="table-wrap"><table class="tbl"><thead><tr>
       <th>Uraian</th><th class="text-right">Qty</th><th class="text-right">Harga</th>
       <th class="text-right">Diskon</th><th class="text-right">Jumlah</th>
-      <th style="width:1%">Ditagih</th>${!terkunci && bolehTulis() ? '<th style="width:1%"></th>' : ''}
-      </tr></thead><tbody>${d.item.map(i => `<tr${i.ditanggung_penjamin ? ' style="opacity:.6"' : ''}>
+      <th class="col-shrink">Ditagih</th>${!terkunci && bolehTulis() ? '<th class="col-shrink"></th>' : ''}
+      </tr></thead><tbody>${d.item.map(i => `<tr${i.ditanggung_penjamin ? ' class="row-muted"' : ''}>
         <td>${UI.esc(i.nama)}
           <div class="text-xs text-muted">${UI.esc(SUMBER[i.sumber] || i.sumber)}
             ${i.ref_kode ? ' · ' + UI.esc(i.ref_kode) : ''}
             ${i.harga_satuan == 0 && i.sumber === 'TINDAKAN'
-              ? ' · <span style="color:var(--warn-700)">tarif belum diisi</span>' : ''}</div></td>
+              ? ' · <span class="text-warn">tarif belum diisi</span>' : ''}</div></td>
         <td class="text-right">${i.qty}</td>
         <td class="text-right">${rp(i.harga_satuan)}</td>
         <td class="text-right">${Number(i.diskon_pct) ? i.diskon_pct + '%' : '—'}</td>
@@ -445,13 +454,13 @@ const Kasir = (() => {
         ${!terkunci && bolehTulis()
           ? `<td><button class="btn btn-secondary btn-sm" data-hapus-item="${i.id}">×</button></td>` : ''}
       </tr>`).join('')}
-      <tr style="background:var(--ink-50);font-weight:600">
+      <tr class="row-tint summary">
         <td colspan="4">Nilai seluruh layanan</td>
         <td class="text-right">${rp(t.subtotal)}</td>
         <td colspan="${!terkunci && bolehTulis() ? 2 : 1}"></td></tr>
-      <tr style="background:var(--ink-50);font-weight:700">
+      <tr class="row-tint summary fw-700">
         <td colspan="4">Ditagihkan ke pasien</td>
-        <td class="text-right" style="font-size:15px">${rp(t.total)}</td>
+        <td class="text-right text-lg">${rp(t.total)}</td>
         <td colspan="${!terkunci && bolehTulis() ? 2 : 1}"></td></tr>
       </tbody></table></div>`;
 
@@ -482,12 +491,12 @@ const Kasir = (() => {
         <div class="stat"><div class="lbl">Total tagihan</div><div class="val">${rp(rb.total)}</div></div>
         <div class="stat"><div class="lbl">Sudah dibayar</div><div class="val">${rp(rb.dibayar)}</div></div>
         <div class="stat"><div class="lbl">Sisa</div>
-          <div class="val" style="color:${rb.sisa > 0.5 ? 'var(--warn-700)' : 'var(--ok-700, inherit)'}">
+          <div class="val ${rb.sisa > 0.5 ? 'text-warn' : 'text-ok'}">
             ${rp(rb.sisa)}</div></div>
       </div>
       ${d.bayar.length ? `<div class="table-wrap"><table class="tbl">
         <thead><tr><th>Tanggal</th><th>Metode</th><th>Petugas</th>
-          <th class="text-right">Jumlah</th>${adminBoleh ? '<th style="width:1%"></th>' : ''}
+          <th class="text-right">Jumlah</th>${adminBoleh ? '<th class="col-shrink"></th>' : ''}
         </tr></thead><tbody>${d.bayar.map(b => {
           const kembali = (Number(b.uang_diterima) || 0) - Number(b.jumlah);
           return `<tr>
@@ -564,7 +573,7 @@ const Kasir = (() => {
           <div class="stat"><div class="lbl">Sisa tagihan</div>
             <div class="val">${rp(rb.sisa)}</div></div>
           <div class="stat"><div class="lbl">Tagihan</div>
-            <div class="val" style="font-size:18px">${UI.esc(d.tagihan.nomor)}</div>
+            <div class="val sm">${UI.esc(d.tagihan.nomor)}</div>
             <div class="hint">${UI.esc(d.tagihan.nama_pasien || d.tagihan.nama_pembayar)}</div></div>
         </div>
         <div class="form-row c2">
@@ -578,7 +587,7 @@ const Kasir = (() => {
           <div class="field"><label>Uang diterima</label>
             <input type="number" name="uang_diterima" step="any" min="0"
                    placeholder="Kosongkan bila uang pas">
-            <div class="radio-row" style="margin-top:8px">${saranUang(rb.sisa).map(n =>
+            <div class="radio-row mt-8">${saranUang(rb.sisa).map(n =>
               `<button type="button" class="radio-chip" data-uang="${n}">${rp(n)}</button>`).join('')}</div>
             <div id="kembalian" class="hint"></div></div>
         </div>
@@ -597,17 +606,17 @@ const Kasir = (() => {
           const u = Number(inpUang.value) || 0;
           const j = Number(inpJml.value) || 0;
           const el = badan.querySelector('#kembalian');
-          if (!u) { el.textContent = 'Kosong berarti uang pas.'; el.style.color = ''; return; }
+          el.classList.remove('text-danger');
+          if (!u) { el.textContent = 'Kosong berarti uang pas.'; return; }
           if (u < j) {
             el.textContent = `Kurang ${rp(j - u)}.`;
-            el.style.color = 'var(--danger-700)';
+            el.classList.add('text-danger');
           } else {
             el.innerHTML = `Kembalian <b>${rp(u - j)}</b>`;
-            el.style.color = '';
           }
         };
         const toggleTunai = () => {
-          blok.style.display = selMet.value === 'tunai' ? '' : 'none';
+          blok.hidden = selMet.value !== 'tunai';
           if (selMet.value !== 'tunai') inpUang.value = '';
         };
         inpUang.addEventListener('input', hitung);
@@ -814,18 +823,16 @@ const Kasir = (() => {
               </div></div>
             <div class="field"><label>Printer</label>
               <div id="statusPrinter" class="hint"></div>
-              <div class="btn-group" style="margin-top:8px" id="tombolPrinter"></div></div>
-            <div class="btn-group" style="margin-top:16px">
+              <div class="btn-group mt-8" id="tombolPrinter"></div></div>
+            <div class="btn-group mt-16">
               <button class="btn btn-primary" id="btnCetakStruk">Cetak struk</button>
               <button class="btn btn-secondary" id="btnPdf">Unduh kwitansi PDF</button>
             </div>
-            <div class="hint" style="margin-top:10px" id="catatanCetak"></div>
+            <div class="hint mt-8" id="catatanCetak"></div>
           </div>
           <div>
             <label>Pratinjau</label>
-            <pre id="pratinjauStruk" style="font-family:ui-monospace,'Courier New',monospace;
-              font-size:11px;line-height:1.4;white-space:pre;overflow-x:auto;background:#fff;
-              border:1px solid var(--ink-200);border-radius:10px;padding:12px;margin:0"></pre>
+            <pre id="pratinjauStruk" class="struk-preview"></pre>
           </div>
         </div>`,
       siap: (badan) => {

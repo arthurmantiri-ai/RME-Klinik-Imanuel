@@ -79,8 +79,12 @@ const Laporan = (() => {
     ];
 
     el.innerHTML = `
-      <div class="mb-16"><h1>Laporan</h1>
-        <p class="text-muted mb-0">Rekap kunjungan, rujukan, keuangan, dan indikator Puskesmas.</p></div>
+      <div class="page-header mb-16">
+        <div class="page-heading">
+          <h1>Laporan</h1>
+          <div class="page-sub">Rekap kunjungan, rujukan, keuangan, dan indikator Puskesmas.</div>
+        </div>
+      </div>
       <div class="tabs" id="tabs">
         ${TAB.map(([k, t]) => `<button class="tab ${tabAktif === k ? 'on' : ''}" data-t="${k}">${UI.esc(t)}</button>`)
           .join('')}
@@ -141,12 +145,12 @@ const Laporan = (() => {
     return top.map((t, i) => `
       <div class="mb-12">
         <div class="flex justify-between items-center gap-8 mb-8">
-          <div style="min-width:0"><b>${i + 1}. ${UI.esc(t.nama)}</b>
+          <div class="min-w-0"><b>${i + 1}. ${UI.esc(t.nama)}</b>
             <span class="text-xs text-muted mono">${UI.esc(t.kode)}</span></div>
           <b class="tabular">${t.jml}</b>
         </div>
-        <div style="height:7px;background:var(--ink-100);border-radius:4px;overflow:hidden">
-          <div style="height:100%;width:${t.jml / maks * 100}%;background:var(--brand-600)"></div>
+        <div class="bar-track">
+          <div class="bar-fill" style="width:${t.jml / maks * 100}%"></div>
         </div>
       </div>`).join('');
   }
@@ -246,11 +250,11 @@ const Laporan = (() => {
       <div class="card mb-16">
         <div class="card-body">
           <div class="flex items-center gap-12 flex-wrap">
-            <div class="flex items-center gap-8">
-              <label style="margin:0">Periode</label>
-              <input type="date" id="dari" value="${awal}" style="width:auto">
+            <div class="flex items-center gap-8 periode-group">
+              <label class="mb-0">Periode</label>
+              <input type="date" id="dari" value="${awal}" class="control-auto">
               <span class="text-muted">s.d.</span>
-              <input type="date" id="sampai" value="${akhir}" style="width:auto">
+              <input type="date" id="sampai" value="${akhir}" class="control-auto">
             </div>
             <button class="btn btn-primary btn-sm" id="btnTampil">Tampilkan</button>
             <div class="flex-1"></div>
@@ -322,8 +326,7 @@ const Laporan = (() => {
             <div class="card-body">
               ${Object.keys(perPoli).length === 0 ? '<p class="text-muted mb-0">Tidak ada data.</p>'
                 : Object.entries(perPoli).sort((a, b) => b[1] - a[1]).map(([nama, jml]) => `
-                  <div class="flex justify-between items-center" style="padding:7px 0;
-                       border-bottom:1px solid var(--ink-100)">
+                  <div class="flex justify-between items-center row-line">
                     <span>${UI.esc(nama)}</span><b class="tabular">${jml}</b></div>`).join('')}
             </div>
           </div>
@@ -334,9 +337,8 @@ const Laporan = (() => {
             <div class="card-body">
               ${!tindakan.length ? '<p class="text-muted mb-0">Belum ada tindakan tercatat pada periode ini.</p>'
                 : tindakan.map(t => `
-                  <div class="flex justify-between items-center gap-8" style="padding:7px 0;
-                       border-bottom:1px solid var(--ink-100)">
-                    <div style="min-width:0"><span>${UI.esc(t.nama)}</span>
+                  <div class="flex justify-between items-center gap-8 row-line">
+                    <div class="min-w-0"><span>${UI.esc(t.nama)}</span>
                       <span class="text-xs text-muted mono"> ${UI.esc(t.kode)}</span></div>
                     <b class="tabular">${t.jml}</b></div>`).join('')}
             </div>
@@ -383,14 +385,14 @@ const Laporan = (() => {
       </div>
       <div id="ovSnapshot" class="mb-16"></div>
       <div class="card mb-16"><div class="card-head"><h2>Tren Kunjungan 7 Hari Terakhir</h2></div>
-        <div class="card-body"><div id="ovTrenBox" style="position:relative;height:240px">
+        <div class="card-body"><div id="ovTrenBox" class="chart-box">
           <canvas id="ovTren"></canvas></div></div></div>
       <div id="ovBanding" class="mb-16"></div>
       <div id="ovHeatmap" class="mb-16"></div>
       <div id="ovJam" class="mb-16"></div>
       <div id="ovDokter" class="mb-16"></div>
       <h2 class="mb-12">Performa 6 Bulan Terakhir</h2>
-      <div id="ovGrafik" class="mb-16" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px"></div>
+      <div id="ovGrafik" class="mb-16 grafik-grid"></div>
       <div id="ovDiagnosa"></div>`;
 
     gambarSnapshot(w.querySelector('#ovSnapshot'), data);
@@ -514,7 +516,7 @@ const Laporan = (() => {
     w.innerHTML = `
       <div class="card">
         <div class="card-head">
-          <div style="flex:1"><h2>Perbandingan Antar Bulan</h2>
+          <div class="flex-1"><h2>Perbandingan Antar Bulan</h2>
             <div class="sub">${UI.labelBulan(ovBulanB)} dibandingkan ${UI.labelBulan(ovBulanA)}${
               ovBulanB === UI.bulanIni() ? ' — bulan berjalan, belum lengkap' : ''}</div></div>
           <button class="btn btn-secondary btn-sm" id="ovSwap" title="Tukar bulan">⇄</button>
@@ -522,15 +524,15 @@ const Laporan = (() => {
         <div class="card-body">
           <div class="flex gap-16 flex-wrap mb-16">
             <div class="flex items-center gap-8">
-              <label style="margin:0">Bulan pembanding</label>
+              <label class="mb-0">Bulan pembanding</label>
               <button class="btn btn-secondary btn-sm" id="ovAPrev">‹</button>
-              <input type="month" id="ovABulan" style="width:auto" value="${ovBulanA}">
+              <input type="month" id="ovABulan" class="control-auto" value="${ovBulanA}">
               <button class="btn btn-secondary btn-sm" id="ovANext">›</button>
             </div>
             <div class="flex items-center gap-8">
-              <label style="margin:0">Bulan ini</label>
+              <label class="mb-0">Bulan ini</label>
               <button class="btn btn-secondary btn-sm" id="ovBPrev">‹</button>
-              <input type="month" id="ovBBulan" style="width:auto" value="${ovBulanB}">
+              <input type="month" id="ovBBulan" class="control-auto" value="${ovBulanB}">
               <button class="btn btn-secondary btn-sm" id="ovBNext">›</button>
             </div>
           </div>
@@ -585,34 +587,30 @@ const Laporan = (() => {
     w.innerHTML = `
       <div class="card">
         <div class="card-head">
-          <div style="flex:1"><h2>Kalender Kunjungan</h2><div class="sub">Intensitas kunjungan per hari.</div></div>
-          <div class="btn-group" style="margin-right:8px">
+          <div class="flex-1"><h2>Kalender Kunjungan</h2><div class="sub">Intensitas kunjungan per hari.</div></div>
+          <div class="btn-group mr-8">
             <button class="btn btn-sm ${kelasAktif('total')}" data-m="total">Total</button>
             <button class="btn btn-sm ${kelasAktif('umum')}" data-m="umum">Umum</button>
             <button class="btn btn-sm ${kelasAktif('gigi')}" data-m="gigi">Gigi</button>
           </div>
           <div class="btn-group">
             <button class="btn btn-secondary btn-sm" id="hmPrev">‹</button>
-            <input type="month" id="hmBulan" style="width:auto" value="${ovBulanHeatmap}">
+            <input type="month" id="hmBulan" class="control-auto" value="${ovBulanHeatmap}">
             <button class="btn btn-secondary btn-sm" id="hmNext">›</button>
           </div>
         </div>
         <div class="card-body">
-          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px">
-            ${UI.HARI.map(h => `<div class="text-center text-muted" style="font-size:11px">${h.slice(0, 3)}</div>`).join('')}
+          <div class="heatmap-grid mb-4">
+            ${UI.HARI.map(h => `<div class="text-center text-muted text-xs">${h.slice(0, 3)}</div>`).join('')}
           </div>
-          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">
+          <div class="heatmap-grid">
             ${Array(offset).fill('<div></div>').join('')}
             ${tanggalList.map((t, i) => {
               if (t > hari) {
-                return `<div style="aspect-ratio:1;border-radius:6px;border:1px dashed var(--ink-200);
-                  display:flex;align-items:center;justify-content:center;color:var(--ink-300);font-size:11px">
-                  ${i + 1}</div>`;
+                return `<div class="heat-cell heat-future">${i + 1}</div>`;
               }
               const level = nilai[i] === 0 ? 0 : Math.min(4, Math.ceil(nilai[i] / maks * 4));
-              return `<div title="${UI.tglIndo(t)}: ${nilai[i]}" style="aspect-ratio:1;border-radius:6px;
-                background:${OV_HEAT_WARNA[level]};color:${OV_HEAT_TEKS[level]};display:flex;
-                align-items:center;justify-content:center;font-size:11px;font-weight:600">${i + 1}</div>`;
+              return `<div title="${UI.tglIndo(t)}: ${nilai[i]}" class="heat-cell heat-${level}">${i + 1}</div>`;
             }).join('')}
           </div>
           <div class="grid grid-3 mt-16">
@@ -649,16 +647,16 @@ const Laporan = (() => {
     w.innerHTML = `
       <div class="card">
         <div class="card-head">
-          <div style="flex:1"><h2>Pola Jam Kunjungan</h2>
+          <div class="flex-1"><h2>Pola Jam Kunjungan</h2>
             <div class="sub">Pukul ${rekap.jamAwal}.00–${rekap.jamAkhir}.00, seluruh poli.</div></div>
           <div class="btn-group">
             <button class="btn btn-secondary btn-sm" id="jamPrev">‹</button>
-            <input type="month" id="jamBulan" style="width:auto" value="${ovBulanJam}">
+            <input type="month" id="jamBulan" class="control-auto" value="${ovBulanJam}">
             <button class="btn btn-secondary btn-sm" id="jamNext">›</button>
           </div>
         </div>
         <div class="card-body">
-          <div id="jamGrafikBox" style="position:relative;height:240px"><canvas id="jamCanvas"></canvas></div>
+          <div id="jamGrafikBox" class="chart-box"><canvas id="jamCanvas"></canvas></div>
           <div class="grid grid-4 mt-16">
             <div class="stat"><div class="lbl">Terpetakan</div><div class="val tabular">${rekap.terhitung}/${rekap.total}</div></div>
             <div class="stat"><div class="lbl">Jam tersibuk</div>
@@ -706,10 +704,10 @@ const Laporan = (() => {
     w.innerHTML = `
       <div class="card">
         <div class="card-head">
-          <div style="flex:1"><h2>Kinerja Dokter</h2><div class="sub">${UI.labelBulan(ovBulanDokter)}</div></div>
+          <div class="flex-1"><h2>Kinerja Dokter</h2><div class="sub">${UI.labelBulan(ovBulanDokter)}</div></div>
           <div class="btn-group">
             <button class="btn btn-secondary btn-sm" id="dokPrev">‹</button>
-            <input type="month" id="dokBulan" style="width:auto" value="${ovBulanDokter}">
+            <input type="month" id="dokBulan" class="control-auto" value="${ovBulanDokter}">
             <button class="btn btn-secondary btn-sm" id="dokNext">›</button>
           </div>
         </div>
@@ -717,15 +715,15 @@ const Laporan = (() => {
           ${!daftar.length ? '<p class="text-muted mb-0">Belum ada kunjungan bulan ini.</p>' : daftar.map((d, i) => `
             <div class="mb-12">
               <div class="flex justify-between items-center gap-8 mb-8">
-                <div class="flex items-center gap-8" style="min-width:0">
-                  <span class="badge ${i < 3 && !d.kosong ? 'b-ok' : 'b-umum'}" style="min-width:20px;justify-content:center">${i + 1}</span>
+                <div class="flex items-center gap-8 min-w-0">
+                  <span class="badge badge-num ${i < 3 && !d.kosong ? 'b-ok' : 'b-umum'}">${i + 1}</span>
                   <b>${UI.esc(d.nama)}</b>
                   <span class="badge ${badgePoliKelas(d.jenisPoli)}">${UI.esc(d.jenisPoli)}</span>
                 </div>
                 <b class="tabular">${d.jml} <span class="text-muted text-xs">(${totalPasien ? Math.round(d.jml / totalPasien * 100) : 0}%)</span></b>
               </div>
-              <div style="height:7px;background:var(--ink-100);border-radius:4px;overflow:hidden">
-                <div style="height:100%;width:${d.jml / maks * 100}%;background:${d.kosong ? 'var(--ink-300)' : 'var(--brand-600)'}"></div>
+              <div class="bar-track">
+                <div class="bar-fill${d.kosong ? ' muted' : ''}" style="width:${d.jml / maks * 100}%"></div>
               </div>
             </div>`).join('')}
           ${daftar.length ? `<div class="grid grid-3 mt-16">
@@ -745,7 +743,7 @@ const Laporan = (() => {
   /* ---- G. Enam grafik performa 6 bulan (Chart.js) ---------------------- */
   function grafikBox(kunci, judul) {
     return `<div class="card"><div class="card-head"><h2>${UI.esc(judul)}</h2></div>
-      <div class="card-body"><div id="grafik-box-${kunci}" style="position:relative;height:260px">
+      <div class="card-body"><div id="grafik-box-${kunci}" class="chart-box tall">
         <canvas id="grafik-${kunci}"></canvas></div></div></div>`;
   }
 
@@ -855,20 +853,20 @@ const Laporan = (() => {
     w.innerHTML = `
       <div class="card mb-16"><div class="card-body">
         <div class="flex items-center gap-12 flex-wrap">
-          <div class="flex items-center gap-8">
-            <label style="margin:0">Periode</label>
-            <input type="date" id="rjDari" value="${awal}" style="width:auto">
+          <div class="flex items-center gap-8 periode-group">
+            <label class="mb-0">Periode</label>
+            <input type="date" id="rjDari" value="${awal}" class="control-auto">
             <span class="text-muted">s.d.</span>
-            <input type="date" id="rjSampai" value="${akhir}" style="width:auto">
+            <input type="date" id="rjSampai" value="${akhir}" class="control-auto">
           </div>
-          <select id="rjJenis" style="width:auto">
+          <select id="rjJenis" class="control-auto">
             <option value="">Semua jenis rujukan</option>
             <option value="RUJUK_INTERNAL">Rujukan Internal</option>
             <option value="RUJUK_LANJUT">Rujukan Lanjut (BPJS)</option>
             <option value="RUJUK_IGD">Rujukan IGD</option>
           </select>
           <button class="btn btn-primary btn-sm" id="rjTampil">Tampilkan</button>
-          <div class="search-box" style="min-width:200px">
+          <div class="search-box min-w-200">
             <span class="ico">${UI.ikon('cari', 16)}</span>
             <input type="search" id="rjCari" placeholder="Cari nama, no. RM, atau no. BPJS…">
           </div>
@@ -913,7 +911,7 @@ const Laporan = (() => {
   function gambarRujukan(w, rows) {
     if (!rows.length) { w.innerHTML = UI.kosong('Tidak ada rujukan', 'Tidak ada rujukan pada periode dan filter ini.'); return; }
     w.innerHTML = `
-      <div class="card"><div class="card-body" style="padding:0"><div class="table-wrap"><table>
+      <div class="card"><div class="card-body tight"><div class="table-wrap"><table>
         <thead><tr><th>Tanggal</th><th>Pasien</th><th>Poli / Dokter</th><th>Jenis</th><th>Tujuan</th><th>Diagnosa</th></tr></thead>
         <tbody>${rows.map(r => {
           const t = LaporanCore.tujuanRujukan(r);
@@ -945,20 +943,20 @@ const Laporan = (() => {
     w.innerHTML = `
       <div class="card mb-16"><div class="card-body">
         <div class="flex items-center gap-12 flex-wrap">
-          <div class="flex items-center gap-8">
-            <label style="margin:0">Periode</label>
-            <input type="date" id="rgDari" value="${awal}" style="width:auto">
+          <div class="flex items-center gap-8 periode-group">
+            <label class="mb-0">Periode</label>
+            <input type="date" id="rgDari" value="${awal}" class="control-auto">
             <span class="text-muted">s.d.</span>
-            <input type="date" id="rgSampai" value="${akhir}" style="width:auto">
+            <input type="date" id="rgSampai" value="${akhir}" class="control-auto">
           </div>
-          <select id="rgPoli" style="width:auto">
+          <select id="rgPoli" class="control-auto">
             <option value="">Semua poli</option>
             <option value="UMUM">Poli Umum</option>
             <option value="GIGI">Poli Gigi</option>
             <option value="KIA">Poli KIA</option>
           </select>
           <button class="btn btn-primary btn-sm" id="rgTampil">Tampilkan</button>
-          <div class="search-box" style="min-width:200px">
+          <div class="search-box min-w-200">
             <span class="ico">${UI.ikon('cari', 16)}</span>
             <input type="search" id="rgCari" placeholder="Cari nama atau no. RM…">
           </div>
@@ -1012,7 +1010,7 @@ const Laporan = (() => {
     if (!rows.length) { w.innerHTML = UI.kosong('Tidak ada kunjungan', 'Tidak ada kunjungan pada periode dan filter ini.'); return; }
     const tampilTindakan = jenisPoli === 'GIGI';
     w.innerHTML = `
-      <div class="card"><div class="card-body" style="padding:0"><div class="table-wrap"><table>
+      <div class="card"><div class="card-body tight"><div class="table-wrap"><table>
         <thead><tr><th>Tanggal</th><th>No Kunjungan</th><th>Pasien</th><th>L/P</th><th>Cara Bayar</th>
           <th>Poli</th><th>Dokter</th>${tampilTindakan ? '<th>Tindakan</th>' : ''}<th>Diagnosa</th></tr></thead>
         <tbody>${rows.map(r => `<tr>
@@ -1073,11 +1071,11 @@ const Laporan = (() => {
     w.innerHTML = `
       <div class="card mb-16"><div class="card-body">
         <div class="flex items-center gap-12 flex-wrap">
-          <div class="flex items-center gap-8">
-            <label style="margin:0">Periode</label>
-            <input type="date" id="kuDari" value="${awal}" style="width:auto">
+          <div class="flex items-center gap-8 periode-group">
+            <label class="mb-0">Periode</label>
+            <input type="date" id="kuDari" value="${awal}" class="control-auto">
             <span class="text-muted">s.d.</span>
-            <input type="date" id="kuSampai" value="${akhir}" style="width:auto">
+            <input type="date" id="kuSampai" value="${akhir}" class="control-auto">
           </div>
           <button class="btn btn-primary btn-sm" id="kuTampil">Tampilkan</button>
           <div class="flex-1"></div>
@@ -1132,7 +1130,7 @@ const Laporan = (() => {
 
       <div class="split">
         <div class="card"><div class="card-head"><h2>Per Hari</h2></div>
-          <div class="card-body" style="padding:0"><div class="table-wrap"><table>
+          <div class="card-body tight"><div class="table-wrap"><table>
             <thead><tr><th>Tanggal</th><th class="text-right">Nilai Layanan</th>
               <th class="text-right">Ditagih</th><th class="text-right">Uang Masuk</th></tr></thead>
             <tbody>${harian.length ? harian.map(h => `<tr>
@@ -1144,7 +1142,7 @@ const Laporan = (() => {
           </table></div></div></div>
         <div>
           <div class="card mb-16"><div class="card-head"><h2>Per Poli</h2></div>
-            <div class="card-body" style="padding:0"><div class="table-wrap"><table>
+            <div class="card-body tight"><div class="table-wrap"><table>
               <thead><tr><th>Poli</th><th class="text-right">Nilai Layanan</th><th class="text-right">Uang Masuk</th></tr></thead>
               <tbody>${perPoli.length ? perPoli.map(p => {
                 const masuk = perPoliMasuk.find(m => m.kunci === p.kunci);
@@ -1154,7 +1152,7 @@ const Laporan = (() => {
               }).join('') : '<tr><td colspan="3" class="text-muted text-center">Tidak ada data.</td></tr>'}</tbody>
             </table></div></div></div>
           <div class="card"><div class="card-head"><h2>Per Metode Pembayaran</h2></div>
-            <div class="card-body" style="padding:0"><div class="table-wrap"><table>
+            <div class="card-body tight"><div class="table-wrap"><table>
               <thead><tr><th>Metode</th><th class="text-right">Uang Masuk</th><th class="text-right">Transaksi</th></tr></thead>
               <tbody>${perMetode.length ? perMetode.map(m => `<tr><td>${UI.esc(m.kunci)}</td>
                 <td class="text-right tabular">${UI.rupiah(m.uang_masuk)}</td>
@@ -1182,14 +1180,14 @@ const Laporan = (() => {
     w.innerHTML = `
       <div class="card mb-16"><div class="card-body">
         <div class="flex items-center gap-12 flex-wrap">
-          <div class="flex items-center gap-8">
-            <label style="margin:0">Periode</label>
-            <input type="date" id="pkDari" value="${awal}" style="width:auto">
+          <div class="flex items-center gap-8 periode-group">
+            <label class="mb-0">Periode</label>
+            <input type="date" id="pkDari" value="${awal}" class="control-auto">
             <span class="text-muted">s.d.</span>
-            <input type="date" id="pkSampai" value="${akhir}" style="width:auto">
+            <input type="date" id="pkSampai" value="${akhir}" class="control-auto">
           </div>
           <button class="btn btn-primary btn-sm" id="pkTampil">Tampilkan</button>
-          <div class="search-box" style="min-width:200px">
+          <div class="search-box min-w-200">
             <span class="ico">${UI.ikon('cari', 16)}</span>
             <input type="search" id="pkCari" placeholder="Cari kode atau nama diagnosa…">
           </div>
@@ -1228,7 +1226,7 @@ const Laporan = (() => {
   function gambarPuskesmas(w, rekap) {
     if (!rekap.length) { w.innerHTML = UI.kosong('Tidak ada diagnosa', 'Tidak ada diagnosa tercatat pada periode ini.'); return; }
     w.innerHTML = `
-      <div class="card"><div class="card-body" style="padding:0"><div class="table-wrap"><table>
+      <div class="card"><div class="card-body tight"><div class="table-wrap"><table>
         <thead><tr><th>Kode</th><th>Diagnosa</th><th class="text-right">Total</th><th class="text-right">L</th><th class="text-right">P</th>
           ${LaporanCore.KATEGORI_USIA.map(k => `<th class="text-right">${UI.esc(k)}</th>`).join('')}</tr></thead>
         <tbody>${rekap.map(r => `<tr>

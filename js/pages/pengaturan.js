@@ -11,8 +11,12 @@ const Pengaturan = (() => {
     if (param && param[0]) tabAktif = param[0];
 
     el.innerHTML = `
-      <div class="mb-16"><h1>Pengaturan</h1>
-        <p class="text-muted mb-0">Profil klinik, poli, pengguna, dan status bridging.</p></div>
+      <div class="page-header mb-16">
+        <div class="page-heading">
+          <h1>Pengaturan</h1>
+          <div class="page-sub">Profil klinik, poli, pengguna, dan status bridging.</div>
+        </div>
+      </div>
       <div class="tabs" id="tabs">
         ${[['klinik','Profil Klinik'],['poli','Poli'],['pengguna','Pengguna'],
            ['surat','Kop &amp; Surat'],['rujukan','Rujukan &amp; Kode PCare'],['bridging','Bridging']]
@@ -93,7 +97,7 @@ const Pengaturan = (() => {
             <div class="field">
               <label>Tanggal mulai bridging</label>
               <input type="date" name="bridging_mulai_tanggal"
-                value="${UI.esc(f.bridging_mulai_tanggal)}" style="max-width:220px">
+                value="${UI.esc(f.bridging_mulai_tanggal)}" class="mw-220">
               <div class="hint">Kosongkan selama bridging belum aktif. Diisi saat go-live,
                 supaya kunjungan sebelum tanggal itu tidak ikut terkirim.</div>
             </div>
@@ -131,12 +135,12 @@ const Pengaturan = (() => {
             <b>GIGI</b> memunculkan odontogram dan pemeriksaan gigi</div></div>
           <button class="btn btn-primary btn-sm" id="btnPoliBaru">${UI.ikon('plus',15)} Tambah poli</button></div>
         <div class="card-body tight">
-          <table class="tbl"><thead><tr><th>Kode</th><th>Nama poli</th><th>Jenis</th>
+          <div class="table-wrap"><table class="tbl"><thead><tr><th>Kode</th><th>Nama poli</th><th>Jenis</th>
             <th>Kode PCare</th><th>Location ID SatuSehat</th><th>Status</th></tr></thead>
             <tbody>${d.map(p => `<tr>
               <td class="mono"><b>${UI.esc(p.kode)}</b></td>
               <td>${UI.esc(p.nama)}</td>
-              <td><select data-jenis-poli="${p.id}" style="padding:5px 8px;font-size:12.5px">
+              <td><select data-jenis-poli="${p.id}" class="ctl-sm">
                 ${['UMUM','GIGI','KIA','LAINNYA'].map(j =>
                   `<option ${p.jenis === j ? 'selected' : ''}>${j}</option>`).join('')}
               </select></td>
@@ -144,7 +148,7 @@ const Pengaturan = (() => {
               <td class="mono muted">${UI.esc(p.satusehat_location_id || '—')}</td>
               <td>${p.aktif ? '<span class="badge b-ok">Aktif</span>'
                             : '<span class="badge b-batal">Nonaktif</span>'}</td>
-            </tr>`).join('')}</tbody></table>
+            </tr>`).join('')}</tbody></table></div>
         </div>
       </div>`;
 
@@ -204,15 +208,15 @@ const Pengaturan = (() => {
         <div class="card-head"><h2>Pengguna sistem</h2>
           <span class="text-sm text-muted">${d.length} akun</span></div>
         <div class="card-body tight">
-          <table class="tbl"><thead><tr><th>Nama</th><th>Peran</th><th>Jenis dokter</th><th>No. SIP</th>
+          <div class="table-wrap"><table class="tbl"><thead><tr><th>Nama</th><th>Peran</th><th>Jenis dokter</th><th>No. SIP</th>
             <th>Kode dokter PCare</th><th>IHS Practitioner</th><th>Status</th></tr></thead>
             <tbody>${d.map(p => `<tr>
               <td><b>${UI.esc(p.nama)}</b></td>
-              <td><select data-peran="${p.id}" style="padding:5px 8px;font-size:12.5px">
+              <td><select data-peran="${p.id}" class="ctl-sm">
                 ${PERAN.map(r => `<option ${p.peran === r ? 'selected' : ''}>${r}</option>`).join('')}
               </select></td>
               <td>${p.peran !== 'dokter' ? '<span class="muted">—</span>'
-                : `<select data-jenis-dokter="${p.id}" style="padding:5px 8px;font-size:12.5px">
+                : `<select data-jenis-dokter="${p.id}" class="ctl-sm">
                      <option value="">— belum diisi —</option>
                      <option value="UMUM" ${p.jenis_dokter === 'UMUM' ? 'selected' : ''}>Dokter umum</option>
                      <option value="GIGI" ${p.jenis_dokter === 'GIGI' ? 'selected' : ''}>Dokter gigi</option>
@@ -222,7 +226,7 @@ const Pengaturan = (() => {
               <td class="mono muted">${UI.esc(p.satusehat_practitioner_id || '—')}</td>
               <td><label class="check"><input type="checkbox" data-aktif="${p.id}"
                 ${p.aktif ? 'checked' : ''}><span>Aktif</span></label></td>
-            </tr>`).join('')}</tbody></table>
+            </tr>`).join('')}</tbody></table></div>
         </div>
       </div>`;
 
@@ -449,9 +453,9 @@ const Pengaturan = (() => {
                  tidak bisa dikunci. Tambahkan rumah sakit yang biasa dituju —
                  cukup sekali, daftarnya dipakai seterusnya.</div></div>`
             : `<div class="table-wrap"><table class="tbl">
-                <thead><tr><th style="width:130px">Kode (kdppk)</th><th>Nama</th>
-                  <th style="width:110px">Jenis</th><th style="width:110px">Sumber</th>
-                  <th style="width:1%"></th></tr></thead>
+                <thead><tr><th class="col-w120">Kode (kdppk)</th><th>Nama</th>
+                  <th class="col-w120">Jenis</th><th class="col-w120">Sumber</th>
+                  <th class="col-shrink"></th></tr></thead>
                 <tbody>${ppk.map(p => `<tr>
                   <td class="mono">${UI.esc(p.kode)}</td>
                   <td>${UI.esc(p.nama)}
@@ -492,12 +496,12 @@ const Pengaturan = (() => {
                 <fieldset class="fieldset">
                   <legend>${UI.esc(labelTabelKode(tabel))} — ${isi.length} belum diisi</legend>
                   <div class="table-wrap"><table class="tbl">
-                    <thead><tr><th style="width:170px">Kode internal</th><th>Nama</th>
-                      <th style="width:170px">Kode PCare</th></tr></thead>
+                    <thead><tr><th class="col-w170">Kode internal</th><th>Nama</th>
+                      <th class="col-w170">Kode PCare</th></tr></thead>
                     <tbody>${isi.map(k => `<tr>
                       <td class="mono">${UI.esc(k.kode)}</td>
                       <td>${UI.esc(k.nama)}</td>
-                      <td><input type="text" class="mono" style="padding:5px 8px"
+                      <td><input type="text" class="mono ctl-sm"
                             data-kode-tabel="${UI.esc(tabel)}" data-kode-baris="${UI.esc(k.kode)}"
                             placeholder="${UI.esc(k.field_pcare)}"></td>
                     </tr>`).join('')}</tbody></table></div>
@@ -601,7 +605,7 @@ const Pengaturan = (() => {
               ${CONFIG.BRIDGING.PCARE_AKTIF ? 'Aktif' : 'Belum aktif'}</span></div>
           <div class="card-body text-sm">
             <p><b>Yang perlu disiapkan:</b></p>
-            <ol style="padding-left:18px;margin:0 0 12px">
+            <ol class="list-tight-12">
               <li>Surat permohonan bridging ke Kantor Cabang BPJS Kesehatan setempat</li>
               <li>Kredensial: <code>cons_id</code>, <code>secret_key</code>, <code>user_key</code>,
                   username &amp; password PCare, kode aplikasi</li>
@@ -620,7 +624,7 @@ const Pengaturan = (() => {
               ${CONFIG.BRIDGING.SATUSEHAT_AKTIF ? 'Aktif' : 'Belum aktif'}</span></div>
           <div class="card-body text-sm">
             <p><b>Yang perlu disiapkan:</b></p>
-            <ol style="padding-left:18px;margin:0 0 12px">
+            <ol class="list-tight-12">
               <li>Registrasi klinik di platform SatuSehat (butuh kode registrasi faskes Kemenkes)</li>
               <li>Dapatkan <code>client_id</code>, <code>client_secret</code>, dan
                   <code>Organization ID</code></li>
@@ -664,7 +668,7 @@ const Pengaturan = (() => {
       ['Kode SNOMED gigi terisi (untuk odontogram SatuSehat)', await cekKodeGigi()]
     ];
     w.querySelector('#kesiapan').innerHTML = cek.map(([t, ok]) => `
-      <div class="flex items-center gap-8" style="padding:6px 0">
+      <div class="flex items-center gap-8 py-6">
         <span class="badge ${ok ? 'b-ok' : 'b-warn'}">${ok ? 'Siap' : 'Belum'}</span>
         <span>${UI.esc(t)}</span></div>`).join('');
 
@@ -711,15 +715,14 @@ const Pengaturan = (() => {
           ? `<div class="banner ok mb-0">${UI.ikon('cek',16)}
               <div>Semua data pasien dan kunjungan sudah lengkap. Saat kredensial bridging
               tiba, tidak ada yang perlu dibereskan lebih dulu.</div></div>`
-          : `<h3 style="font-size:14px;margin-bottom:10px">Yang paling sering kurang</h3>
+          : `<h3 class="subhead">Yang paling sering kurang</h3>
              ${urut.map(([k, n]) => `
-               <div class="flex justify-between items-center gap-8" style="padding:7px 0;
-                    border-bottom:1px solid var(--ink-100)">
+               <div class="flex justify-between items-center gap-8 row-line">
                  <span class="text-sm">${UI.esc(k)}</span>
                  <b class="tabular">${n}</b></div>`).join('')}
              <div class="mt-16">
                <a href="#/pasien" class="btn btn-secondary btn-sm">Buka daftar pasien</a>
-               <span class="text-sm text-muted" style="margin-left:8px">Centang
+               <span class="text-sm text-muted ml-8">Centang
                  "Hanya yang datanya belum lengkap" untuk membereskannya satu per satu.</span>
              </div>`}`;
     } catch (e) {

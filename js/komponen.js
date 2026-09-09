@@ -3,8 +3,11 @@
    ===================================================================== */
 const Komponen = (() => {
 
-  /* Bilah identitas pasien di atas layar kajian / pemeriksaan / rekam medis */
-  function bilahPasien(k, alergi = []) {
+  /* Bilah identitas pasien di atas layar kajian / pemeriksaan / rekam medis.
+     compact=true memakai varian .patient-summary yang lebih pendek — dipakai
+     di halaman Pemeriksaan supaya ruang vertikal lebih banyak tersisa untuk
+     pekerjaan klinis, bukan identitas pasien. */
+  function bilahPasien(k, alergi = [], compact = false) {
     const p = k.pasien;
     const alergiBerat = alergi.filter(a => a.tingkat === 'BERAT');
     const teksAlergi = alergi.length
@@ -12,7 +15,7 @@ const Komponen = (() => {
       : null;
 
     return `
-      <div class="patient-bar">
+      <div class="patient-bar ${compact ? 'compact' : ''}">
         <div class="pb-avatar">${UI.inisial(p.nama)}</div>
         <div class="pb-main">
           <b>${UI.esc(p.nama)}</b>

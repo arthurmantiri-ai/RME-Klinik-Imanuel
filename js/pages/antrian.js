@@ -33,7 +33,7 @@ const Antrian = (() => {
      fungsi lama dipertahankan apa adanya. */
   function gambarTabel(wadah, data, ringkas = false) {
     if (!data.length) {
-      wadah.innerHTML = `<div class="empty" style="padding:34px 16px">
+      wadah.innerHTML = `<div class="empty compact">
         ${UI.ikon('antrian', 40)}
         <h3>Belum ada pasien dalam antrian</h3>
         <p>Pasien yang didaftarkan hari ini akan muncul di sini.</p>
@@ -45,14 +45,14 @@ const Antrian = (() => {
 
     wadah.innerHTML = `<div class="table-wrap"><table class="tbl">
       <thead><tr>
-        <th style="width:56px">No.</th>
+        <th class="col-narrow">No.</th>
         <th>Pasien</th>
         ${ringkas ? '' : '<th>No. RM</th>'}
         <th>Poli</th>
         ${ringkas ? '' : '<th>Dokter</th>'}
         <th>Bayar</th>
         <th>Status</th>
-        <th style="width:1%"></th>
+        <th class="col-shrink"></th>
       </tr></thead>
       <tbody>${data.map(a => barisKunjungan(a, ringkas)).join('')}</tbody>
     </table></div>`;
@@ -93,12 +93,12 @@ const Antrian = (() => {
     await muatData();
 
     el.innerHTML = `
-      <div class="flex items-center justify-between mb-16 flex-wrap gap-12">
-        <div>
-          <h1>Antrean ${UI.tglIndo(new Date(), true)}</h1>
-          <p class="text-muted mb-0" id="ringkas"></p>
+      <div class="page-header">
+        <div class="page-heading">
+          <h1>Antrean</h1>
+          <div class="page-sub">${UI.tglIndo(new Date(), true)} · <span id="ringkas"></span></div>
         </div>
-        <div class="flex gap-6 flex-wrap">
+        <div class="page-actions">
           <button class="btn btn-secondary btn-sm" id="btnSegar">${UI.ikon('jam',15)} Segarkan</button>
           ${App.boleh(['admin','pendaftaran','perawat','dokter'])
             ? `<button class="btn btn-secondary btn-sm" id="btnNomorBaru">${UI.ikon('plus',15)} Ambil nomor</button>` : ''}
@@ -107,7 +107,7 @@ const Antrian = (() => {
         </div>
       </div>
 
-      <div id="kartuKuota" class="grid grid-3 mb-16"></div>
+      <div id="kartuKuota" class="quota-row"></div>
 
       <div class="tabs" id="tabAntrean">
         <button class="tab on" data-t="LOKET">Menunggu loket</button>
@@ -116,12 +116,12 @@ const Antrian = (() => {
         <button class="tab" data-t="SEMUA">Semua</button>
       </div>
 
-      <div class="card"><div class="card-body tight" id="isiAntrean"></div></div>
+      <div class="work-panel"><div id="isiAntrean"></div></div>
 
-      <div class="card mt-16">
-        <div class="card-head"><h2>Panggilan terakhir</h2>
-          <div class="sub">Yang sedang terdengar di ruang tunggu</div></div>
-        <div class="card-body tight" id="isiPanggilan"></div>
+      <div class="work-panel mt-16">
+        <div class="work-panel-head"><h2>Panggilan terakhir</h2>
+          <div class="text-xs text-muted">Yang sedang terdengar di ruang tunggu</div></div>
+        <div id="isiPanggilan"></div>
       </div>`;
 
     el.querySelector('#tabAntrean').addEventListener('click', (e) => {
@@ -201,31 +201,31 @@ const Antrian = (() => {
                              .map(a => a.nomor).slice(-1)[0];
       const menunggu = semua.filter(a => a.poli_id === k.poli_id && A().masihAktif(a)).length;
       const penuh = k.buka && k.sisa_kuota <= 0;
-      return `<div class="card"><div class="card-body">
-        <div class="flex items-center justify-between gap-6">
+      return `<div class="quota-card">
+        <div class="quota-card-head">
           <b>${UI.esc(k.nama_poli)}</b>
           ${k.buka
             ? `<span class="badge ${penuh ? 'b-batal' : 'b-selesai'}">
                  ${penuh ? 'Kuota penuh' : `sisa ${k.sisa_kuota}`}</span>`
             : '<span class="badge b-batal">Tutup hari ini</span>'}
         </div>
-        <div class="flex items-center gap-12 mt-8">
-          <div>
-            <div class="text-xs text-muted">Sedang dipanggil</div>
-            <b class="mono" style="font-size:20px">${UI.esc(dipanggil || '—')}</b>
+        <div class="quota-figures">
+          <div class="quota-figure">
+            <div class="qf-lbl">Sedang dipanggil</div>
+            <div class="qf-val mono">${UI.esc(dipanggil || '—')}</div>
           </div>
-          <div class="divider" style="width:1px;height:32px"></div>
-          <div>
-            <div class="text-xs text-muted">Menunggu</div>
-            <b style="font-size:20px">${menunggu}</b>
+          <div class="quota-sep"></div>
+          <div class="quota-figure">
+            <div class="qf-lbl">Menunggu</div>
+            <div class="qf-val">${menunggu}</div>
           </div>
         </div>
-        <div class="text-xs text-muted mt-8">
+        <div class="quota-foot">
           ${k.buka ? `Buka ${A().jamPendek(k.jam_buka)}–${A().jamPendek(k.jam_tutup)} ·
                       online ${k.terpakai_online}/${k.kuota_online}`
                    : 'Tidak ada jadwal atau sedang libur'}
         </div>
-      </div></div>`;
+      </div>`;
     }).join('');
   }
 
@@ -242,7 +242,7 @@ const Antrian = (() => {
     const data = saring();
 
     if (!data.length) {
-      wadah.innerHTML = `<div class="empty" style="padding:34px 16px">
+      wadah.innerHTML = `<div class="empty compact">
         ${UI.ikon('antrian', 40)}
         <h3>${tab === 'LOKET' ? 'Tidak ada yang menunggu di loket'
              : tab === 'POLI' ? 'Tidak ada yang menunggu poli'
@@ -256,13 +256,13 @@ const Antrian = (() => {
 
     wadah.innerHTML = `<div class="table-wrap"><table class="tbl">
       <thead><tr>
-        <th style="width:78px">Nomor</th>
+        <th class="col-narrow">Nomor</th>
         <th>Pasien</th>
         <th>Poli</th>
         <th>Asal</th>
         <th>Menunggu</th>
         <th>Status</th>
-        <th style="width:1%"></th>
+        <th class="col-shrink"></th>
       </tr></thead>
       <tbody>${data.map(baris).join('')}</tbody>
     </table></div>`;
@@ -275,7 +275,7 @@ const Antrian = (() => {
 
     return `<tr data-id="${a.id}">
       <td>
-        <div class="queue-no" style="width:auto;padding:0 10px;font-size:14px">${UI.esc(a.nomor)}</div>
+        <div class="queue-no sm">${UI.esc(a.nomor)}</div>
         ${a.jumlah_panggil > 0
           ? `<div class="text-xs text-muted mt-4">dipanggil ${a.jumlah_panggil}×</div>` : ''}
       </td>
@@ -287,7 +287,7 @@ const Antrian = (() => {
                ${a.tanggal_lahir ? ' · ' + UI.umurTeks(a.tanggal_lahir) : ''}</div>`
           : `<b class="text-muted">Belum dikenali</b>`}
         ${belumKenal
-          ? `<div class="text-xs" style="color:var(--warn-700)">
+          ? `<div class="text-xs text-warn">
                Kartu ${UI.esc(a.no_kartu || '—')} — belum jadi pasien klinik</div>` : ''}
       </td>
       <td>${UI.esc(a.nama_poli)}</td>
@@ -337,11 +337,11 @@ const Antrian = (() => {
       .slice(0, 6);
 
     if (!dipanggil.length) {
-      w.innerHTML = `<div class="empty" style="padding:22px 16px">
+      w.innerHTML = `<div class="empty sm">
         <p class="mb-0">Belum ada nomor yang dipanggil hari ini.</p></div>`;
       return;
     }
-    w.innerHTML = `<div class="chip-list" style="padding:10px 12px">${
+    w.innerHTML = `<div class="chip-list pad">${
       dipanggil.map(a => `<span class="chip">
         <b class="mono">${UI.esc(a.nomor)}</b>
         <span class="text-muted">→ ${UI.esc(a.tujuan_terakhir || a.nama_poli)}</span>
@@ -393,57 +393,74 @@ const Antrian = (() => {
     const hasil = await UI.modal({
       judul: `Check-in nomor ${a.nomor}`,
       lebar: true,
+      /* PENTING — bug lama pernah terjadi di sini: banner-nya dulu memakai
+         dua elemen pembungkus bersarang (kotak banner, lalu satu kotak
+         lagi di dalamnya untuk teks) tapi kode HTML-nya cuma menutup SATU
+         daripadanya. Akibatnya seluruh form di bawah ikut jadi anak
+         elemen banner dan tampil sempit di dalam kotak kuning/biru.
+         Sekarang kedua elemen (kotak banner, kotak teks kelas banner-txt)
+         ditutup dengan benar dan berdiri sendiri sebagai .modal-section,
+         terpisah total dari .modal-section berikutnya yang berisi form.
+         Kalau mengubah banner ini lagi: hitung ulang pasangan buka/tutup
+         elemennya sebelum menyimpan. */
       isi: `
-        <div class="banner ${pasienId ? 'info' : 'warn'} mb-12"><div>
-          ${pasienId
-            ? `Nomor ini milik <b>${UI.esc(a.nama_pasien)}</b>${a.no_rm ? ` (RM ${UI.esc(a.no_rm)})` : ''}.`
-            : `Peserta ini <b>belum terdaftar sebagai pasien klinik</b>.
-               ${a.no_kartu ? `Kartu BPJS <b class="mono">${UI.esc(a.no_kartu)}</b>.` : ''}
-               ${a.nik ? `NIK <b class="mono">${UI.esc(a.nik)}</b>.` : ''}
-               Cari dulu namanya di bawah; kalau memang belum pernah berobat,
-               daftarkan sebagai pasien baru lebih dulu.`}
-          ${a.catatan ? `<div class="text-xs mt-4">${UI.esc(a.catatan)}</div>` : ''}
-        </div>
-
-        <div id="pilihPasien" class="mb-12"></div>
-
-        <div class="form-row">
-          <div class="field">
-            <label>Poli</label>
-            <input class="w-full" value="${UI.esc(poliIni?.nama || '')}" disabled>
-          </div>
-          <div class="field">
-            <label>Dokter</label>
-            <select name="dokter_id" class="w-full">
-              <option value="">— belum ditentukan —</option>
-              ${dokter.map(d => `<option value="${d.id}">${UI.esc(d.nama)}</option>`).join('')}
-            </select>
+        <div class="modal-section">
+          <div class="banner ${pasienId ? 'info' : 'warn'} mb-0">
+            <div class="banner-txt">
+              ${pasienId
+                ? `Nomor ini milik <b>${UI.esc(a.nama_pasien)}</b>${a.no_rm ? ` (RM ${UI.esc(a.no_rm)})` : ''}.`
+                : `Peserta ini <b>belum terdaftar sebagai pasien klinik</b>.
+                   ${a.no_kartu ? `Kartu BPJS <b class="mono">${UI.esc(a.no_kartu)}</b>.` : ''}
+                   ${a.nik ? `NIK <b class="mono">${UI.esc(a.nik)}</b>.` : ''}
+                   Cari dulu namanya di bawah; kalau memang belum pernah berobat,
+                   daftarkan sebagai pasien baru lebih dulu.`}
+              ${a.catatan ? `<div class="text-xs mt-4">${UI.esc(a.catatan)}</div>` : ''}
+            </div>
           </div>
         </div>
-        <div class="form-row">
-          <div class="field">
-            <label>Cara bayar</label>
-            <select name="cara_bayar" class="w-full">
-              <option value="BPJS" ${a.no_kartu ? 'selected' : ''}>BPJS</option>
-              <option value="UMUM" ${a.no_kartu ? '' : 'selected'}>Umum</option>
-              <option value="ASURANSI_LAIN">Asuransi lain</option>
-              <option value="GRATIS">Gratis</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Keluhan singkat</label>
-            <input name="keluhan" class="w-full" placeholder="mis. batuk 3 hari">
+
+        <div class="modal-section">
+          <div class="modal-section-title">Pasien</div>
+          <div id="pilihPasien"></div>
+        </div>
+
+        <div class="modal-section">
+          <div class="modal-section-title">Kunjungan</div>
+          <div class="form-grid">
+            <div class="field field-compact">
+              <label>Poli</label>
+              <input class="w-full" value="${UI.esc(poliIni?.nama || '')}" disabled>
+            </div>
+            <div class="field field-wide">
+              <label>Dokter</label>
+              <select name="dokter_id" class="w-full">
+                <option value="">— belum ditentukan —</option>
+                ${dokter.map(d => `<option value="${d.id}">${UI.esc(d.nama)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="field field-compact">
+              <label>Cara bayar</label>
+              <select name="cara_bayar" class="w-full">
+                <option value="BPJS" ${a.no_kartu ? 'selected' : ''}>BPJS</option>
+                <option value="UMUM" ${a.no_kartu ? '' : 'selected'}>Umum</option>
+                <option value="ASURANSI_LAIN">Asuransi lain</option>
+                <option value="GRATIS">Gratis</option>
+              </select>
+            </div>
+            <div class="field field-wide">
+              <label>Keluhan singkat</label>
+              <input name="keluhan" class="w-full" placeholder="mis. batuk 3 hari">
+            </div>
           </div>
         </div>
         <div id="galatCheckin"></div>`,
       siap: (badan) => {
         const kotak = badan.querySelector('#pilihPasien');
         if (pasienId) {
-          kotak.innerHTML = `<div class="field"><label>Pasien</label>
-            <input class="w-full" value="${UI.esc(a.nama_pasien)}" disabled></div>`;
+          kotak.innerHTML = `<div class="field mb-0"><input class="w-full" value="${UI.esc(a.nama_pasien)}" disabled></div>`;
           return;
         }
-        kotak.innerHTML = `<div class="field"><label>Pasien</label>
+        kotak.innerHTML = `<div class="field mb-0">
           <div id="comboPasien"></div>
           <div class="hint" id="pasienTerpilih">Belum ada pasien dipilih.</div></div>`;
         Komponen.comboCari({

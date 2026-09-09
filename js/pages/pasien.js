@@ -28,16 +28,16 @@ const Pasien = (() => {
           <div class="hint">NIK dipakai untuk mencocokkan pasien di SatuSehat.</div>
         </div>
       </div>
-      <div class="form-row c3">
-        <div class="field">
+      <div class="form-grid">
+        <div class="field field-half">
           <label for="f-tempat">Tempat lahir</label>
           <input type="text" id="f-tempat" name="tempat_lahir" value="${UI.esc(p.tempat_lahir)}">
         </div>
-        <div class="field">
+        <div class="field field-compact">
           <label for="f-lahir">Tanggal lahir <span class="req">*</span></label>
           <input type="date" id="f-lahir" name="tanggal_lahir" value="${UI.esc(p.tanggal_lahir)}" required>
         </div>
-        <div class="field">
+        <div class="field field-compact">
           <label for="f-jk">Jenis kelamin <span class="req">*</span></label>
           <select id="f-jk" name="jenis_kelamin" required>
             <option value="">— pilih —</option>
@@ -92,10 +92,10 @@ const Pasien = (() => {
         <input type="text" id="f-alamat" name="alamat" value="${UI.esc(p.alamat)}"
                placeholder="Nama jalan, nomor rumah">
       </div>
-      <div class="form-row c4">
-        <div class="field"><label for="f-rt">RT</label>
+      <div class="form-grid">
+        <div class="field field-compact xs"><label for="f-rt">RT</label>
           <input type="text" id="f-rt" name="rt" value="${UI.esc(p.rt)}" maxlength="3"></div>
-        <div class="field"><label for="f-rw">RW</label>
+        <div class="field field-compact xs"><label for="f-rw">RW</label>
           <input type="text" id="f-rw" name="rw" value="${UI.esc(p.rw)}" maxlength="3"></div>
         <div class="field"><label for="f-kel">Kelurahan/Desa</label>
           <input type="text" id="f-kel" name="kelurahan" value="${UI.esc(p.kelurahan)}"></div>
@@ -113,7 +113,7 @@ const Pasien = (() => {
     </fieldset>
 
     <fieldset class="fieldset">
-      <legend>Penanggung jawab <span style="font-weight:400;text-transform:none;letter-spacing:0">(opsional)</span></legend>
+      <legend>Penanggung jawab <span class="opt-note">(opsional)</span></legend>
       <div class="form-row c3">
         <div class="field"><label for="f-pjn">Nama</label>
           <input type="text" id="f-pjn" name="pj_nama" value="${UI.esc(p.pj_nama)}"></div>
@@ -192,22 +192,23 @@ const Pasien = (() => {
 
   async function daftar(el) {
     el.innerHTML = `
-      <div class="flex items-center justify-between mb-16 flex-wrap gap-12">
-        <div><h1>Data Pasien</h1>
-          <p class="text-muted mb-0">Cari berdasarkan nama, nomor rekam medis, NIK, atau nomor BPJS.</p></div>
+      <div class="page-header">
+        <div class="page-heading"><h1>Data Pasien</h1>
+          <div class="page-sub">Cari berdasarkan nama, nomor rekam medis, NIK, atau nomor BPJS.</div></div>
         ${App.boleh(['pendaftaran','perawat','dokter'])
-          ? `<button class="btn btn-primary" id="btnBaru">${UI.ikon('plus',16)} Pasien baru</button>` : ''}
+          ? `<div class="page-actions"><button class="btn btn-primary btn-sm" id="btnBaru">
+              ${UI.ikon('plus',16)} Pasien baru</button></div>` : ''}
       </div>
 
-      <div class="card">
-        <div class="card-head flex-wrap gap-8">
-          <div class="search-box flex-1" style="min-width:220px">
-            <span class="ico">${UI.ikon('cari',16)}</span>
-            <input type="search" id="cari" placeholder="Ketik nama, no. RM, NIK, atau no. BPJS…" autofocus>
-          </div>
-          <label class="check"><input type="checkbox" id="hanyaKurang">
-            <span class="nowrap">Hanya yang datanya belum lengkap</span></label>
+      <div class="filter-bar">
+        <div class="search-box filter-search">
+          <span class="ico">${UI.ikon('cari',16)}</span>
+          <input type="search" id="cari" placeholder="Ketik nama, no. RM, NIK, atau no. BPJS…" autofocus>
         </div>
+        <label class="check"><input type="checkbox" id="hanyaKurang">
+          <span class="nowrap">Hanya yang datanya belum lengkap</span></label>
+      </div>
+      <div class="card">
         <div class="card-body tight" id="hasil">${UI.memuat(3)}</div>
       </div>`;
 
@@ -257,7 +258,7 @@ const Pasien = (() => {
         <tr class="clickable" onclick="location.hash='#/pasien/${p.id}'">
           <td class="mono">${UI.esc(p.no_rm)}</td>
           <td><b>${UI.esc(p.nama)}</b>
-            ${p.catatan_penting ? `<div class="text-xs" style="color:var(--danger-700)">
+            ${p.catatan_penting ? `<div class="text-xs text-danger">
               ${UI.ikon('peringatan',12)} ${UI.esc(p.catatan_penting)}</div>` : ''}</td>
           <td>${p.jenis_kelamin}</td>
           <td class="nowrap">${UI.umurTeks(p.tanggal_lahir)}</td>
@@ -269,14 +270,14 @@ const Pasien = (() => {
 
   function gambarDaftarKurang(wadah, data) {
     if (!data.length) {
-      wadah.innerHTML = `<div class="empty" style="padding:36px 16px">
+      wadah.innerHTML = `<div class="empty compact">
         ${UI.ikon('cek', 40)}
         <h3>Semua data pasien sudah lengkap</h3>
         <p>Tidak ada pasien yang kekurangan data untuk bridging nanti.</p></div>`;
       return;
     }
     wadah.innerHTML = `
-      <div class="banner warn" style="margin:14px 16px 0">
+      <div class="banner warn mt-14 mx-16 mb-0">
         <div>${data.length} pasien punya data yang nanti dibutuhkan bridging tapi belum terisi.
         Melengkapinya sekarang jauh lebih ringan daripada menumpuk sampai hari go-live.</div>
       </div>
@@ -290,7 +291,7 @@ const Pasien = (() => {
             <td class="muted nowrap">${p.jml_kunjungan}x
               ${p.kunjungan_terakhir ? `<div class="text-xs">terakhir ${UI.tglPendek(p.kunjungan_terakhir)}</div>` : ''}</td>
             <td>${p.kekurangan.map(k =>
-              `<div class="text-sm" style="color:var(--warn-700)">${UI.ikon('peringatan',12)} ${UI.esc(k)}</div>`).join('')}</td>
+              `<div class="text-sm text-warn">${UI.ikon('peringatan',12)} ${UI.esc(k)}</div>`).join('')}</td>
           </tr>`).join('')}</tbody></table></div>`;
   }
 
@@ -367,9 +368,9 @@ const Pasien = (() => {
               ${alergi.length === 0
                 ? '<p class="text-muted text-sm mb-0">Belum ada alergi tercatat.</p>'
                 : alergi.map(a => `
-                  <div style="padding:9px 0;border-bottom:1px solid var(--ink-100)">
+                  <div class="list-row">
                     <div class="flex items-center gap-8">
-                      <b style="flex:1">${UI.esc(a.nama)}</b>
+                      <b class="flex-1">${UI.esc(a.nama)}</b>
                       <span class="badge ${a.tingkat === 'BERAT' ? 'b-danger' : 'b-warn'}">${UI.esc(a.tingkat || a.jenis)}</span>
                     </div>
                     ${a.reaksi ? `<div class="text-xs text-muted">Reaksi: ${UI.esc(a.reaksi)}</div>` : ''}
@@ -387,9 +388,9 @@ const Pasien = (() => {
                              p.kelurahan, p.kecamatan, p.kabupaten].filter(Boolean).join(', ')],
                  ['No. HP', p.no_hp],
                  ['Penanggung jawab', p.pj_nama ? `${p.pj_nama}${p.pj_hubungan ? ' (' + p.pj_hubungan + ')' : ''}` : null]
-                ].map(([k, v]) => `<div style="display:flex;gap:10px;padding:5px 0">
-                    <span class="text-muted" style="width:120px;flex-shrink:0">${UI.esc(k)}</span>
-                    <span style="flex:1">${UI.esc(v || '—')}</span></div>`).join('')}
+                ].map(([k, v]) => `<div class="kv-row">
+                    <span class="k text-muted">${UI.esc(k)}</span>
+                    <span class="v">${UI.esc(v || '—')}</span></div>`).join('')}
             </div>
           </div>
         </div>
