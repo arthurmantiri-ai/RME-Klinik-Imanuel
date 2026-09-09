@@ -303,6 +303,18 @@ const KONTRAK = [
     alasan: 'seluruh baris portal apa adanya — resep rutin, nama statin, nama lab. ' +
             'Kartu pencocokan membacanya untuk menampilkan resep rutin pasien. Tanpa ' +
             'kolom ini kartunya kosong dan tidak ada bahan untuk memeriksa kecocokan.'
+  },
+  {
+    fungsi: 'laporanKunjunganRentang',
+    wajib: ['jam_daftar'],
+    alasan: 'jam WITA siap pakai untuk heatmap kunjungan per jam ' +
+            '(LaporanCore.rekapJamKunjungan() di js/laporan_core.js membacanya ' +
+            'langsung sebagai integer). Kolom ini gampang terlihat "berlebihan" ' +
+            'karena ada waktu_daftar di baris yang sama — tapi menurunkan jam dari ' +
+            'waktu_daftar (timestamptz) di JS bisa membaca zona waktu sesi Supabase ' +
+            'yang salah tanpa galat apa pun, kelas kesalahan yang sama dengan ' +
+            'UI.hariIni() dulu (lihat claude/status-rme.md). Tanpa kolom ini heatmap ' +
+            'tetap tergambar rapi — seluruh jam masuk ke satu batang "tanpa jam".'
   }
 ];
 

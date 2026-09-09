@@ -15,6 +15,7 @@ printf 'periksa_core  '; node test/uji_periksa_core.js | tail -1
 printf 'antrean_core  '; node test/uji_antrean_core.js | tail -1
 printf 'kronis_core   '; node test/uji_kronis_core.js  | tail -1
 printf 'kronis_pantau '; node test/uji_kronis_pantau_core.js | tail -1
+printf 'laporan_core  '; node test/uji_laporan_core.js | tail -1
 echo
 echo "════ 3. Kolom db.js vs skema SQL ════"
 # Uji halaman semuanya berjalan di demo.html, yang memakai demo-data.js dan
@@ -31,3 +32,4 @@ printf 'pemeriksaan dokter   '; node test/uji_periksa_halaman.js | tail -1
 printf 'antrean & layar      '; node test/uji_antrean_halaman.js | tail -1
 printf 'migrasi portal       '; node test/uji_kronis_halaman.js | tail -1
 printf 'pemantauan kronis    '; node test/uji_kronis_pantau_halaman.js | tail -1
+printf 'laporan (Tahap 3)    '; node test/uji_laporan_halaman.js | tail -1

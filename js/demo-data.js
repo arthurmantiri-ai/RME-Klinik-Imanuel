@@ -1177,6 +1177,18 @@ const DB = (() => {
       if (!h[d.kode_icd10]) h[d.kode_icd10] = { kode: d.kode_icd10, nama: d.nama, jml: 0 };
       h[d.kode_icd10].jml++;
     });
+    // DIAGNOSA_LAP (riwayat sintetis enam bulan, lihat "LAPORAN — TAHAP 3"
+    // di bawah) ikut ditally di sini juga — tanpa ini, tab Overview yang
+    // memakai fungsi yang SAMA untuk "Sepuluh Besar Penyakit" hanya akan
+    // menampilkan empat baris lawas yang nyaris kosong, padahal grafik
+    // kunjungan di sebelahnya menunjukkan ratusan kunjungan sebulan. Di
+    // database sungguhan tidak ada dua sumber terpisah seperti ini —
+    // penyatuan di sini justru membuat demo lebih mirip produksi, bukan
+    // kurang.
+    DIAGNOSA_LAP.filter(d => d.tanggal >= dari && d.tanggal <= sampai).forEach(d => {
+      if (!h[d.kode_icd10]) h[d.kode_icd10] = { kode: d.kode_icd10, nama: d.nama, jml: 0 };
+      h[d.kode_icd10].jml++;
+    });
     return Object.values(h).sort((a, b) => b.jml - a.jml).slice(0, batas);
   }
 
@@ -2916,6 +2928,226 @@ const DB = (() => {
 
   async function refKronisKuotaObat() { await tunggu(30); return salin(REF_KUOTA); }
 
+  /* =====================================================================
+     LAPORAN — TAHAP 3 — DATA SINTETIS ENAM BULAN
+     KUNJUNGAN di atas sengaja kecil (tiga tanggal) — cukup untuk menguji
+     alur pendaftaran/periksa/kasir, tapi terlalu sedikit untuk grafik
+     Overview yang butuh pola enam bulan. Blok ini membangkitkan riwayat
+     sintetis TERPISAH, khusus dipakai tujuh fungsi laporan* di bawah —
+     TIDAK bercampur dengan KUNJUNGAN di atas, supaya halaman lain dan
+     bagian demo yang sudah bergantung pada bentuknya yang kecil tidak
+     ikut berubah.
+
+     Dibangkitkan dengan PRNG berbenih TETAP (bukan Math.random()) supaya
+     angkanya sama setiap kali demo.html dimuat ulang — pengujian Chromium
+     yang menyorot angka tertentu tidak boleh goyah hanya karena reload.
+     Nama/no. RM/no. BPJS tetap dari PASIEN sungguhan (supaya terasa nyata
+     di tabel Register/Rujukan); tanggal lahir untuk kunjungan sintetis ini
+     DIACAK sendiri per kunjungan (bukan dari tanggal_lahir pasien aslinya)
+     supaya kedua belas kategori usia SP2TP/LB1 di tab Puskesmas terisi
+     semua, bukan cuma dua-tiga kategori dari segelintir pasien asli. Ini
+     sengaja tidak realistis per-pasien (satu pasien bisa "berbeda umur"
+     antar baris) tapi tidak pernah terlihat oleh siapa pun karena baris
+     ini hanya dipakai untuk rekap agregat, tidak pernah ditampilkan
+     sebagai identitas satu pasien di layar lain. */
+  function prngBerbenih(benih) {
+    let s = benih >>> 0;
+    return () => {
+      s |= 0; s = (s + 0x6D2B79F5) | 0;
+      let t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const lapAcak = prngBerbenih(20260908);
+  const lapAcakInt = (min, maks) => min + Math.floor(lapAcak() * (maks - min + 1));
+  const lapAcakPilih = (arr) => arr[Math.floor(lapAcak() * arr.length)];
+
+  function lapTanggalMundur(n) {
+    // n tanggal ke belakang dari hariIni (termasuk hariIni), 'YYYY-MM-DD'.
+    // Dibangun lewat Date(tahun,bulan,hari) LOKAL — bukan new Date(iso)
+    // atau toISOString() — sama seperti seluruh util tanggal lain di sini.
+    const [y, m, d] = hariIni.split('-').map(Number);
+    const dasar = new Date(y, m - 1, d);
+    const hasil = [];
+    for (let i = n - 1; i >= 0; i--) {
+      const t = new Date(dasar); t.setDate(t.getDate() - i);
+      hasil.push(`${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`);
+    }
+    return hasil;
+  }
+
+  function lapAcakTanggalLahir() {
+    // Sebaran usia kasar khas klinik primer: sedikit bayi, banyak dewasa,
+    // cukup lansia — supaya seluruh 12 kategori SP2TP/LB1 kebagian data.
+    const r = lapAcak();
+    let hari;
+    if (r < 0.03) hari = lapAcakInt(0, 6);
+    else if (r < 0.05) hari = lapAcakInt(8, 28);
+    else if (r < 0.08) hari = lapAcakInt(29, 364);
+    else if (r < 0.14) hari = lapAcakInt(1, 4) * 365 + lapAcakInt(0, 364);
+    else if (r < 0.20) hari = lapAcakInt(5, 9) * 365 + lapAcakInt(0, 364);
+    else if (r < 0.25) hari = lapAcakInt(10, 14) * 365 + lapAcakInt(0, 364);
+    else if (r < 0.32) hari = lapAcakInt(15, 19) * 365 + lapAcakInt(0, 364);
+    else if (r < 0.62) hari = lapAcakInt(20, 44) * 365 + lapAcakInt(0, 364);
+    else if (r < 0.78) hari = lapAcakInt(45, 54) * 365 + lapAcakInt(0, 364);
+    else if (r < 0.86) hari = lapAcakInt(55, 59) * 365 + lapAcakInt(0, 364);
+    else if (r < 0.95) hari = lapAcakInt(60, 69) * 365 + lapAcakInt(0, 364);
+    else hari = lapAcakInt(70, 85) * 365;
+    const [y, m, d] = hariIni.split('-').map(Number);
+    const dasar = new Date(y, m - 1, d);
+    dasar.setDate(dasar.getDate() - hari);
+    return `${dasar.getFullYear()}-${String(dasar.getMonth() + 1).padStart(2, '0')}-${String(dasar.getDate()).padStart(2, '0')}`;
+  }
+
+  const LAP_DOKTER_UMUM = PEGAWAI.filter(p => p.peran === 'dokter' && p.jenis_dokter === 'UMUM');
+  const LAP_DOKTER_GIGI = PEGAWAI.filter(p => p.peran === 'dokter' && p.jenis_dokter === 'GIGI');
+  const LAP_ICD_GIGI = [
+    { kode: 'K02.9', nama: 'Karies gigi' }, { kode: 'K05.6', nama: 'Penyakit periodontal' },
+    { kode: 'K08.1', nama: 'Kehilangan gigi' }
+  ];
+
+  const LAP_TANGGAL = lapTanggalMundur(183);   // ± 6 bulan
+
+  const KUNJUNGAN_LAP = [];
+  const RUJUKAN_LAP = [];
+  const TAGIHAN_LAP = [];
+  const PEMBAYARAN_LAP = [];
+  const DIAGNOSA_LAP = [];
+
+  let lapUrut = 0;
+  LAP_TANGGAL.forEach((tgl) => {
+    const dow = new Date(tgl + 'T00:00:00').getDay();
+    if (dow === 0) return;   // klinik tutup hari Minggu
+
+    const buatSatu = (jenisPoli, dokter) => {
+      lapUrut++;
+      const pasien = lapAcakPilih(PASIEN);
+      const jam = (jenisPoli === 'GIGI' || jenisPoli === 'KIA')
+        ? lapAcakPilih([8, 9, 10, 11, 16, 17, 18])
+        : lapAcakPilih([7, 8, 8, 9, 9, 9, 10, 10, 11, 11, 12, 16, 17, 18, 19]);
+      const menit = lapAcakInt(0, 59);
+      const waktuDaftar = `${tgl}T${String(jam).padStart(2, '0')}:${String(menit).padStart(2, '0')}:00+08:00`;
+      const caraBayar = lapAcak() < 0.72 ? 'BPJS' : (lapAcak() < 0.9 ? 'UMUM' : 'ASURANSI_LAIN');
+      const jenisKunjungan = lapAcak() < 0.28 ? 'BARU' : 'LAMA';
+      const poli = POLI.find(p => p.jenis === jenisPoli);
+      const tglLahirSintetis = lapAcakTanggalLahir();
+      const jkSintetis = lapAcak() < 0.5 ? 'L' : 'P';
+
+      const kj = {
+        id: `lap-kj-${lapUrut}`, tanggal: tgl, jenis_poli: jenisPoli, cara_bayar: caraBayar,
+        jenis_kunjungan: jenisKunjungan, dokter_id: dokter ? dokter.id : null,
+        poli_id: poli.id, waktu_daftar: waktuDaftar, jam_daftar: jam,
+        nama_dokter: dokter ? dokter.nama : null, nama_poli: poli.nama,
+        no_kunjungan: tgl.replace(/-/g, '') + '-L' + String(lapUrut).padStart(5, '0'),
+        no_rm: pasien.no_rm, pasien_id: pasien.id, nama_pasien: pasien.nama,
+        jenis_kelamin: jkSintetis, tanggal_lahir: tglLahirSintetis,
+        no_bpjs: pasien.no_bpjs, no_hp: pasien.no_hp, status: 'SELESAI'
+      };
+      KUNJUNGAN_LAP.push(kj);
+
+      const diagGigi = jenisPoli === 'GIGI';
+      const icd = diagGigi ? lapAcakPilih(LAP_ICD_GIGI) : lapAcakPilih(ICD);
+      DIAGNOSA_LAP.push({
+        kunjungan_id: kj.id, kode_icd10: icd.kode, nama: diagGigi ? icd.nama : icd.nama_id,
+        tanggal: tgl, tanggal_lahir: tglLahirSintetis, jenis_kelamin: jkSintetis
+      });
+
+      if (jenisPoli === 'UMUM' && lapAcak() < 0.04) {
+        const jenisRujukan = lapAcakPilih(['RUJUK_LANJUT', 'RUJUK_LANJUT', 'RUJUK_INTERNAL', 'RUJUK_IGD']);
+        RUJUKAN_LAP.push({
+          kunjungan_id: kj.id, no_kunjungan: kj.no_kunjungan, tanggal: tgl, jenis_rujukan: jenisRujukan,
+          pasien_id: pasien.id, no_rm: pasien.no_rm, nama_pasien: pasien.nama,
+          no_bpjs: pasien.no_bpjs, no_hp: pasien.no_hp, tanggal_lahir: tglLahirSintetis, jenis_kelamin: jkSintetis,
+          nama_poli_asal: poli.nama, nama_dokter: dokter ? dokter.nama : null,
+          tujuan_poli_internal: jenisRujukan === 'RUJUK_INTERNAL' ? 'Poli Gigi' : null,
+          rujuk_ppk_kode: jenisRujukan === 'RUJUK_LANJUT' ? '3374R001' : null,
+          tujuan_faskes_kode: jenisRujukan === 'RUJUK_LANJUT' ? 'RSUD Kota Semarang' : null,
+          tujuan_subspesialis: null, tujuan_sarana: null, rujuk_tgl_estimasi: null,
+          tujuan_teks: jenisRujukan === 'RUJUK_IGD' ? 'IGD RSUD Kota Semarang' : null,
+          spesialis_teks: null, rujuk_alasan: 'Memerlukan pemeriksaan/tindakan lanjutan',
+          daftar_diagnosa: `${icd.kode} - ${diagGigi ? icd.nama : icd.nama_id}`
+        });
+      }
+
+      // Nilai layanan (tagihan) dan uang masuk (pembayaran) — BPJS
+      // ditanggung penuh, jadi tidak ada baris pembayaran tunai untuknya.
+      // Baris TIDAK dikelompokkan per hari/poli/penjamin di sini (beda
+      // dengan v_laporan_keuangan_* di database) — tidak perlu, karena
+      // js/laporan_core.js dan js/pages/laporan.js menjumlahkan sendiri
+      // dari baris mentah apa pun bentuknya; satu baris per kunjungan
+      // menghasilkan total yang identik dengan baris yang sudah dikelompokkan.
+      const tarif = jenisPoli === 'GIGI' ? lapAcakInt(150000, 400000) : lapAcakInt(50000, 180000);
+      TAGIHAN_LAP.push({
+        tanggal: tgl, jenis_poli: jenisPoli, penjamin: caraBayar, jumlah_tagihan: 1,
+        nilai_layanan: tarif, ditagih: caraBayar === 'BPJS' ? 0 : tarif,
+        sudah_dibayar: caraBayar === 'BPJS' ? 0 : tarif
+      });
+      if (caraBayar !== 'BPJS') {
+        PEMBAYARAN_LAP.push({
+          tanggal: tgl, jenis_poli: jenisPoli, penjamin: caraBayar,
+          metode: lapAcakPilih(['TUNAI', 'TUNAI', 'TUNAI', 'QRIS', 'DEBIT']),
+          jumlah_transaksi: 1, uang_masuk: tarif
+        });
+      }
+    };
+
+    const jumlahUmum = dow === 6 ? lapAcakInt(4, 9) : lapAcakInt(10, 22);
+    const jumlahGigi = lapAcakInt(2, 7);
+    const jumlahKia = lapAcak() < 0.5 ? lapAcakInt(0, 3) : 0;
+    for (let i = 0; i < jumlahUmum; i++) buatSatu('UMUM', lapAcakPilih(LAP_DOKTER_UMUM));
+    for (let i = 0; i < jumlahGigi; i++) buatSatu('GIGI', lapAcakPilih(LAP_DOKTER_GIGI));
+    for (let i = 0; i < jumlahKia; i++) buatSatu('KIA', null);
+  });
+
+  async function laporanKunjunganRentang({ dari, sampai }) {
+    await tunggu(60);
+    return KUNJUNGAN_LAP.filter(k => k.tanggal >= dari && k.tanggal <= sampai).map(k => ({
+      tanggal: k.tanggal, jenis_poli: k.jenis_poli, cara_bayar: k.cara_bayar,
+      jenis_kunjungan: k.jenis_kunjungan, jam_daftar: k.jam_daftar,
+      nama_dokter: k.nama_dokter, dokter_id: k.dokter_id
+    }));
+  }
+  async function laporanRujukan({ dari, sampai }) {
+    await tunggu(60);
+    return RUJUKAN_LAP.filter(r => r.tanggal >= dari && r.tanggal <= sampai)
+      .slice().sort((a, b) => b.tanggal.localeCompare(a.tanggal));
+  }
+  async function laporanKeuanganTagihan({ dari, sampai }) {
+    await tunggu(60);
+    return TAGIHAN_LAP.filter(t => t.tanggal >= dari && t.tanggal <= sampai);
+  }
+  async function laporanKeuanganPembayaran({ dari, sampai }) {
+    await tunggu(60);
+    return PEMBAYARAN_LAP.filter(p => p.tanggal >= dari && p.tanggal <= sampai);
+  }
+  async function laporanRegisterPoli({ dari, sampai, jenisPoli }) {
+    await tunggu(60);
+    let d = KUNJUNGAN_LAP.filter(k => k.tanggal >= dari && k.tanggal <= sampai);
+    if (jenisPoli) d = d.filter(k => k.jenis_poli === jenisPoli);
+    return d.map(k => {
+      const dg = DIAGNOSA_LAP.find(x => x.kunjungan_id === k.id);
+      return {
+        id: k.id, tanggal: k.tanggal, no_kunjungan: k.no_kunjungan, no_rm: k.no_rm,
+        nama_pasien: k.nama_pasien, jenis_kelamin: k.jenis_kelamin, tanggal_lahir: k.tanggal_lahir,
+        cara_bayar: k.cara_bayar, nama_poli: k.nama_poli, nama_dokter: k.nama_dokter,
+        daftar_diagnosa: dg ? `${dg.kode_icd10} - ${dg.nama}` : null, status: k.status
+      };
+    });
+  }
+  async function laporanTindakanUntukKunjungan(idKunjungan) {
+    await tunggu(40);
+    if (!idKunjungan || !idKunjungan.length) return [];
+    return idKunjungan
+      .map(id => KUNJUNGAN_LAP.find(k => k.id === id))
+      .filter(k => k && k.jenis_poli === 'GIGI')
+      .map(k => ({ kunjungan_id: k.id, kode_icd9: '23.2', nama: 'Penambalan gigi', fdi: null, jumlah: 1 }));
+  }
+  async function laporanDiagnosaPuskesmas({ dari, sampai }) {
+    await tunggu(60);
+    return DIAGNOSA_LAP.filter(d => d.tanggal >= dari && d.tanggal <= sampai);
+  }
+
   return { sb, masuk, keluar, sesi, saya, bolehTulis, faskes, simpanFaskes,
            daftarPoli, daftarDokter, daftarPegawai, cariIcd, cariObat, daftarSigna,
            cariPasien, pasien, simpanPasien, alergiPasien, tambahAlergi, hapusAlergi, catatAkses,
@@ -2969,5 +3201,8 @@ const DB = (() => {
            kronisPantauObat, kronisPantauLab, kronisPantauStatin, kronisTelponH1,
            kronisPasien, kronisStatinPasien, kronisUsulanDiagnosa,
            kronisDaftarSimpan, kronisTerapiSelesai, kronisH3Cek,
+           laporanKunjunganRentang, laporanRujukan, laporanKeuanganTagihan,
+           laporanKeuanganPembayaran, laporanRegisterPoli, laporanTindakanUntukKunjungan,
+           laporanDiagnosaPuskesmas,
            gantiPeranDemo, peranDemoSekarang, PERAN_DEMO };
 })();

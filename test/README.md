@@ -4,21 +4,23 @@ Empat lapis, dijalankan dengan `./test/semua.sh` dari folder `rme-imanuel`.
 
 | Lapis | Berkas | Butuh apa | Menguji apa |
 |---|---|---|---|
-| SQL | `uji_apotek.sql`, `uji_kasir.sql`, `uji_rls.sql`, `uji_impor.sql`, `uji_penunjang.sql`, `uji_surat.sql`, `uji_periksa.sql` | PostgreSQL 15+ | Mesin FEFO, penyerahan resep, pembatalan, penyusunan tagihan, trigger status bayar, impor massal, penandaan hasil lab, penguncian lembar, penomoran & pembatalan surat, bentuk payload PCare, dan kebijakan RLS per peran |
-| Fungsi murni | `uji_apotek_core.js`, `uji_apotek_excel.js`, `uji_struk_core.js`, `uji_lab_core.js`, `uji_surat_core.js`, `uji_periksa_core.js` | Node saja | Kartu stok, pratinjau FEFO, penafsiran nilai Excel, pencocokan nama obat, mesin struk thermal, pemilihan nilai rujukan dan penandaan hasil lab, bentuk nomor surat, hitungan tanggal istirahat, isi tiap jenis surat, penyusunan narasi SOAP dari isian terstruktur, dan penguraian aturan pakai jadi signa1/signa2 — tanpa peramban, tanpa database |
+| SQL | `uji_apotek.sql`, `uji_kasir.sql`, `uji_rls.sql`, `uji_impor.sql`, `uji_penunjang.sql`, `uji_surat.sql`, `uji_periksa.sql`, `uji_laporan.sql` | PostgreSQL 15+ | Mesin FEFO, penyerahan resep, pembatalan, penyusunan tagihan, trigger status bayar, impor massal, penandaan hasil lab, penguncian lembar, penomoran & pembatalan surat, bentuk payload PCare, kebijakan RLS per peran, dan bentuk view Laporan (rentang kunjungan, rujukan, keuangan) |
+| Fungsi murni | `uji_apotek_core.js`, `uji_apotek_excel.js`, `uji_struk_core.js`, `uji_lab_core.js`, `uji_surat_core.js`, `uji_periksa_core.js`, `uji_laporan_core.js` | Node saja | Kartu stok, pratinjau FEFO, penafsiran nilai Excel, pencocokan nama obat, mesin struk thermal, pemilihan nilai rujukan dan penandaan hasil lab, bentuk nomor surat, hitungan tanggal istirahat, isi tiap jenis surat, penyusunan narasi SOAP dari isian terstruktur, penguraian aturan pakai jadi signa1/signa2, dan rekap Laporan (tren harian, per bulan, per jam, per dokter, kategori usia SP2TP/LB1) — tanpa peramban, tanpa database |
 | Kontrak kolom | `uji_kolom_db.js` | Node saja | Setiap kolom yang diminta `js/db.js` benar-benar ada di berkas SQL, dan kolom yang halaman gantungkan nasibnya ikut terpilih. Menangkap kelas galat yang tidak melempar apa pun dan tidak terlihat di demo |
-| Halaman | `uji_halaman.js`, `uji_impor_halaman.js`, `uji_lab_halaman.js`, `uji_surat_halaman.js`, `uji_periksa_halaman.js` | Node + Playwright + Chromium + SheetJS | `demo.html` dijalankan di peramban sungguhan; berkas .xlsx betulan dibuat, diunggah, dan diproses; alur lab ditelusuri dari permintaan dokter sampai lembar ditutup; surat diterbitkan, dicek nomornya, dan dibatalkan; pemeriksaan fisik per sistem ditandai, temuan cepat diklik, dan narasi SOAP-nya diperiksa. Setiap galat console menggagalkan pengujian |
+| Halaman | `uji_halaman.js`, `uji_impor_halaman.js`, `uji_lab_halaman.js`, `uji_surat_halaman.js`, `uji_periksa_halaman.js`, `uji_laporan_halaman.js` | Node + Playwright + Chromium + SheetJS + Chart.js | `demo.html` dijalankan di peramban sungguhan; berkas .xlsx betulan dibuat, diunggah, dan diproses; alur lab ditelusuri dari permintaan dokter sampai lembar ditutup; surat diterbitkan, dicek nomornya, dan dibatalkan; pemeriksaan fisik per sistem ditandai, temuan cepat diklik, dan narasi SOAP-nya diperiksa; halaman Laporan diuji sebagai admin dan sebagai peran lain (gerbang tab), grafik Chart.js dicek benar-benar terpasang ke kanvasnya, dan navigasi bulan/filter dicek benar-benar mengganti isi. Setiap galat console menggagalkan pengujian |
 
 ## Menyiapkan Node
 
 ```bash
-npm install playwright xlsx
+npm install playwright xlsx chart.js
 ```
 
 `xlsx` dipakai pengujian untuk MEMBUAT berkas .xlsx uji dan membaca hasil
-ekspor, sekaligus sebagai pengganti SheetJS dari CDN — lingkungan pengujian
-tidak punya akses internet, jadi permintaan ke CDN dialihkan ke salinan npm.
-Aplikasinya sendiri tidak butuh npm sama sekali.
+ekspor, sekaligus sebagai pengganti SheetJS dari CDN; `chart.js` dipakai
+`uji_laporan_halaman.js` sebagai pengganti Chart.js dari CDN untuk grafik
+tab Overview & Tren — lingkungan pengujian tidak punya akses ke CDN, jadi
+permintaan itu dialihkan ke salinan npm. Aplikasinya sendiri tidak butuh
+npm sama sekali.
 
 ## Menyiapkan PostgreSQL lokal
 

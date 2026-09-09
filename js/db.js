@@ -1696,6 +1696,85 @@ const DB = (() => {
     if (error) throw error; return data;
   }
 
+  /* ========================= LAPORAN — TAHAP 3 =========================
+     Seluruhnya lewat ambilSemua(): rentang setahun bisa gampang menembus
+     1000 baris bawaan PostgREST, dan laporan yang diam-diam terpotong
+     tanpa galat apa pun adalah kelas kesalahan yang paling berbahaya —
+     angkanya tetap tampil, hanya saja salah. */
+
+  /* Baris mentah untuk Overview, tren, heatmap jam, dan rekap per dokter
+     — seluruhnya dihitung di js/laporan_core.js dari kolom-kolom ini. */
+  async function laporanKunjunganRentang({ dari, sampai }) {
+    return await ambilSemua(() =>
+      sb.from('v_riwayat_kunjungan')
+        .select('tanggal,jenis_poli,cara_bayar,jenis_kunjungan,jam_daftar,nama_dokter,dokter_id')
+        .gte('tanggal', dari).lte('tanggal', sampai));
+  }
+
+  async function laporanRujukan({ dari, sampai }) {
+    return await ambilSemua(() =>
+      sb.from('v_laporan_rujukan').select('*')
+        .gte('tanggal', dari).lte('tanggal', sampai)
+        .order('tanggal', { ascending: false }));
+  }
+
+  async function laporanKeuanganTagihan({ dari, sampai }) {
+    return await ambilSemua(() =>
+      sb.from('v_laporan_keuangan_tagihan').select('*')
+        .gte('tanggal', dari).lte('tanggal', sampai));
+  }
+
+  async function laporanKeuanganPembayaran({ dari, sampai }) {
+    return await ambilSemua(() =>
+      sb.from('v_laporan_keuangan_pembayaran').select('*')
+        .gte('tanggal', dari).lte('tanggal', sampai));
+  }
+
+  /* Register Poli Umum/Gigi berbagi sumber yang sama dengan Riwayat
+     Kunjungan (v_riwayat_kunjungan) — bedanya cuma filter jenis_poli
+     dan kolom identitas pasien yang ikut ditampilkan di sini. */
+  async function laporanRegisterPoli({ dari, sampai, jenisPoli }) {
+    return await ambilSemua(() => {
+      let q = sb.from('v_riwayat_kunjungan').select('*')
+        .gte('tanggal', dari).lte('tanggal', sampai);
+      if (jenisPoli) q = q.eq('jenis_poli', jenisPoli);
+      return q;
+    });
+  }
+
+  /* Tindakan (ICD-9-CM) untuk sekumpulan kunjungan sekaligus — dipakai
+     Register Poli Gigi menambahkan kolom "Tindakan" tanpa query per
+     baris. `idKunjungan` boleh kosong (mengembalikan array kosong,
+     bukan seluruh tabel — PostgREST membaca `.in('col', [])` sebagai
+     "tidak ada satu pun yang cocok", tapi diperiksa di sini juga supaya
+     jelas dan tidak bergantung ke perilaku itu). */
+  async function laporanTindakanUntukKunjungan(idKunjungan) {
+    if (!idKunjungan || !idKunjungan.length) return [];
+    const { data, error } = await sb.from('v_tindakan_kunjungan')
+      .select('kunjungan_id,kode_icd9,nama,fdi,jumlah')
+      .in('kunjungan_id', idKunjungan);
+    if (error) throw error; return data;
+  }
+
+  /* Baris mentah untuk rekap Puskesmas: satu baris per diagnosa, dengan
+     tanggal kunjungan + usia & jenis kelamin pasien saat itu — bukan
+     usia sekarang. Bentuk PostgREST bersarang (kunjungan.pasien) sengaja
+     diratakan di sini, supaya laporan_core.js tidak perlu tahu bentuk
+     query-nya (pola yang sama dengan diagnosaTeratas() di atas). */
+  async function laporanDiagnosaPuskesmas({ dari, sampai }) {
+    const rows = await ambilSemua(() =>
+      sb.from('diagnosa')
+        .select('kode_icd10,nama,kunjungan!inner(tanggal,pasien:pasien_id(tanggal_lahir,jenis_kelamin))')
+        .gte('kunjungan.tanggal', dari).lte('kunjungan.tanggal', sampai));
+    return rows.map(d => ({
+      kode_icd10: d.kode_icd10,
+      nama: d.nama,
+      tanggal: d.kunjungan && d.kunjungan.tanggal,
+      tanggal_lahir: d.kunjungan && d.kunjungan.pasien && d.kunjungan.pasien.tanggal_lahir,
+      jenis_kelamin: d.kunjungan && d.kunjungan.pasien && d.kunjungan.pasien.jenis_kelamin
+    }));
+  }
+
   return {
     sb, masuk, keluar, sesi, saya, bolehTulis,
     faskes, simpanFaskes,
@@ -1752,6 +1831,9 @@ const DB = (() => {
     kronisImporAbaikan, kronisImporOtomatis, kronisImporBersihkan,
     kronisPantauObat, kronisPantauLab, kronisPantauStatin, kronisTelponH1,
     kronisPasien, kronisStatinPasien, kronisUsulanDiagnosa,
-    kronisDaftarSimpan, kronisTerapiSelesai, kronisH3Cek
+    kronisDaftarSimpan, kronisTerapiSelesai, kronisH3Cek,
+    laporanKunjunganRentang, laporanRujukan,
+    laporanKeuanganTagihan, laporanKeuanganPembayaran,
+    laporanRegisterPoli, laporanTindakanUntukKunjungan, laporanDiagnosaPuskesmas
   };
 })();

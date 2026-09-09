@@ -39,7 +39,7 @@ const App = (() => {
     'kajian':      (p) => Kajian.render(view(), p),
     'periksa':     (p) => Periksa.render(view(), p),
     'rekam':       (p) => Rekam.render(view(), p),
-    'laporan':     () => Laporan.render(view()),
+    'laporan':     (p) => Laporan.render(view(), p),
     'lab':         (p) => Lab.render(view(), p),
     'apotek':      (p) => Apotek.render(view(), p),
     'kasir':       (p) => Kasir.render(view(), p),
