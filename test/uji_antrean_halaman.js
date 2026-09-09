@@ -80,9 +80,12 @@ const server = http.createServer((req, res) => {
     await page.goto(alamat + '#/antrian', { waitUntil: 'networkidle' });
     await page.waitForTimeout(900);
 
+    /* Redesain Tahap 4 (9 Sep 2026): kartu kuota per poli pindah dari
+       kelas .card generik ke .quota-card semantik (css/style.css bagian
+       ANTREAN) — perilakunya sama, hanya nama kelasnya yang berubah. */
     cek('kartu kuota per poli tergambar',
-        await page.locator('#kartuKuota .card').count() >= 2,
-        'dapat ' + await page.locator('#kartuKuota .card').count());
+        await page.locator('#kartuKuota .quota-card').count() >= 2,
+        'dapat ' + await page.locator('#kartuKuota .quota-card').count());
 
     cek('empat tab alur antrean tersedia',
         await page.locator('#tabAntrean .tab').count() === 4);
