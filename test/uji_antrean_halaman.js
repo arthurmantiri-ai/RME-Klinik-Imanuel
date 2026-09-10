@@ -73,10 +73,11 @@ const server = http.createServer((req, res) => {
   const alamat = `http://127.0.0.1:${PORT}/demo.html`;
 
   /* ================================================================
-     A. PAPAN ANTREAN — petugas pendaftaran
+     A. PAPAN ANTREAN — petugas loket (9 Sep 2026 — dulu 'pendaftaran',
+     sekarang 'admin')
      ================================================================ */
   {
-    const { ctx, page } = await halamanBaru('pendaftaran');
+    const { ctx, page } = await halamanBaru('admin');
     await page.goto(alamat + '#/antrian', { waitUntil: 'networkidle' });
     await page.waitForTimeout(900);
 
@@ -212,10 +213,11 @@ const server = http.createServer((req, res) => {
   }
 
   /* ================================================================
-     C. ADMIN — jadwal, kuota, layar, Antrol
+     C. MASTER (9 Sep 2026 — dulu bernama 'admin') — jadwal, kuota,
+     layar, Antrol
      ================================================================ */
   {
-    const { ctx, page } = await halamanBaru('admin');
+    const { ctx, page } = await halamanBaru('master');
     await page.goto(alamat + '#/jadwal', { waitUntil: 'networkidle' });
     await page.waitForTimeout(1000);
 

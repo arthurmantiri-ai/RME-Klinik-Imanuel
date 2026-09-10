@@ -88,10 +88,11 @@ const server = http.createServer((req, res) => {
   const alamat = `http://127.0.0.1:${PORT}/demo.html`;
 
   /* ================================================================
-     A. GERBANG ADMIN — dokter dan pendaftaran hanya boleh lihat
-        Ringkasan; admin melihat keenam tab.
+     A. GERBANG LAPORAN LANJUTAN (9 Sep 2026 — dulu 'GERBANG ADMIN') —
+        dokter dan admin (staf loket, dulu 'pendaftaran') hanya boleh
+        lihat Ringkasan; master melihat keenam tab.
      ================================================================ */
-  for (const peran of ['dokter', 'pendaftaran', 'perawat', 'apoteker']) {
+  for (const peran of ['dokter', 'admin', 'perawat', 'apoteker']) {
     const { ctx, page } = await halamanBaru(peran);
     await page.goto(alamat + '#/laporan', { waitUntil: 'networkidle' });
     await page.waitForTimeout(500);
@@ -106,11 +107,11 @@ const server = http.createServer((req, res) => {
     await ctx.close();
   }
 
-  const { ctx, page } = await halamanBaru('admin');
+  const { ctx, page } = await halamanBaru('master');
   await page.goto(alamat + '#/laporan', { waitUntil: 'networkidle' });
   await page.waitForTimeout(500);
   const tabAdmin = await page.locator('#tabs .tab').allTextContents();
-  cek('admin melihat keenam tab', tabAdmin.length === 6, 'dapat: ' + JSON.stringify(tabAdmin));
+  cek('master melihat keenam tab', tabAdmin.length === 6, 'dapat: ' + JSON.stringify(tabAdmin));
 
   /* ================================================================
      B. OVERVIEW & TREN

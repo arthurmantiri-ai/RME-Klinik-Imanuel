@@ -10,6 +10,11 @@ set client_min_messages to warning;
 -- ---------------------------------------------------------------------
 -- Persiapan: pengguna, obat, pasien, kunjungan, resep
 -- ---------------------------------------------------------------------
+-- 9 Sep 2026: UUID 111...1 dipakai di seluruh berkas uji sebagai akun
+-- peran TERTINGGI (dulu bernama 'admin', sekarang 'master') — dipakai
+-- untuk menguji jalur bypass/hardcode-master-only (hapus pembayaran,
+-- buka kunci lab, template invoice, dsb). Email tetap 'admin@uji.id'
+-- supaya tidak perlu menyentuh berkas uji lain yang memakai email ini.
 insert into auth.users (id, email) values
   ('11111111-1111-1111-1111-111111111111','admin@uji.id'),
   ('22222222-2222-2222-2222-222222222222','apoteker@uji.id'),
@@ -17,7 +22,7 @@ insert into auth.users (id, email) values
   ('44444444-4444-4444-4444-444444444444','kasir@uji.id')
 on conflict do nothing;
 
-update pegawai set nama='Admin Uji',    peran='admin'     where id='11111111-1111-1111-1111-111111111111';
+update pegawai set nama='Master Uji',   peran='master'    where id='11111111-1111-1111-1111-111111111111';
 update pegawai set nama='Apt Uji',      peran='apoteker'  where id='22222222-2222-2222-2222-222222222222';
 update pegawai set nama='dr Uji',       peran='dokter'    where id='33333333-3333-3333-3333-333333333333';
 update pegawai set nama='Kasir Uji',    peran='kasir'     where id='44444444-4444-4444-4444-444444444444';

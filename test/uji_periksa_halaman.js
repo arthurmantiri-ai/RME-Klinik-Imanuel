@@ -333,15 +333,16 @@ const server = http.createServer((req, res) => {
   }
 
   /* ================================================================
-     Admin — daftar faskes rujukan dan pemetaan kode PCare
+     Master (9 Sep 2026 — dulu bernama 'admin') — daftar faskes rujukan
+     dan pemetaan kode PCare
      ================================================================ */
   {
-    const { ctx, page } = await halamanBaru('admin');
+    const { ctx, page } = await halamanBaru('master');
     await page.goto(alamat + '#/pengaturan/rujukan', { waitUntil: 'networkidle' });
     await page.waitForTimeout(1200);
 
     const isi = await page.locator('#isiTab').textContent();
-    cek('tab Rujukan & Kode PCare tersedia untuk admin',
+    cek('tab Rujukan & Kode PCare tersedia untuk master',
         await page.locator('[data-t="rujukan"]').count() === 1);
     cek('daftar faskes tujuan rujukan tampil', isi.includes('Faskes tujuan rujukan'));
     cek('kode yang diketik sendiri ditandai belum resmi',

@@ -1,7 +1,7 @@
 -- =====================================================================
 --  UJI FUNGSIONAL MODUL KRONIS — TAHAP 2 (pemantauan)
 --  Dijalankan SETELAH uji_kronis.sql (memakai pegawai & poli dari
---  uji_apotek.sql/uji_penunjang.sql: admin=1111…, apoteker=2222…,
+--  uji_apotek.sql/uji_penunjang.sql: master=1111…, apoteker=2222…,
 --  dokter=3333…, perawat=5555…, pendaftaran=6666…).
 --
 --  Yang diuji di sini SENGAJA bukan tampilan (label/warna) — itu ada di
@@ -90,7 +90,7 @@ begin
 end $$;
 
 
-\echo '--- 3. Bukan dokter/perawat/admin tidak boleh mendaftarkan buku kronis'
+\echo '--- 3. Bukan dokter/perawat/master tidak boleh mendaftarkan buku kronis'
 do $$
 begin
   perform set_config('request.jwt.claim.sub','44444444-4444-4444-4444-444444444444', true); -- kasir

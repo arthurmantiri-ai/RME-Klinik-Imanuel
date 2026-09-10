@@ -249,10 +249,11 @@ const server = http.createServer((req, res) => {
   }
 
   /* ================================================================
-     PENDAFTARAN — boleh mencetak ulang, tidak boleh menerbitkan
+     ADMIN (staf loket, 9 Sep 2026 — dulu bernama 'pendaftaran') —
+     boleh mencetak ulang, tidak boleh menerbitkan
      ================================================================ */
   {
-    const { ctx, page } = await halamanBaru('pendaftaran');
+    const { ctx, page } = await halamanBaru('admin');
     await page.goto(alamat + '#/surat', { waitUntil: 'networkidle' });
     await page.waitForTimeout(900);
 
@@ -306,14 +307,14 @@ const server = http.createServer((req, res) => {
   }
 
   /* ================================================================
-     ADMIN — pengaturan kop surat
+     MASTER (9 Sep 2026 — dulu bernama 'admin') — pengaturan kop surat
      ================================================================ */
   {
-    const { ctx, page } = await halamanBaru('admin');
+    const { ctx, page } = await halamanBaru('master');
     await page.goto(alamat + '#/pengaturan/surat', { waitUntil: 'networkidle' });
     await page.waitForTimeout(900);
 
-    cek('tab Kop & Surat tersedia untuk admin',
+    cek('tab Kop & Surat tersedia untuk master',
         await page.locator('#pratinjauKop').count() === 1);
     const src = await page.locator('#pratinjauKop').getAttribute('src');
     cek('kop bawaan tertanam sebagai data URI',

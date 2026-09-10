@@ -79,9 +79,9 @@ const server = http.createServer((req, res) => {
   const alamat = `http://127.0.0.1:${PORT}/demo.html`;
 
   /* ================================================================
-     A. BUKAN ADMIN — halaman menolak, menu tidak menawarkan
+     A. BUKAN MASTER — halaman menolak, menu tidak menawarkan
      ================================================================ */
-  for (const peran of ['dokter', 'pendaftaran', 'apoteker']) {
+  for (const peran of ['dokter', 'admin', 'apoteker']) {
     const { ctx, page } = await halamanBaru(peran);
     await page.goto(alamat + '#/migrasi', { waitUntil: 'networkidle' });
     await page.waitForTimeout(500);
@@ -99,14 +99,14 @@ const server = http.createServer((req, res) => {
   }
 
   /* ================================================================
-     B. ADMIN — alur pencocokan
+     B. MASTER (9 Sep 2026 — dulu bernama 'admin') — alur pencocokan
      ================================================================ */
   {
-    const { ctx, page } = await halamanBaru('admin');
+    const { ctx, page } = await halamanBaru('master');
     await page.goto(alamat + '#/migrasi', { waitUntil: 'networkidle' });
     await page.waitForTimeout(700);
 
-    cek('menu menawarkan Migrasi Portal untuk admin',
+    cek('menu menawarkan Migrasi Portal untuk master',
         await page.locator('.nav a[href="#/migrasi"]').count() === 1);
 
     const ringkas = await page.locator('#ringkasMigrasi').textContent();
@@ -225,7 +225,7 @@ const server = http.createServer((req, res) => {
      C. TEMPEL OTOMATIS — hanya yang BPJS-nya cocok persis
      ================================================================ */
   {
-    const { ctx, page } = await halamanBaru('admin');
+    const { ctx, page } = await halamanBaru('master');
     await page.goto(alamat + '#/migrasi', { waitUntil: 'networkidle' });
     await page.waitForTimeout(700);
     await page.locator('#tabs [data-t="cocok"]').click();

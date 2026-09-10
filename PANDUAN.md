@@ -11,7 +11,7 @@ Biaya: **Rp 0** (Supabase free tier + Netlify free tier).
 2. [Yang perlu Anda siapkan](#2-yang-perlu-anda-siapkan)
 3. [Langkah 1 — Buat database Supabase](#langkah-1--buat-database-supabase)
 4. [Langkah 2 — Jalankan lima belas berkas SQL](#langkah-2--jalankan-lima-belas-berkas-sql)
-5. [Langkah 3 — Buat akun admin pertama](#langkah-3--buat-akun-admin-pertama)
+5. [Langkah 3 — Buat akun master pertama](#langkah-3--buat-akun-master-pertama)
 6. [Langkah 4 — Hubungkan aplikasi ke database](#langkah-4--hubungkan-aplikasi-ke-database)
 7. [Langkah 5 — Unggah ke Netlify](#langkah-5--unggah-ke-netlify)
 8. [Langkah 6 — Isi data klinik](#langkah-6--isi-data-klinik)
@@ -21,12 +21,13 @@ Biaya: **Rp 0** (Supabase free tier + Netlify free tier).
 12. [Lab & pemeriksaan penunjang](#lab--pemeriksaan-penunjang)
 13. [Surat keterangan](#surat-keterangan)
 14. [Master data](#master-data)
-15. [Antrean, layar tunggu, dan antrean online Mobile JKN](#antrean-layar-tunggu-dan-antrean-online-mobile-jkn)
-16. [Bridging PCare & SatuSehat](#bridging-pcare--satusehat)
-17. [Keamanan dan kepatuhan PMK 24/2022](#keamanan-dan-kepatuhan-pmk-242022)
-18. [Batas paket gratis](#batas-paket-gratis)
-19. [Rencana penggabungan dengan portal klinik](#rencana-penggabungan-dengan-portal-klinik)
-20. [Yang belum ada](#yang-belum-ada)
+15. [Hak Akses per peran](#hak-akses-per-peran)
+16. [Antrean, layar tunggu, dan antrean online Mobile JKN](#antrean-layar-tunggu-dan-antrean-online-mobile-jkn)
+17. [Bridging PCare & SatuSehat](#bridging-pcare--satusehat)
+18. [Keamanan dan kepatuhan PMK 24/2022](#keamanan-dan-kepatuhan-pmk-242022)
+19. [Batas paket gratis](#batas-paket-gratis)
+20. [Rencana penggabungan dengan portal klinik](#rencana-penggabungan-dengan-portal-klinik)
+21. [Yang belum ada](#yang-belum-ada)
 
 ---
 
@@ -170,17 +171,17 @@ Harus muncul: 178 ICD-10, 43 tindakan, 70 obat, 52 gigi, 3 poli, 1 tarif, 6 jeni
 
 ---
 
-## Langkah 3 — Buat akun admin pertama
+## Langkah 3 — Buat akun master pertama
 
 1. Di dasbor Supabase: **Authentication** → **Users** → **Add user** → **Create new user**
 2. Isi email dan kata sandi. Centang **Auto Confirm User** (supaya tidak perlu verifikasi email).
 3. Klik **Create user**.
 
-Baris di tabel `pegawai` akan dibuat otomatis, tapi perannya masih `pendaftaran`. Naikkan jadi admin lewat **SQL Editor**:
+Baris di tabel `pegawai` akan dibuat otomatis, tapi perannya masih `admin`. Naikkan jadi master lewat **SQL Editor**:
 
 ```sql
 update pegawai
-set peran = 'admin', nama = 'dr. Arthur Mantiri'
+set peran = 'master', nama = 'dr. Arthur Mantiri'
 where id = (select id from auth.users where email = 'EMAIL-ANDA@contoh.id');
 ```
 
@@ -193,13 +194,26 @@ where nama = 'drg. Nama Dokter Gigi Anda';
 
 Ulangi Langkah 3 untuk tiap staf. Peran yang tersedia:
 
-| Peran | Boleh melakukan |
+| Peran | Boleh melakukan (bawaan) |
 |---|---|
-| `admin` | Semua, termasuk pengaturan dan master data |
-| `pendaftaran` | Daftar pasien, buat kunjungan, lihat rekam medis |
+| `master` | Semua, tanpa kecuali — termasuk Pengaturan dan Master Data. Satu-satunya peran yang tidak bisa dibatasi lewat Hak Akses. |
+| `admin` | Staf loket: daftar pasien, buat kunjungan, lihat rekam medis |
 | `perawat` | Kajian awal (tanda vital), catat alergi |
-| `dokter` | Anamnesis, pemeriksaan fisik, diagnosa, tindakan, resep, odontogram, kunci rekam medis |
+| `dokter` | Anamnesis, pemeriksaan fisik, diagnosa, tindakan, resep, odontogram, kunci rekam medis, terbitkan surat |
 | `apoteker` | Lihat resep, tandai penyerahan obat |
+| `kasir` | Susun tagihan, catat pembayaran |
+
+> **9 Sep 2026 — nama peran berubah, dan hak akses kini bisa diatur.**
+> Peran tertinggi dulu bernama `admin`, sekarang `master`. Peran staf loket
+> dulu bernama `pendaftaran`, sekarang `admin` — sesuai istilah yang dipakai
+> staf klinik sehari-hari. Akun yang sudah ada otomatis ikut berganti nama
+> perannya; tidak ada yang perlu diketik ulang. Daftar "boleh melakukan" di
+> atas adalah **bawaan saja** — `master` bisa mengubah, per peran dan per
+> fitur, lewat **Pengaturan → Hak Akses** (lihat [bagian tersendiri di
+> bawah](#hak-akses-per-peran)). Menu itu sendiri, seperti halaman
+> Pengguna, sengaja **tidak** bisa diserahkan ke peran lain — supaya
+> `master` tidak pernah bisa mengunci dirinya sendiri dari satu-satunya
+> tempat memperbaiki hak akses.
 
 ---
 
@@ -247,7 +261,7 @@ Buka alamat itu, masuk dengan akun dari Langkah 3.
 
 ## Langkah 6 — Isi data klinik
 
-Masuk sebagai admin, buka **Pengaturan**:
+Masuk sebagai master, buka **Pengaturan**:
 
 - **Profil Klinik** — nama, alamat, telepon. Ini yang muncul di kop resep dan cetakan rekam medis.
 - **Poli** — sesuaikan dengan poli yang benar-benar ada di klinik Anda. Kolom **Jenis**
@@ -514,7 +528,7 @@ tanggungan pasien.
 **Tagihan yang sudah dibayar terkunci.** Struk sudah dicetak dan diserahkan;
 mengubah isinya setelah itu membuat kertas di tangan pasien dan catatan di
 sistem menyebut dua hal berbeda. Koreksi dilakukan dengan menghapus
-pembayarannya lebih dulu — tindakan yang hanya bisa dilakukan admin dan
+pembayarannya lebih dulu — tindakan yang hanya bisa dilakukan master dan
 selalu tercatat di audit log dengan alasannya.
 
 **Tarif berversi.** Menaikkan tarif tidak mengubah tagihan yang sudah terbit.
@@ -652,7 +666,7 @@ sisi aplikasi — tabel, kebijakan RLS, laporan, dan cetakan tidak ada yang beru
    diberi tahu. Rujukannya mengikuti jenis kelamin dan umur pasien — Hb 12,5 g/dL
    *rendah* pada laki-laki dewasa tetapi *normal* pada perempuan dewasa.
 4. **Lembar ditutup.** Tombol **Selesaikan lembar** baru hidup setelah semua isian
-   terisi. Setelah ditutup, hasilnya terkunci; hanya admin yang bisa membukanya kembali,
+   terisi. Setelah ditutup, hasilnya terkunci; hanya master yang bisa membukanya kembali,
    dan alasannya wajib diisi serta tercatat pada lembarnya.
 5. **Dokter membaca.** Hasilnya muncul sendiri di kartu *Pemeriksaan penunjang* pada
    halaman pemeriksaan, dan ikut tercetak di rekam medis.
@@ -750,7 +764,8 @@ menulisnya. Batasan ini ditegakkan di database (RLS), bukan hanya disembunyikan 
 ## Surat keterangan
 
 Menu **Surat Keterangan** menerbitkan enam jenis surat, semuanya berkop klinik dan
-bernomor otomatis. Yang menerbitkan hanya **dokter dan admin**; peran lain tetap bisa
+bernomor otomatis. Yang menerbitkan hanya **dokter** (bawaan; bisa ditambah lewat
+Pengaturan → Hak Akses); peran lain tetap bisa
 membuka tab Riwayat surat untuk mencetak ulang — itu memang pekerjaan loket.
 
 | Kode | Surat | Isinya terisi otomatis dari |
@@ -836,7 +851,8 @@ Beberapa hal diingatkan tanpa menolak penyimpanan — keputusan medisnya tetap m
 Tab **Riwayat surat** memuat semua surat yang pernah terbit. Bisa disaring per tanggal,
 jenis, dan status, dan dicari dengan satu kotak (nomor surat, nama pasien, No. RM, atau
 perihal). Dari sana surat bisa **dibuka, dicetak ulang, diunduh sebagai PDF**, dan —
-oleh admin atau dokter yang menerbitkannya — **diubah** atau **dibatalkan dengan alasan**.
+oleh master, atau dokter yang menerbitkannya sendiri — **diubah** atau
+**dibatalkan dengan alasan**.
 
 Cetak ulang memulangkan lembar yang sama persis dengan yang dulu ditandatangani: isi
 surat dibaca dari yang tersimpan, bukan disusun ulang dari rekam medis. Nama dan SIP
@@ -845,7 +861,7 @@ nomor SIP dokter diperbarui tahun depan.
 
 ### Mengganti kop surat
 
-**Pengaturan → Kop & Surat** (admin). Di sana bisa diatur:
+**Pengaturan → Kop & Surat** (master). Di sana bisa diatur:
 
 - **Kop surat** — unggah JPG/PNG yang baru. Gambarnya dikecilkan otomatis di peramban ke
   lebar 1500 piksel lalu disimpan di database sebagai satu baris, **bukan** di Supabase
@@ -859,7 +875,7 @@ nomor SIP dokter diperbarui tahun depan.
 
 ## Master data
 
-Menu **Master Data** (hanya admin) berisi empat daftar yang muncul saat dokter memeriksa
+Menu **Master Data** (hanya master, bawaan) berisi empat daftar yang muncul saat dokter memeriksa
 pasien. Semuanya bisa diubah dari aplikasi — tidak perlu membuka dasbor Supabase.
 
 ### Obat
@@ -890,6 +906,60 @@ berbeda; sesuaikan setelah beberapa minggu berjalan.
 Sama polanya. Yang khas di sini adalah centang **per gigi**: tindakan yang ditandai begitu
 akan meminta nomor gigi saat dicatat, dan rekam medis tidak bisa dikunci sebelum nomornya
 diisi.
+
+---
+
+## Hak Akses per peran
+
+_Ditambahkan 9 Sep 2026, bersamaan dengan penukaran nama peran `admin` → `master`
+dan `pendaftaran` → `admin`._
+
+Setiap fitur di aplikasi ini — bukan cuma menu mana yang terlihat, tapi juga aksi
+di dalam halaman (menyimpan pasien, mengisi hasil lab, membatalkan surat, dan
+seterusnya) — sekarang dijaga oleh satu **kode hak akses**. Peran `master` selalu
+punya semua kode tanpa kecuali dan tidak perlu diatur; peran lain (`admin`,
+`perawat`, `dokter`, `apoteker`, `kasir`) mulai dari bawaan yang mencerminkan
+persis perilaku aplikasi sebelum fitur ini ada, dan bisa diubah kapan saja.
+
+### Mengatur
+
+**Pengaturan → Hak Akses** (hanya `master` yang bisa membuka tab ini). Tabelnya
+dikelompokkan per modul — Menu, Data pasien & kunjungan, Pelayanan medis, Apotek
+& kasir, Surat keterangan, Antrean, Buku Kronis, Data acuan & laporan — dengan
+satu baris keterangan singkat di tiap kode dan satu kotak centang per peran.
+Mencentang atau melepas centang tersimpan seketika itu juga.
+
+**Perubahan berlaku saat staf terkait memuat ulang halaman atau masuk lagi** —
+bukan langsung ke sesi yang sedang berjalan, sama seperti perubahan peran di
+tab Pengguna.
+
+### Dua hal yang sengaja TIDAK bisa diatur di sini
+
+- **Ubah peran pengguna** (tab Pengguna, halaman ini juga) — tetap hardcode
+  khusus `master`. Kalau ini bisa diserahkan ke peran lain, peran itu bisa
+  menaikkan dirinya sendiri jadi `master`.
+- **Tab Hak Akses ini sendiri** — tetap hardcode khusus `master`. Kalau tab ini
+  sendiri diatur lewat matriks yang diaturnya sendiri, `master` bisa tanpa
+  sengaja mengunci dirinya dari satu-satunya tempat memperbaikinya, dan
+  jalan keluarnya hanya lewat SQL Editor Supabase langsung.
+
+Di luar dua itu, semuanya — termasuk siapa yang boleh membuka Master Data,
+Tarif & Invoice, Migrasi Portal, dan halaman Pengaturan itu sendiri — bisa
+diserahkan ke peran lain kalau klinik memang menginginkannya.
+
+### Kalau sedang meng-upgrade dari versi sebelum 9 Sep 2026
+
+Database yang sudah berjalan (bukan pemasangan baru) perlu satu langkah
+tambahan: jalankan `sql/20_ganti_nama_peran.sql` lebih dulu di **SQL Editor**,
+lalu **dalam sesi yang sama** jalankan ulang berkas-berkas berikut secara
+berurutan (semuanya aman dijalankan ulang di database berisi data):
+`02_rls.sql`, `05_gigi.sql`, `06_master.sql`, `08_apotek.sql`, `09_kasir.sql`,
+`11_penunjang.sql`, `13_surat.sql`, `14_periksa_terstruktur.sql`,
+`15_antrean.sql`, `16_kronis.sql`. Jangan berhenti di tengah — kalau langkah
+re-run itu terlewat, kebijakan RLS lama yang masih menyebut nama peran lama
+akan gagal dengan pesan *"invalid input value for enum peran_pegawai"*.
+Pemasangan **baru** dari nol tidak perlu berkas `20_ganti_nama_peran.sql` sama
+sekali — `01_schema.sql` sudah langsung memakai nama peran final.
 
 ---
 
@@ -1050,7 +1120,7 @@ permintaan mereka dijawab 401 oleh Supabase sebelum kode kita sempat berjalan.
 **3. Buat akun web service.** Tab **Antrean Online (Antrol)** → **Buat akun**.
 Password dibuat acak oleh sistem dan **ditampilkan sekali saja** — salin dan simpan
 bersama berkas pendaftaran. Kalau hilang, buat password baru untuk username yang sama;
-tidak ada cara membacanya kembali, bahkan oleh admin.
+tidak ada cara membacanya kembali, bahkan oleh master.
 
 Lalu serahkan ke Kantor Cabang BPJS: **base URL** (ada di halaman itu, tombol salin),
 **username**, dan **password**.
@@ -1232,8 +1302,8 @@ BRIDGING: { PCARE_AKTIF: true, SATUSEHAT_AKTIF: true }
 | Diagnosa wajib ICD-10 | Pencarian ICD-10 dengan 162 kode tersering; kode disimpan terpisah dari teks |
 | Audit trail | Setiap tambah/ubah/hapus terekam di `audit_log` beserti data lama, data baru, pelaku, dan waktu. Pembukaan rekam medis pasien juga tercatat sebagai `VIEW_RM`. |
 | Rekam medis tidak boleh diubah diam-diam | Setelah dikunci, perubahan ditolak database. Koreksi hanya lewat **Addendum** yang tercatat terpisah. |
-| Retensi minimal 25 tahun | Tidak ada penghapusan otomatis. Penghapusan hanya manual oleh admin dan tetap terekam. |
-| Pembatasan akses | Row Level Security per peran — perawat tidak bisa menulis diagnosa, pendaftaran tidak bisa menulis SOAP, dan seterusnya. Diuji langsung, bukan hanya diatur di tampilan. |
+| Retensi minimal 25 tahun | Tidak ada penghapusan otomatis. Penghapusan hanya manual oleh master dan tetap terekam. |
+| Pembatasan akses | Row Level Security per peran — perawat tidak bisa menulis diagnosa, admin (staf loket) tidak bisa menulis SOAP, dan seterusnya. Rinciannya bisa diatur `master` lewat Pengaturan → Hak Akses. Diuji langsung, bukan hanya diatur di tampilan. |
 
 Yang **masih menjadi tanggung jawab Anda**:
 
@@ -1367,9 +1437,9 @@ Struktur database sudah menyediakan tempat untuk sebagian besar hal di atas, jad
 |---|---|
 | "Aplikasi belum dihubungkan ke database" | `js/config.js` belum diisi |
 | Bisa masuk tapi langsung keluar lagi | Baris di tabel `pegawai` belum ada atau `aktif = false` |
-| "Akses ditolak" di halaman Pengaturan | Peran akun bukan `admin` |
+| "Akses ditolak" di halaman Pengaturan | Peran akun bukan `master`, dan kode `menu_pengaturan` belum diaktifkan untuk perannya di Hak Akses |
 | Data pasien kosong padahal ada isinya | RLS memblokir — pastikan akun punya baris di `pegawai` dengan `aktif = true` |
-| Tombol simpan diagnosa tidak jalan | Peran akun bukan `dokter` atau `admin` |
+| Tombol simpan diagnosa tidak jalan | Peran akun bukan `dokter`, dan kode `periksa` belum diaktifkan untuk perannya di Hak Akses |
 | Project Supabase "paused" | Tidak ada aktivitas 7 hari — klik *Restore* di dasbor |
 | Odontogram tidak muncul di layar dokter | Jenis poli belum diatur `GIGI` — ubah di Pengaturan → Poli |
 | Rekam medis gigi tidak bisa dikunci | Ada tindakan per-gigi yang belum disebutkan nomor giginya |

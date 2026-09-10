@@ -317,10 +317,11 @@ const server = http.createServer((req, res) => {
   }
 
   /* ================================================================
-     ADMIN — master pemeriksaan & nilai rujukan
+     MASTER (9 Sep 2026 — dulu bernama 'admin') — master pemeriksaan &
+     nilai rujukan
      ================================================================ */
   {
-    const { ctx, page } = await halamanBaru('admin');
+    const { ctx, page } = await halamanBaru('master');
     await page.goto(alamat + '#/master/lab', { waitUntil: 'networkidle' });
     await page.waitForTimeout(900);
 

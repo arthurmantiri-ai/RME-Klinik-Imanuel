@@ -117,17 +117,18 @@ const server = http.createServer((req, res) => {
   }
 
   /* ================================================================
-     B. HALAMAN PEMANTAUAN KRONIS — PENDAFTARAN
-        App.boleh(['pendaftaran']) juga bernilai benar untuk admin, jadi
-        peran ini sengaja dipilih untuk membuktikan tab itu tidak
-        terbuka untuk SIAPA SAJA, hanya peran yang disebut.
+     B. HALAMAN PEMANTAUAN KRONIS — ADMIN (staf loket, 9 Sep 2026 — dulu
+        bernama 'pendaftaran')
+        App.boleh('kronis_telpon_h1') juga bernilai benar untuk master
+        (selalu lolos), jadi peran ini sengaja dipilih untuk membuktikan
+        tab itu tidak terbuka untuk SIAPA SAJA, hanya peran yang disebut.
      ================================================================ */
   {
-    const { ctx, page } = await halamanBaru('pendaftaran');
+    const { ctx, page } = await halamanBaru('admin');
     await page.goto(alamat + '#/pantau-kronis/telpon', { waitUntil: 'networkidle' });
     await page.waitForTimeout(900);
 
-    cek('empat tab terlihat untuk petugas pendaftaran',
+    cek('empat tab terlihat untuk petugas loket (admin)',
         await page.locator('#tabs .tab').count() === 4);
     const telpon = await page.locator('#isiTab').textContent();
     cek('Budi Santoso (kontrol besok) muncul di daftar telepon H-1', /Budi Santoso/.test(telpon),

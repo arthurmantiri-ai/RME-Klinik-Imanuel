@@ -284,7 +284,7 @@ begin
   perform set_config('request.jwt.claim.sub','44444444-4444-4444-4444-444444444444', false);
 end $$;
 
-\echo '--- 15. Hanya admin yang boleh menghapus pembayaran'
+\echo '--- 15. Hanya master yang boleh menghapus pembayaran'
 do $$
 declare pid uuid; gagal boolean := false; t kasir_tagihan%rowtype; tid uuid;
 begin
@@ -294,7 +294,7 @@ begin
 
   begin perform public.kasir_hapus_pembayaran(pid, 'uji'); exception when others then
     gagal := true;
-    assert sqlerrm like '%admin%', format('pesan tidak sesuai: %s', sqlerrm);
+    assert sqlerrm like '%master%', format('pesan tidak sesuai: %s', sqlerrm);
   end;
   assert gagal, 'kasir tidak boleh menghapus pembayaran';
 
@@ -351,7 +351,7 @@ begin
   assert gagal, 'tagihan kedua untuk kunjungan yang sama harus ditolak';
 end $$;
 
-\echo '--- 20. Template invoice: dibaca semua staf, ditulis admin saja'
+\echo '--- 20. Template invoice: dibaca semua staf, ditulis yang punya hak master_data saja'
 do $$
 declare n int; gagal boolean := false;
 begin

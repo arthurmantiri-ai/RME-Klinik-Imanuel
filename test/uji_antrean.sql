@@ -372,7 +372,7 @@ begin
   exception when others then n := 0;
   end;
   reset role;
-  assert n = 0, 'riwayat panggilan tidak boleh bisa disunting, termasuk oleh admin';
+  assert n = 0, 'riwayat panggilan tidak boleh bisa disunting, termasuk oleh master';
 
   perform public.antrean_lewat(a.id);
 end $$;
@@ -695,7 +695,7 @@ begin
 end $$;
 
 
-\echo '--- 33. Peramban tidak bisa membaca tabel akun, bahkan sebagai admin'
+\echo '--- 33. Peramban tidak bisa membaca tabel akun, bahkan sebagai master'
 do $$
 declare n bigint; v_ditolak boolean := false;
 begin
@@ -718,7 +718,7 @@ begin
   set local role authenticated;
   execute 'select count(*) from v_antrol_akun' into n;
   reset role;
-  assert n >= 1, 'admin harus bisa melihat daftar akun';
+  assert n >= 1, 'master harus bisa melihat daftar akun';
 
   perform set_config('request.jwt.claim.sub','55555555-5555-5555-5555-555555555555', true);
   set local role authenticated;
@@ -728,7 +728,7 @@ begin
 end $$;
 
 
-\echo '--- 35. Hanya admin yang boleh mengganti token layar dan akun Antrol'
+\echo '--- 35. Hanya master yang boleh mengganti token layar dan akun Antrol'
 do $$
 declare v_ditolak boolean;
 begin
@@ -760,7 +760,7 @@ begin
 end $$;
 
 
-\echo '--- 37. Jadwal dan kuota hanya boleh diubah admin'
+\echo '--- 37. Jadwal dan kuota hanya boleh diubah master'
 do $$
 declare n bigint;
 begin

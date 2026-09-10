@@ -261,10 +261,10 @@ const server = http.createServer((req, res) => {
   }
 
   /* ================================================================
-     ADMIN — tarif & tampilan invoice
+     MASTER (9 Sep 2026 — dulu bernama 'admin') — tarif & tampilan invoice
      ================================================================ */
   {
-    const { ctx, page } = await halamanBaru('admin');
+    const { ctx, page } = await halamanBaru('master');
     await page.goto(alamat + '#/tarif', { waitUntil: 'networkidle' });
     await page.waitForTimeout(700);
 

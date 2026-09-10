@@ -1,7 +1,7 @@
 -- =====================================================================
 --  UJI FUNGSIONAL MODUL KRONIS — TAHAP 1 (dasar & migrasi)
 --  Dijalankan SETELAH uji_apotek.sql dan uji_rls.sql (memakai pengguna
---  admin/dokter/apoteker dan poli dari sana).
+--  master/dokter/apoteker dan poli dari sana).
 --
 --  Yang diuji di sini bukan tampilan, melainkan tiga hal yang kalau
 --  salah tidak akan pernah kelihatan di layar:
@@ -454,13 +454,13 @@ begin
 end $$;
 
 
-\echo '--- 19. Bukan admin tidak bisa menyentuh migrasi, dan tidak melihat tabel titipannya'
+\echo '--- 19. Bukan master tidak bisa menyentuh migrasi, dan tidak melihat tabel titipannya'
 do $$
 declare v_id bigint;
 begin
   select id into v_id from kronis_impor_pasien where kunci = 'n:siti aminah';
 
-  -- Dokter (33333333) bukan admin.
+  -- Dokter (33333333) bukan master.
   assert ujik_ditolak('33333333-3333-3333-3333-333333333333',
     format('select public.kronis_impor_cocokkan(%s, ''bbbbbbb1-0000-0000-0000-0000000000D3'')', v_id)),
     'Dokter tidak boleh mencocokkan data migrasi.';
@@ -471,7 +471,7 @@ begin
     'select public.kronis_impor_bersihkan(true)'),
     'Dokter tidak boleh membersihkan data migrasi.';
 
-  -- RLS: tabel titipan tidak terbaca oleh selain admin.
+  -- RLS: tabel titipan tidak terbaca oleh selain master.
   assert ujik_terlihat('33333333-3333-3333-3333-333333333333',
     'select count(*) from kronis_impor_pasien') = 0,
     'Tabel titipan tidak boleh terbaca oleh dokter.';

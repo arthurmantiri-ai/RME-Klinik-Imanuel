@@ -144,7 +144,7 @@ begin
     'dan uang yang diterima';
 end $$;
 
-\echo '--- 7. Template invoice: semua staf membaca, hanya admin menulis'
+\echo '--- 7. Template invoice: semua staf membaca, hanya master menulis'
 do $$
 declare n int;
 begin
@@ -172,10 +172,10 @@ begin
   exception when others then n := 0;
   end;
   reset role;
-  assert n = 1, 'admin harus bisa mengubah template invoice';
+  assert n = 1, 'master harus bisa mengubah template invoice';
 end $$;
 
-\echo '--- 8. Tarif: semua staf membaca, hanya admin menulis'
+\echo '--- 8. Tarif: semua staf membaca, hanya master menulis'
 do $$
 declare n int;
 begin

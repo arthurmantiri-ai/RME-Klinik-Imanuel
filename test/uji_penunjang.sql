@@ -64,7 +64,9 @@ insert into auth.users (id, email) values
   ('66666666-6666-6666-6666-666666666666','daftar@uji.id')
 on conflict do nothing;
 update pegawai set nama='Perawat Uji', peran='perawat'     where id='55555555-5555-5555-5555-555555555555';
-update pegawai set nama='Daftar Uji',  peran='pendaftaran' where id='66666666-6666-6666-6666-666666666666';
+-- UUID 666...6 dulu berperan 'pendaftaran' (staf loket) — nama peran itu
+-- sekarang 'admin' (9 Sep 2026); bukan akun 'master' (itu UUID 111...1).
+update pegawai set nama='Daftar Uji',  peran='admin'       where id='66666666-6666-6666-6666-666666666666';
 
 -- Tiga pasien dengan jenis kelamin dan umur berbeda: nilai rujukan
 -- hemoglobin berbeda untuk ketiganya, dan itulah yang diuji.
@@ -242,7 +244,7 @@ begin
   perform public.lab_selesaikan(v_p);
   assert (select status from lab_permintaan where id = v_p) = 'SELESAI', 'seharusnya SELESAI';
 
-  -- Perawat tidak boleh membatalkan lembar yang sudah ditutup; admin boleh.
+  -- Perawat tidak boleh membatalkan lembar yang sudah ditutup; master boleh.
   berhasil := false;
   begin perform public.lab_batalkan(v_p, 'coba batal'); berhasil := true;
   exception when others then null; end;
@@ -252,7 +254,7 @@ begin
   perform public.lab_batalkan(v_p, 'pembersihan data uji');
 end $$;
 
-\echo '--- 8. Lembar yang sudah selesai terkunci; hanya admin yang boleh membukanya, dengan alasan'
+\echo '--- 8. Lembar yang sudah selesai terkunci; hanya master yang boleh membukanya, dengan alasan'
 do $$
 declare v_p uuid; v_hb uuid; berhasil boolean := false; v_cat text;
 begin
@@ -275,9 +277,9 @@ begin
   berhasil := false;
   begin perform public.lab_buka_kunci(v_p, 'salah ketik'); berhasil := true;
   exception when others then null; end;
-  assert not berhasil, 'hanya admin yang boleh membuka kunci';
+  assert not berhasil, 'hanya master yang boleh membuka kunci';
 
-  -- Admin membuka kunci, tapi alasan wajib
+  -- Master membuka kunci, tapi alasan wajib
   perform set_config('request.jwt.claim.sub','11111111-1111-1111-1111-111111111111', false);
   berhasil := false;
   begin perform public.lab_buka_kunci(v_p, '   '); berhasil := true;
@@ -531,14 +533,14 @@ begin
     format('update lab_hasil set nilai_angka = 1 where permintaan_id = %L', v_p)) = 0,
     'apoteker tidak boleh mengisi hasil lab';
 
-  -- Pendaftaran: boleh mencatat arsip, tidak boleh mengisi hasil lab
+  -- Admin (staf loket): boleh mencatat arsip, tidak boleh mengisi hasil lab
   assert uji_terubah('66666666-6666-6666-6666-666666666666',
     format('update lab_hasil set nilai_angka = 1 where permintaan_id = %L', v_p)) = 0,
-    'pendaftaran tidak boleh mengisi hasil lab';
+    'admin (staf loket) tidak boleh mengisi hasil lab';
   assert not uji_ditolak('66666666-6666-6666-6666-666666666666',
     'insert into lampiran (pasien_id, jenis, judul) values
        (''bbbbbbb1-0000-0000-0000-000000000001'',''SURAT_RUJUKAN'',''Uji arsip pendaftaran'')'),
-    'pendaftaran harus boleh mencatat berkas masuk';
+    'admin (staf loket) harus boleh mencatat berkas masuk';
 
   -- Perawat boleh mengisi hasil, tidak boleh menulis bacaan radiologis
   assert uji_terubah('55555555-5555-5555-5555-555555555555',
@@ -549,13 +551,13 @@ begin
        (''bbbbbbb1-0000-0000-0000-000000000001'',''EKG'',''uji'')'),
     'perawat tidak boleh menulis bacaan penunjang';
 
-  -- Master lab hanya boleh diubah admin
+  -- Data acuan (master_data) lab hanya boleh diubah master
   assert uji_terubah('55555555-5555-5555-5555-555555555555',
     'update ref_lab set nama = ''Diubah perawat'' where kode = ''HB''') = 0,
-    'master pemeriksaan lab hanya boleh diubah admin';
+    'data acuan lab hanya boleh diubah master, bukan perawat';
   assert uji_terubah('11111111-1111-1111-1111-111111111111',
     'update ref_lab set keterangan = ''diperiksa admin'' where kode = ''HB''') = 1,
-    'admin harus boleh mengubah master lab';
+    'master harus boleh mengubah data acuan lab';
 
   -- Tanpa sesi, tidak ada yang terlihat
   assert uji_terlihat(null, 'select count(*) from lab_hasil') = 0,
@@ -784,7 +786,7 @@ begin
   perform set_config('request.jwt.claim.sub','55555555-5555-5555-5555-555555555555', false);
   update lab_hasil set nilai_angka = 6.0 where permintaan_id = v_p;
 
-  -- Klinik ganti reagen; admin memperbarui master.
+  -- Klinik ganti reagen; master memperbarui data acuan.
   perform set_config('request.jwt.claim.sub','11111111-1111-1111-1111-111111111111', false);
   update ref_lab_rujukan set batas_bawah = 2.0, batas_atas = 9.9
    where lab_id = v_ua and jenis_kelamin = 'L';
