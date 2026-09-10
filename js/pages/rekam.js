@@ -62,9 +62,9 @@ const Rekam = (() => {
         <div class="btn-group mb-16">
           <button class="btn btn-secondary btn-sm" onclick="window.print()">
             ${UI.ikon('cetak',15)} Cetak rekam medis</button>
-          ${App.boleh(['dokter']) && !rm.pemeriksaan?.final
+          ${App.boleh('periksa') && !rm.pemeriksaan?.final
             ? `<a href="#/periksa/${k.id}" class="btn btn-primary btn-sm">Lanjutkan pemeriksaan</a>` : ''}
-          ${App.boleh(['dokter'])
+          ${App.boleh('periksa')
             ? `<a href="#/surat/baru/${k.id}" class="btn btn-secondary btn-sm">
                  ${UI.ikon('surat',15)} Buat surat</a>` : ''}
         </div>
@@ -250,7 +250,7 @@ const Rekam = (() => {
       const w = document.getElementById('kartuSuratRekam');
       if (!w) return;
       try {
-        w.innerHTML = await Surat.kartuSuratKunjungan(k.id, App.boleh(['dokter']));
+        w.innerHTML = await Surat.kartuSuratKunjungan(k.id, App.boleh('periksa'));
         Surat.pasangKartuSurat(w);
       } catch (e) {
         w.innerHTML = `<p class="text-muted text-sm mb-0">Daftar surat tidak bisa dimuat.</p>`;

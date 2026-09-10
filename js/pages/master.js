@@ -16,8 +16,8 @@ const Master = (() => {
                   'Pot', 'Strip', 'Bungkus', 'mL'];
 
   async function render(el, param) {
-    if (!App.boleh([])) {
-      el.innerHTML = UI.kosong('Akses ditolak', 'Halaman ini hanya untuk admin klinik.');
+    if (!App.boleh('master_data')) {
+      el.innerHTML = UI.kosong('Akses ditolak', 'Anda tidak punya izin membuka Master Data.');
       return;
     }
     if (param && param[0]) tabAktif = param[0];

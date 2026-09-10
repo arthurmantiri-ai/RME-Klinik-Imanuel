@@ -17,8 +17,8 @@ const Jadwal = (() => {
   let poli = [], jadwal = [], konf = {}, tokenLayar = null;
 
   async function render(el, param) {
-    if (!App.boleh([])) {           // App.boleh([]) bernilai benar hanya untuk admin
-      el.innerHTML = UI.kosong('Akses ditolak', 'Halaman ini hanya untuk admin klinik.');
+    if (!App.boleh('antrean_pengaturan')) {
+      el.innerHTML = UI.kosong('Akses ditolak', 'Anda tidak punya izin membuka Antrean & Layar.');
       return;
     }
     if (param && param[0]) tabAktif = param[0];

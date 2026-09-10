@@ -1,16 +1,16 @@
 /* =====================================================================
-   LAPORAN — Tahap 3 menambah lima tab admin di atas tab Ringkasan yang
-   sudah ada sejak awal (tetap terbuka untuk admin/dokter/pendaftaran,
+   LAPORAN — Tahap 3 menambah lima tab lanjutan di atas tab Ringkasan yang
+   sudah ada sejak awal (Ringkasan tetap terbuka lewat kode `menu_laporan`,
    TIDAK diubah perilakunya): Overview & Tren, Rujukan, Register Poli,
-   Keuangan, dan Puskesmas.
+   Keuangan, dan Puskesmas — kelimanya di balik kode `laporan_lanjutan`
+   (9 Sep 2026, bisa diatur lewat Pengaturan -> Hak Akses; bawaannya hanya
+   master, sama seperti admin lama).
 
-   Kenapa admin-only ditegakkan DI SINI, bukan di RLS: sama seperti
-   v_kronis_telpon_h1 di Tahap 2 — RLS tabel aslinya sudah membuka baca
-   untuk semua staf (kasir dan dokter memang perlu kasir_tagihan/
-   pemeriksaan dari layar lain), jadi menutupnya di RLS akan mengunci
-   layar yang sudah sah itu juga. `App.boleh([])` bernilai benar hanya
-   untuk admin (lihat js/app.js) — itulah gerbangnya, persis seperti
-   js/pages/jadwal.js dan js/pages/master.js.
+   Kenapa dibatasi DI SINI, bukan di RLS: sama seperti kronis_telpon_h1 di
+   Tahap 2 — RLS tabel aslinya sudah membuka baca untuk semua staf (kasir
+   dan dokter memang perlu kasir_tagihan/pemeriksaan dari layar lain),
+   jadi menutupnya di RLS akan mengunci layar yang sudah sah itu juga.
+   `App.boleh('laporan_lanjutan')` itulah gerbangnya.
 
    Kenapa "Overview & Tren" jauh lebih kaya dari tab lain: diminta eksplisit
    ("Analitik penuh seperti portal lama", bukan versi ringkas) untuk menyamai
@@ -57,7 +57,7 @@ const Laporan = (() => {
   let ovBulanJam = UI.bulanIni();
   let ovBulanDokter = UI.bulanIni();
 
-  function bolehAdmin() { return App.boleh([]); }   // App.boleh([]) bernilai benar hanya untuk admin
+  function bolehAdmin() { return App.boleh('laporan_lanjutan'); }
 
   /* ==================================================================== */
   /*  RENDER HALAMAN & TAB                                                */

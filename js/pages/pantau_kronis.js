@@ -15,9 +15,9 @@ const PantauKronis = (() => {
 
   function bolehTelpon() {
     // Keputusan rancangan-kronis.md 4 Sep 2026: daftar "harus dihubungi
-    // hari ini" terbuka untuk admin + pendaftaran. App.boleh([...]) selalu
-    // bernilai benar untuk admin, jadi cukup sebut pendaftaran di sini.
-    return App.boleh(['pendaftaran']);
+    // hari ini" terbuka untuk master + admin (kode `kronis_telpon_h1`,
+    // bisa diatur lewat Pengaturan -> Hak Akses — 9 Sep 2026).
+    return App.boleh('kronis_telpon_h1');
   }
 
   async function render(el, param) {

@@ -37,7 +37,7 @@ const Antrian = (() => {
         ${UI.ikon('antrian', 40)}
         <h3>Belum ada pasien dalam antrian</h3>
         <p>Pasien yang didaftarkan hari ini akan muncul di sini.</p>
-        ${App.boleh(['pendaftaran','perawat','dokter'])
+        ${App.boleh('kunjungan_daftar')
           ? '<a href="#/pendaftaran" class="btn btn-primary btn-sm">Daftarkan pasien</a>' : ''}
       </div>`;
       return;
@@ -79,9 +79,9 @@ const Antrian = (() => {
   function tombolKunjungan(a) {
     const t = [];
     if (a.status === 'SELESAI') return `<a href="#/rekam/${a.id}" class="btn btn-secondary btn-sm">Lihat</a>`;
-    if (App.boleh(['perawat','dokter']) && !a.sudah_kajian)
+    if (App.boleh('kajian') && !a.sudah_kajian)
       t.push(`<a href="#/kajian/${a.id}" class="btn btn-primary btn-sm">Kajian awal</a>`);
-    if (App.boleh(['dokter']))
+    if (App.boleh('periksa'))
       t.push(`<a href="#/periksa/${a.id}" class="btn ${a.sudah_kajian ? 'btn-primary' : 'btn-secondary'} btn-sm">Periksa</a>`);
     if (!t.length) t.push(`<a href="#/rekam/${a.id}" class="btn btn-secondary btn-sm">Lihat</a>`);
     return t.join(' ');
@@ -100,9 +100,9 @@ const Antrian = (() => {
         </div>
         <div class="page-actions">
           <button class="btn btn-secondary btn-sm" id="btnSegar">${UI.ikon('jam',15)} Segarkan</button>
-          ${App.boleh(['admin','pendaftaran','perawat','dokter'])
+          ${App.boleh('antrean_buat')
             ? `<button class="btn btn-secondary btn-sm" id="btnNomorBaru">${UI.ikon('plus',15)} Ambil nomor</button>` : ''}
-          ${App.boleh(['admin','pendaftaran','perawat','dokter'])
+          ${App.boleh('kunjungan_daftar')
             ? `<a href="#/pendaftaran" class="btn btn-primary btn-sm">${UI.ikon('daftar',15)} Daftarkan pasien</a>` : ''}
         </div>
       </div>
@@ -307,20 +307,24 @@ const Antrian = (() => {
     }
 
     const t = [];
-    const bolehPanggil = App.boleh(['admin','pendaftaran','perawat','dokter','apoteker','kasir']);
+    // Memanggil nomor: tidak dibatasi peran tertentu di database
+    // (antrean_ubah pakai saya_staf()) — siapa pun staf aktif boleh,
+    // sengaja termasuk apoteker & kasir yang paling sering melihat pasien
+    // menunggu tanpa ada yang memanggil.
+    const bolehPanggil = !!App.siapa();
 
     if (bolehPanggil)
       t.push(`<button class="btn btn-secondary btn-sm" data-aksi="panggil" data-id="${a.id}">
                 ${a.jumlah_panggil ? 'Panggil ulang' : 'Panggil'}</button>`);
 
-    if (a.tahap === 'LOKET' && App.boleh(['admin','pendaftaran','perawat','dokter']))
+    if (a.tahap === 'LOKET' && App.boleh('antrean_buat'))
       t.push(`<button class="btn btn-primary btn-sm" data-aksi="checkin" data-id="${a.id}">
                 Check-in</button>`);
 
     if (a.tahap === 'POLI' && a.kunjungan_id) {
-      if (App.boleh(['perawat','dokter']) && !a.sudah_kajian)
+      if (App.boleh('kajian') && !a.sudah_kajian)
         t.push(`<a href="#/kajian/${a.kunjungan_id}" class="btn btn-secondary btn-sm">Kajian</a>`);
-      if (App.boleh(['dokter']))
+      if (App.boleh('periksa'))
         t.push(`<a href="#/periksa/${a.kunjungan_id}" class="btn btn-primary btn-sm">Periksa</a>`);
     }
 

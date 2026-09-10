@@ -22,7 +22,7 @@ const Apotek = (() => {
   let bulanLaporan = UI.bulanIni();
   let kartu = { mode: 'obat', obatId: '', bulan: UI.bulanIni(), tanggal: UI.hariIni() };
 
-  const bolehTulis = () => App.boleh(['apoteker']);
+  const bolehTulis = () => App.boleh('apotek');
   const rp = (n) => UI.rupiah(n);
 
   /* Rentang riwayat yang diunduh saat halaman dibuka. Seluruh riwayat

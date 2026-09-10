@@ -195,7 +195,7 @@ const Pasien = (() => {
       <div class="page-header">
         <div class="page-heading"><h1>Data Pasien</h1>
           <div class="page-sub">Cari berdasarkan nama, nomor rekam medis, NIK, atau nomor BPJS.</div></div>
-        ${App.boleh(['pendaftaran','perawat','dokter'])
+        ${App.boleh('pasien_simpan')
           ? `<div class="page-actions"><button class="btn btn-primary btn-sm" id="btnBaru">
               ${UI.ikon('plus',16)} Pasien baru</button></div>` : ''}
       </div>
@@ -331,10 +331,10 @@ const Pasien = (() => {
         berikutnya.</div></div>` : ''}
 
       <div class="btn-group mb-16 no-print">
-        ${App.boleh(['pendaftaran','perawat','dokter'])
+        ${App.boleh('pasien_simpan')
           ? `<button class="btn btn-primary btn-sm" id="btnDaftarkan">${UI.ikon('plus',15)} Daftarkan kunjungan</button>
              <button class="btn btn-secondary btn-sm" id="btnUbah">Ubah data</button>` : ''}
-        ${App.boleh(['perawat','dokter','apoteker'])
+        ${App.boleh('pasien_alergi')
           ? `<button class="btn btn-secondary btn-sm" id="btnAlergi">Tambah alergi</button>` : ''}
       </div>
 

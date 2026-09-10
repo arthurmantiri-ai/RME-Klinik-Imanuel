@@ -10,8 +10,10 @@
  *  Portal menyimpan lewat RPC ki_simpan_template_invoice(sandi, konfigurasi)
  *  karena anon key-nya tidak punya izin tulis dan satu-satunya penjaga
  *  adalah sandi bersama. RME punya login per pengguna, jadi penjaganya
- *  adalah RLS: hanya peran 'admin' yang boleh menulis
- *  sys_template_invoice. Tidak ada lagi sandi kedua yang harus diketik.
+ *  adalah RLS: hanya yang punya hak akses `master_data` yang boleh menulis
+ *  sys_template_invoice (bawaannya cuma master — bisa diatur lewat
+ *  Pengaturan -> Hak Akses, lihat sql/09_kasir.sql). Tidak ada lagi sandi
+ *  kedua yang harus diketik.
  *
  *  BENTUK
  *  Satu objek bersarang: { versi, identitas, pdf, struk }. Nilai BAWAAN di
@@ -326,12 +328,13 @@
                     throw new Error(m);
                 }
                 /* PostgREST memulangkan 0 baris — bukan galat — ketika RLS
-                   menolak UPDATE. Tanpa pemeriksaan ini, pengguna non-admin
-                   akan melihat "tersimpan" padahal tidak ada yang berubah:
-                   kegagalan diam yang baru ketahuan berhari-hari kemudian
-                   saat invoice masih memakai tampilan lama. */
+                   menolak UPDATE. Tanpa pemeriksaan ini, pengguna yang tidak
+                   punya hak akses `master_data` akan melihat "tersimpan"
+                   padahal tidak ada yang berubah: kegagalan diam yang baru
+                   ketahuan berhari-hari kemudian saat invoice masih memakai
+                   tampilan lama. */
                 if (!r.data) {
-                    throw new Error('Perubahan ditolak database. Hanya admin yang boleh '
+                    throw new Error('Perubahan ditolak database. Anda tidak punya izin '
                                   + 'mengubah template invoice.');
                 }
                 pakai(bersih);

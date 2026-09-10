@@ -32,7 +32,7 @@ const DB = (() => {
       jenis_dokter: 'GIGI', kode_dokter_pcare: '', satusehat_practitioner_id: '', aktif: true },
     { id: 'peg-2', nama: 'Ns. Sari Rahmawati', peran: 'perawat', aktif: true,
       no_sip: '', kode_dokter_pcare: '', satusehat_practitioner_id: '' },
-    { id: 'peg-3', nama: 'Rina Puspita', peran: 'pendaftaran', aktif: true,
+    { id: 'peg-3', nama: 'Rina Puspita', peran: 'admin', aktif: true,
       no_sip: '', kode_dokter_pcare: '', satusehat_practitioner_id: '' },
     { id: 'peg-4', nama: 'apt. Dewi Lestari', peran: 'apoteker', aktif: true,
       no_sip: '', kode_dokter_pcare: '', satusehat_practitioner_id: '' }
@@ -518,19 +518,44 @@ const DB = (() => {
   const salin = (o) => JSON.parse(JSON.stringify(o));
 
   /* ---------------- API tiruan, bentuk sama dengan db.js ---------------- */
+  // 9 Sep 2026: kunci 'admin' di sini dulu berarti peran lama 'admin'
+  // (sekarang 'master'); kunci 'pendaftaran' dulu berarti peran lama
+  // 'pendaftaran' (sekarang 'admin'). Diganti supaya pemilih "Lihat sebagai"
+  // di demo.html memakai nama peran yang sama seperti aplikasi sungguhan.
   const PERAN_DEMO = {
     dokter:      { ...PEGAWAI[0], email: 'dokter@klinikimanuel.id', poli: POLI[0] },
     'dokter gigi': { ...PEGAWAI.find(p => p.jenis_dokter === 'GIGI'),
                      email: 'drg@klinikimanuel.id', poli: POLI[1] },
     perawat:     { ...PEGAWAI.find(p => p.peran === 'perawat'), email: 'perawat@klinikimanuel.id' },
-    pendaftaran: { ...PEGAWAI.find(p => p.peran === 'pendaftaran'), email: 'daftar@klinikimanuel.id' },
+    admin:       { ...PEGAWAI.find(p => p.peran === 'admin'), email: 'daftar@klinikimanuel.id' },
     apoteker:    { ...PEGAWAI.find(p => p.peran === 'apoteker'), email: 'apotek@klinikimanuel.id' },
     kasir:       { id: 'peg-6', nama: 'Yanti Kolondam', peran: 'kasir', aktif: true,
                    email: 'kasir@klinikimanuel.id' },
-    admin:       { id: 'peg-0', nama: 'Admin Klinik', peran: 'admin', aktif: true,
-                   email: 'admin@klinikimanuel.id' }
+    master:      { id: 'peg-0', nama: 'Master Klinik', peran: 'master', aktif: true,
+                   email: 'master@klinikimanuel.id' }
   };
   let PROFIL = PERAN_DEMO[localStorage.getItem('demo-peran') || 'dokter'] || PERAN_DEMO.dokter;
+
+  // Isian hak akses demo — meniru PERSIS baris seed di sql/02_rls.sql dan
+  // berkas modul lain (08,09,11,13,15,16), supaya demo memperlihatkan
+  // perilaku bawaan yang sama dengan instalasi baru. 'master' tidak
+  // butuh baris di sini (App.boleh() di js/app.js selalu meloloskannya).
+  const HAK_AKSES_DEMO = {
+    admin: ['pasien_simpan', 'kunjungan_daftar', 'kunjungan_ubah', 'antrol_log',
+            'menu_pendaftaran', 'menu_kasir', 'menu_laporan', 'lampiran',
+            'kronis_telpon_h1', 'antrean_buat'],
+    perawat: ['pasien_simpan', 'pasien_alergi', 'kunjungan_daftar', 'kunjungan_ubah',
+              'kajian', 'menu_pendaftaran', 'lab', 'lampiran', 'kronis_kelola', 'antrean_buat'],
+    dokter: ['pasien_simpan', 'pasien_alergi', 'kunjungan_daftar', 'kunjungan_ubah',
+             'kajian', 'periksa', 'menu_pendaftaran', 'menu_laporan', 'lab', 'bacaan',
+             'lampiran', 'surat', 'kronis_kelola', 'antrean_buat'],
+    apoteker: ['pasien_alergi', 'kunjungan_ubah', 'apotek'],
+    kasir: ['menu_kasir', 'kasir']
+  };
+  async function hakAksesSaya() {
+    await tunggu(20);
+    return salin(HAK_AKSES_DEMO[PROFIL.peran] || []);
+  }
 
   function gantiPeranDemo(kunci) {
     if (!PERAN_DEMO[kunci]) return;
@@ -2295,7 +2320,7 @@ const DB = (() => {
   async function simpanHasilLab(id, patch) {
     const h = LAB_HASIL.find(x => x.id === id);
     const lp = LAB_PERMINTAAN.find(x => x.id === h.permintaan_id);
-    if (lp.status === 'SELESAI' && PROFIL.peran !== 'admin')
+    if (lp.status === 'SELESAI' && PROFIL.peran !== 'master')
       throw new Error('Lembar hasil ini sudah selesai dan terkunci.');
     Object.assign(h, patch);
     tandaiHasilDemo(h);
@@ -2311,7 +2336,7 @@ const DB = (() => {
     lp.waktu_selesai = new Date().toISOString();
   }
   async function labBukaKunci(id, alasan) {
-    if (PROFIL.peran !== 'admin') throw new Error('Hanya admin yang boleh membuka kunci.');
+    if (PROFIL.peran !== 'master') throw new Error('Hanya master yang boleh membuka kunci.');
     const lp = LAB_PERMINTAAN.find(x => x.id === id);
     lp.status = 'DIKERJAKAN';
     lp.catatan_klinis = (lp.catatan_klinis ? lp.catatan_klinis + '\n' : '') +
@@ -3148,7 +3173,7 @@ const DB = (() => {
     return DIAGNOSA_LAP.filter(d => d.tanggal >= dari && d.tanggal <= sampai);
   }
 
-  return { sb, masuk, keluar, sesi, saya, bolehTulis, faskes, simpanFaskes,
+  return { sb, masuk, keluar, sesi, saya, bolehTulis, hakAksesSaya, faskes, simpanFaskes,
            daftarPoli, daftarDokter, daftarPegawai, cariIcd, cariObat, daftarSigna,
            cariPasien, pasien, simpanPasien, alergiPasien, tambahAlergi, hapusAlergi, catatAkses,
            antrianHariIni, daftarKunjungan, buatKunjungan, kunjungan, ubahKunjungan,

@@ -66,11 +66,33 @@ as $$ select peran::text from public.pegawai where id = auth.uid() and aktif $$;
 grant execute on function public.peran_teks_saya() to authenticated;
 
 -- A3. Pintasan hak akses modul.
+-- 9 Sep 2026: isinya sekarang lewat tabel hak_akses (bisa diatur master di
+-- Pengaturan -> Hak Akses), bukan daftar peran tetap lagi — lihat
+-- sql/02_rls.sql bagian HAK AKSES untuk fungsi generiknya.
 create or replace function public.boleh_apotek() returns boolean
 language sql stable security definer set search_path = public
-as $$ select public.peran_teks_saya() = any (array['admin','apoteker']) $$;
+as $$ select public.hak_akses_cek('apotek') $$;
 
 grant execute on function public.boleh_apotek() to authenticated;
+
+-- Apoteker menandai resep sudah diserahkan langsung di tabel `resep`.
+-- Dipindah ke sini (dari sql/02_rls.sql) supaya sekalian konsisten pakai
+-- boleh_apotek() — sebelumnya hanya 'apoteker' literal, artinya admin/master
+-- sebenarnya TIDAK bisa melakukan ini di database walau tombolnya di
+-- apotek.js terlihat aktif untuk admin (klien mengizinkan, server menolak).
+-- boleh_apotek() menyamakan keduanya: master selalu ikut lewat jaring
+-- pengaman, dan kode `apotek` tetap default hanya untuk apoteker.
+drop policy if exists resep_serah_apoteker on resep;
+create policy resep_serah_apoteker on resep for update
+  to authenticated
+  using (public.boleh_apotek())
+  with check (public.boleh_apotek());
+
+-- Isian awal kode `apotek` — sama seperti sebelumnya (apoteker), plus
+-- master lewat jaring pengaman di hak_akses_cek(). Aman dijalankan ulang.
+insert into public.hak_akses (kode, peran, diizinkan) values
+  ('apotek', 'apoteker', true)
+on conflict (kode, peran) do nothing;
 
 
 -- =====================================================================
@@ -742,8 +764,8 @@ create policy trx_baca on apotek_transaksi for select
 drop policy if exists trx_tulis on apotek_transaksi;
 create policy trx_tulis on apotek_transaksi for all
   to authenticated
-  using (public.peran_teks_saya() = 'admin')
-  with check (public.peran_teks_saya() = 'admin');
+  using (public.peran_teks_saya() = 'master')
+  with check (public.peran_teks_saya() = 'master');
 
 grant execute on function public.apotek_masuk(uuid,numeric,numeric,date,text,text,date,text,text) to authenticated;
 grant execute on function public.apotek_keluar(uuid,numeric,text,date,uuid,uuid,uuid,text)        to authenticated;

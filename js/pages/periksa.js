@@ -123,7 +123,7 @@ const Periksa = (() => {
     /* Dua hal berbeda yang sama-sama membuat layar ini hanya bisa dibaca:
        rekam medis sudah difinalisasi, atau peran pengguna memang bukan dokter.
        Database sudah menolak penulisannya; layar tidak boleh menawarkannya. */
-    const bolehTulis = App.boleh(['dokter']);
+    const bolehTulis = App.boleh('periksa');
     const terkunci = pm?.final === true || !bolehTulis;
 
     el.innerHTML = kerangka(alergi, pgigi, terkunci, bolehTulis);
@@ -246,7 +246,7 @@ const Periksa = (() => {
         <div class="card-head">
           <div class="flex-1"><h2>Tanda vital &amp; kajian awal</h2>
             <div class="sub">${ka ? 'Diisi ' + UI.jam(ka.dibuat_pada) : 'Belum diisi perawat'}</div></div>
-          ${!ka && App.boleh(['perawat','dokter'])
+          ${!ka && App.boleh('kajian')
             ? `<a href="#/kajian/${kj.id}" class="btn btn-secondary btn-sm">Isi kajian awal</a>`
             : `<a href="#/kajian/${kj.id}" class="btn btn-ghost btn-sm no-print">Ubah</a>`}
         </div>
@@ -1868,7 +1868,7 @@ const Periksa = (() => {
     // Trik yang sama dipakai gambarDiagnosa()/gambarResep(): keberadaan
     // tombol Selesai menandai rekam medis belum dikunci, tanpa perlu
     // menyimpan ulang `terkunci` sebagai state modul.
-    return App.boleh(['dokter']) && !!document.getElementById('btnFinal');
+    return App.boleh('periksa') && !!document.getElementById('btnFinal');
   }
 
   async function muatKartuKronis() {

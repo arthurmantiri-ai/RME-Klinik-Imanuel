@@ -26,7 +26,7 @@ const Kasir = (() => {
   let filter = { dari: UI.hariIni(), sampai: UI.hariIni(), status: '' };
   let templateSiap = false;
 
-  const bolehTulis = () => App.boleh(['kasir']);
+  const bolehTulis = () => App.boleh('kasir');
   const rp = (n) => UI.rupiah(n);
 
   const LABEL_METODE = { tunai: 'Tunai', transfer: 'Transfer', qris: 'QRIS',
@@ -482,10 +482,10 @@ const Kasir = (() => {
 
   function gambarBayar(badan, d, rb) {
     const wadah = badan.querySelector('#isiBayar');
-    /* Menghapus pembayaran dibatasi ke admin — sama seperti di database.
+    /* Menghapus pembayaran dibatasi ke master — sama seperti di database.
        Uangnya sudah diterima dan struknya sudah dicetak; barisnya hilang
        berarti tagihan tampak belum lunas dan selisih di laci tidak dicari. */
-    const adminBoleh = App.siapa()?.peran === 'admin';
+    const adminBoleh = App.siapa()?.peran === 'master';
     wadah.innerHTML = `
       <div class="grid grid-3 mb-16">
         <div class="stat"><div class="lbl">Total tagihan</div><div class="val">${rp(rb.total)}</div></div>

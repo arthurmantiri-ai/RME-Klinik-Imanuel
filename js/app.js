@@ -6,27 +6,30 @@ const App = (() => {
 
   const view = () => document.getElementById('view');
 
-  /* Menu — `peran` menentukan siapa yang melihat apa */
+  /* Menu — `peran: '*'` terbuka untuk semua peran aktif; `kode` dicocokkan
+     ke daftar hak akses peran yang sedang login (lihat boleh() di bawah
+     dan Pengaturan -> Hak Akses). Diganti dari daftar peran tetap ke kode
+     hak akses 9 Sep 2026 — lihat sql/02_rls.sql bagian HAK AKSES. */
   const MENU = [
     { grup: 'Pelayanan' },
     { rute: '#/beranda',     label: 'Beranda',       ikon: 'beranda',   peran: '*' },
-    { rute: '#/pendaftaran', label: 'Pendaftaran',   ikon: 'daftar',    peran: ['admin','pendaftaran','perawat','dokter'] },
+    { rute: '#/pendaftaran', label: 'Pendaftaran',   ikon: 'daftar',    kode: 'menu_pendaftaran' },
     { rute: '#/antrian',     label: 'Antrean Hari Ini', ikon: 'antrian', peran: '*', hitung: true },
     { rute: '#/lab',         label: 'Lab & Penunjang', ikon: 'stetoskop', peran: '*' },
     { rute: '#/apotek',      label: 'Apotek',        ikon: 'pil',       peran: '*' },
-    { rute: '#/kasir',       label: 'Kasir',         ikon: 'jantung',   peran: ['admin','kasir','pendaftaran'] },
+    { rute: '#/kasir',       label: 'Kasir',         ikon: 'jantung',   kode: 'menu_kasir' },
     { rute: '#/surat',       label: 'Surat Keterangan', ikon: 'surat',  peran: '*' },
     { grup: 'Data' },
     { rute: '#/pasien',      label: 'Data Pasien',   ikon: 'pasien',    peran: '*' },
     { rute: '#/riwayat',     label: 'Riwayat Kunjungan', ikon: 'rekam', peran: '*' },
     { rute: '#/pantau-kronis', label: 'Pemantauan Kronis', ikon: 'stetoskop', peran: '*' },
-    { rute: '#/laporan',     label: 'Laporan',       ikon: 'laporan',   peran: ['admin','dokter','pendaftaran'] },
+    { rute: '#/laporan',     label: 'Laporan',       ikon: 'laporan',   kode: 'menu_laporan' },
     { grup: 'Sistem' },
-    { rute: '#/master',      label: 'Master Data',   ikon: 'pil',       peran: ['admin'] },
-    { rute: '#/tarif',       label: 'Tarif & Invoice', ikon: 'laporan', peran: ['admin'] },
-    { rute: '#/jadwal',      label: 'Antrean & Layar', ikon: 'jam',     peran: ['admin'] },
-    { rute: '#/migrasi',     label: 'Migrasi Portal', ikon: 'unduh',    peran: ['admin'] },
-    { rute: '#/pengaturan',  label: 'Pengaturan',    ikon: 'setelan',   peran: ['admin'] }
+    { rute: '#/master',      label: 'Master Data',   ikon: 'pil',       kode: 'master_data' },
+    { rute: '#/tarif',       label: 'Tarif & Invoice', ikon: 'laporan', kode: 'menu_tarif' },
+    { rute: '#/jadwal',      label: 'Antrean & Layar', ikon: 'jam',     kode: 'antrean_pengaturan' },
+    { rute: '#/migrasi',     label: 'Migrasi Portal', ikon: 'unduh',    kode: 'menu_migrasi' },
+    { rute: '#/pengaturan',  label: 'Pengaturan',    ikon: 'setelan',   kode: 'menu_pengaturan' }
   ];
 
   const RUTE = {
@@ -63,12 +66,16 @@ const App = (() => {
   };
 
   let profil = null;
+  // Kode hak akses yang diizinkan untuk peran SENDIRI, dimuat sekali saat
+  // masuk (lihat mulai()). master tidak butuh isinya sama sekali — boleh()
+  // selalu meloloskan master lewat jaring pengaman, sama seperti di database.
+  let hakSaya = new Set();
 
   /* ------------------------------ Menu -------------------------------- */
   function gambarMenu() {
     const nav = document.getElementById('nav');
     const rute = (location.hash || '#/beranda').split('/')[1] || 'beranda';
-    const terlihat = (m) => m.peran === '*' || m.peran.includes(profil.peran);
+    const terlihat = (m) => m.peran === '*' || boleh(m.kode);
     const bagian = [];
     MENU.forEach(m => {
       if (m.grup) { bagian.push({ grup: m.grup, isi: [] }); return; }
@@ -155,8 +162,17 @@ const App = (() => {
       await DB.keluar(); location.replace('index.html'); return;
     }
     if (!profil || !profil.aktif) {
-      alert('Akun Anda belum aktif atau belum terdaftar sebagai pegawai. Hubungi admin klinik.');
+      alert('Akun Anda belum aktif atau belum terdaftar sebagai pegawai. Hubungi master klinik.');
       await DB.keluar(); location.replace('index.html'); return;
+    }
+
+    // Hak akses (9 Sep 2026): dimuat sekali di sini, dipakai boleh() di
+    // seluruh sesi. master tidak perlu memuat apa pun (selalu lolos).
+    try {
+      hakSaya = profil.peran === 'master' ? new Set() : new Set(await DB.hakAksesSaya());
+    } catch (e) {
+      console.error('Gagal memuat hak akses:', e);
+      hakSaya = new Set();
     }
 
     // Identitas klinik
@@ -194,7 +210,12 @@ const App = (() => {
   const pergi = (rute) => { location.hash = rute; };
   const segarkan = () => jalankanRute();
   const siapa = () => profil;
-  const boleh = (daftarPeran) => profil && (profil.peran === 'admin' || daftarPeran.includes(profil.peran));
+
+  // 9 Sep 2026: `boleh(kode)` menggantikan `boleh(daftarPeran)` — satu kode
+  // hak akses (lihat js/db.js -> hakAksesSaya(), diatur lewat Pengaturan ->
+  // Hak Akses), bukan daftar peran tetap yang ditulis di kode lagi. master
+  // selalu lolos, sama seperti di database (public.hak_akses_cek()).
+  const boleh = (kode) => !!profil && (profil.peran === 'master' || hakSaya.has(kode));
 
   document.addEventListener('DOMContentLoaded', mulai);
   return { pergi, segarkan, siapa, boleh, perbaruiHitungAntrian };

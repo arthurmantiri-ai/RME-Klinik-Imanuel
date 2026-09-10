@@ -33,9 +33,9 @@ const Migrasi = (() => {
   const UKURAN_KIRIM = 500;     // baris per panggilan kronis_impor_tampung
 
   async function render(el, param) {
-    if (!App.boleh([])) {       // App.boleh([]) bernilai benar hanya untuk admin
+    if (!App.boleh('menu_migrasi')) {
       el.innerHTML = UI.kosong('Akses ditolak',
-        'Halaman migrasi hanya untuk admin klinik.');
+        'Anda tidak punya izin membuka Migrasi Portal.');
       return;
     }
     if (param && param[0]) tabAktif = param[0];

@@ -18,10 +18,14 @@ const Lab = (() => {
   let tabAktif = 'antrean';
   let rentang = { dari: null, sampai: null };
 
-  const bolehIsi   = () => App.boleh(['perawat', 'dokter']);
-  const bolehBaca  = () => App.boleh(['dokter']);
-  const bolehArsip = () => App.boleh(['pendaftaran', 'perawat', 'dokter']);
-  const adminSaja  = () => App.siapa() && App.siapa().peran === 'admin';
+  const bolehIsi   = () => App.boleh('lab');
+  const bolehBaca  = () => App.boleh('bacaan');
+  const bolehArsip = () => App.boleh('lampiran');
+  // Membuka kunci lembar hasil yang sudah selesai: sengaja hardcode master
+  // (sama seperti lab_buka_kunci() di sql/11_penunjang.sql), bukan lewat
+  // kode hak akses yang bisa diatur — ini jalan darurat koreksi dokumen
+  // medis terkunci, bukan pekerjaan sehari-hari peran mana pun.
+  const adminSaja  = () => App.siapa() && App.siapa().peran === 'master';
 
   const TAB = { antrean: 'Antrean lab', penunjang: 'Bacaan penunjang', arsip: 'Arsip berkas' };
 

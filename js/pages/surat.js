@@ -32,7 +32,7 @@ const Surat = (() => {
   /* Keadaan formulir yang sedang dibuka */
   let F = null;
 
-  const bolehTerbit = () => App.boleh(['dokter']);
+  const bolehTerbit = () => App.boleh('surat');
 
   const TAB = { baru: 'Buat surat', riwayat: 'Riwayat surat' };
 
@@ -847,7 +847,7 @@ const Surat = (() => {
     };
 
     const saya = App.siapa();
-    const bolehBatal = saya && (saya.peran === 'admin' || s.dibuat_oleh === saya.id);
+    const bolehBatal = saya && (App.boleh('surat_batal') || s.dibuat_oleh === saya.id);
     const bolehUbah = s.status === 'AKTIF' && bolehBatal && bolehTerbit();
 
     await UI.modal({

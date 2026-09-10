@@ -23,6 +23,10 @@ const Tarif = (() => {
   const rp = (n) => UI.rupiah(n);
 
   async function render(el) {
+    if (!App.boleh('menu_tarif')) {
+      el.innerHTML = UI.kosong('Akses ditolak', 'Anda tidak punya izin membuka Tarif & Invoice.');
+      return;
+    }
     el.innerHTML = `
       <div class="mb-16">
         <h1>Tarif &amp; tampilan invoice</h1>

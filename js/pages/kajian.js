@@ -16,7 +16,7 @@ const Kajian = (() => {
     DB.catatAkses(k.pasien_id, 'Mengisi kajian awal');
 
     const sudahFinal = k.status === 'SELESAI';
-    const bolehTulis = App.boleh(['perawat','dokter']);
+    const bolehTulis = App.boleh('kajian');
 
     el.innerHTML = `
       <a href="#/antrian" class="btn btn-ghost btn-sm mb-12 no-print">${UI.ikon('kembali',15)} Antrian</a>
@@ -160,7 +160,7 @@ const Kajian = (() => {
           ${bolehTulis
             ? `<button class="btn btn-primary" id="btnSimpan">${UI.ikon('cek',16)} Simpan kajian awal</button>`
             : ''}
-          ${App.boleh(['dokter'])
+          ${App.boleh('periksa')
             ? `<a href="#/periksa/${k.id}" class="btn btn-secondary">Lanjut ke pemeriksaan dokter</a>` : ''}
           <span class="text-sm text-muted" id="statusSimpan"></span>
         </div>

@@ -39,11 +39,21 @@
 --  A. FUNGSI BANTU
 -- =====================================================================
 
+-- 9 Sep 2026: lewat tabel hak_akses (bisa diatur master), bukan daftar
+-- peran tetap lagi — lihat sql/02_rls.sql bagian HAK AKSES.
 create or replace function public.boleh_kasir() returns boolean
 language sql stable security definer set search_path = public
-as $$ select public.peran_teks_saya() = any (array['admin','kasir']) $$;
+as $$ select public.hak_akses_cek('kasir') $$;
 
 grant execute on function public.boleh_kasir() to authenticated;
+
+insert into public.hak_akses (kode, peran, diizinkan) values
+  ('kasir',       'kasir', true),
+  -- Menu "Kasir" untuk peran kasir sendiri: baris ini ditaruh di sini
+  -- (bukan di sql/02_rls.sql bersama menu_* lain) karena nilai enum
+  -- 'kasir' baru ada setelah sql/07_peran_kasir.sql dijalankan.
+  ('menu_kasir',  'kasir', true)
+on conflict (kode, peran) do nothing;
 
 
 -- =====================================================================
@@ -501,8 +511,8 @@ language plpgsql security definer set search_path = public
 as $$
 declare v_p kasir_pembayaran%rowtype; v_t kasir_tagihan%rowtype;
 begin
-  if public.peran_teks_saya() <> 'admin' then
-    raise exception 'Hanya admin yang boleh menghapus pembayaran yang sudah tercatat.'
+  if public.peran_teks_saya() <> 'master' then
+    raise exception 'Hanya master yang boleh menghapus pembayaran yang sudah tercatat.'
       using errcode = '42501';
   end if;
 
@@ -661,8 +671,8 @@ create policy tarif_baca on kasir_tarif for select
 drop policy if exists tarif_kelola on kasir_tarif;
 create policy tarif_kelola on kasir_tarif for all
   to authenticated
-  using (public.peran_teks_saya() = 'admin')
-  with check (public.peran_teks_saya() = 'admin');
+  using (public.boleh_master_data())
+  with check (public.boleh_master_data());
 
 drop policy if exists tagihan_baca on kasir_tagihan;
 create policy tagihan_baca on kasir_tagihan for select
@@ -693,8 +703,8 @@ create policy bayar_baca on kasir_pembayaran for select
 drop policy if exists bayar_tulis on kasir_pembayaran;
 create policy bayar_tulis on kasir_pembayaran for all
   to authenticated
-  using (public.peran_teks_saya() = 'admin')
-  with check (public.peran_teks_saya() = 'admin');
+  using (public.peran_teks_saya() = 'master')
+  with check (public.peran_teks_saya() = 'master');
 
 -- Template: semua staf boleh membaca (halaman kasir memerlukannya untuk
 -- mencetak), hanya admin yang mengubah.
@@ -705,8 +715,8 @@ create policy template_baca on sys_template_invoice for select
 drop policy if exists template_kelola on sys_template_invoice;
 create policy template_kelola on sys_template_invoice for all
   to authenticated
-  using (public.peran_teks_saya() = 'admin')
-  with check (public.peran_teks_saya() = 'admin');
+  using (public.boleh_master_data())
+  with check (public.boleh_master_data());
 
 grant execute on function public.kasir_susun_dari_kunjungan(uuid)                            to authenticated;
 grant execute on function public.kasir_catat_pembayaran(uuid,numeric,date,text,text,numeric) to authenticated;

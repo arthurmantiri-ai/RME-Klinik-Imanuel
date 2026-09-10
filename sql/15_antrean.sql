@@ -828,8 +828,34 @@ comment on view v_antrol_akun is
 
 
 -- =====================================================================
---  12. AKUN ANTROL — dikelola admin lewat fungsi, bukan tabel
+--  12. AKUN ANTROL — dikelola lewat fungsi, bukan tabel
 -- =====================================================================
+
+-- 9 Sep 2026: pintasan hak akses modul antrean, lewat tabel hak_akses
+-- (bisa diatur master) — lihat sql/02_rls.sql bagian HAK AKSES. Tidak ada
+-- isian awal untuk kode ini: perilakunya sama seperti sebelumnya (hanya
+-- admin lama / master sekarang), sampai master membukanya untuk peran lain.
+create or replace function public.boleh_antrean_pengaturan() returns boolean
+language sql stable security definer set search_path = public
+as $$ select public.hak_akses_cek('antrean_pengaturan') $$;
+
+create or replace function public.boleh_antrean_buat() returns boolean
+language sql stable security definer set search_path = public
+as $$ select public.hak_akses_cek('antrean_buat') $$;
+
+create or replace function public.boleh_antrean_hapus() returns boolean
+language sql stable security definer set search_path = public
+as $$ select public.hak_akses_cek('antrean_hapus') $$;
+
+grant execute on function
+  public.boleh_antrean_pengaturan(), public.boleh_antrean_buat(), public.boleh_antrean_hapus()
+  to authenticated;
+
+insert into public.hak_akses (kode, peran, diizinkan) values
+  ('antrean_buat', 'admin',   true),
+  ('antrean_buat', 'perawat', true),
+  ('antrean_buat', 'dokter',  true)
+on conflict (kode, peran) do nothing;
 
 create or replace function public.antrol_akun_simpan(
   p_username text, p_sandi text, p_keterangan text default null
@@ -837,8 +863,8 @@ create or replace function public.antrol_akun_simpan(
 language plpgsql security definer set search_path = public as $$
 declare v_salt text; v_user text;
 begin
-  if public.peran_saya() <> 'admin' then
-    raise exception 'Hanya admin yang boleh mengatur akun Antrol.';
+  if not public.boleh_antrean_pengaturan() then
+    raise exception 'Anda tidak punya izin mengatur akun Antrol.';
   end if;
 
   v_user := lower(trim(coalesce(p_username, '')));
@@ -868,8 +894,8 @@ create or replace function public.antrol_akun_hapus(p_username text)
 returns boolean
 language plpgsql security definer set search_path = public as $$
 begin
-  if public.peran_saya() <> 'admin' then
-    raise exception 'Hanya admin yang boleh mengatur akun Antrol.';
+  if not public.boleh_antrean_pengaturan() then
+    raise exception 'Anda tidak punya izin mengatur akun Antrol.';
   end if;
   delete from antrol_akun where username = lower(trim(p_username));
   return found;
@@ -1369,8 +1395,8 @@ create or replace function public.antrean_token_baru(p_token text)
 returns text
 language plpgsql security definer set search_path = public as $$
 begin
-  if public.peran_saya() <> 'admin' then
-    raise exception 'Hanya admin yang boleh mengganti token layar.';
+  if not public.boleh_antrean_pengaturan() then
+    raise exception 'Anda tidak punya izin mengganti token layar.';
   end if;
   if length(coalesce(p_token,'')) < 24 then
     raise exception 'Token layar minimal 24 karakter.';
@@ -1406,7 +1432,7 @@ end $$;
 
 grant usage, select on sequence antrean_panggilan_id_seq to authenticated;
 
--- Jadwal & kuota: hanya admin.
+-- Jadwal & kuota: kode `antrean_pengaturan`.
 do $$
 declare t text;
 begin
@@ -1414,8 +1440,8 @@ begin
   loop
     execute format('drop policy if exists %1$s_kelola on %1$s', t);
     execute format($f$create policy %1$s_kelola on %1$s for all to authenticated
-                     using (public.peran_saya() = 'admin')
-                     with check (public.peran_saya() = 'admin')$f$, t);
+                     using (public.boleh_antrean_pengaturan())
+                     with check (public.boleh_antrean_pengaturan())$f$, t);
   end loop;
 end $$;
 
@@ -1425,7 +1451,7 @@ end $$;
 drop policy if exists antrean_tulis on antrean;
 create policy antrean_tulis on antrean for insert
   to authenticated
-  with check (public.peran_saya_salah_satu('admin','pendaftaran','perawat','dokter'));
+  with check (public.boleh_antrean_buat());
 
 drop policy if exists antrean_ubah on antrean;
 create policy antrean_ubah on antrean for update
@@ -1434,7 +1460,7 @@ create policy antrean_ubah on antrean for update
 
 drop policy if exists antrean_hapus on antrean;
 create policy antrean_hapus on antrean for delete
-  to authenticated using (public.peran_saya() = 'admin');
+  to authenticated using (public.boleh_antrean_hapus());
 
 drop policy if exists panggilan_tulis on antrean_panggilan;
 create policy panggilan_tulis on antrean_panggilan for insert
@@ -1447,7 +1473,7 @@ create policy panggilan_kunci on antrean_panggilan for update
   to authenticated using (false) with check (false);
 
 -- Pengaturan antrean: dibaca semua staf (halaman antrean butuh
--- keterangan & estimasi), diubah admin saja.
+-- keterangan & estimasi), diubah kode `antrean_pengaturan`.
 alter table sys_antrean_pengaturan enable row level security;
 grant select, insert, update on sys_antrean_pengaturan to authenticated;
 
@@ -1458,17 +1484,17 @@ create policy antrean_atur_baca on sys_antrean_pengaturan for select
 drop policy if exists antrean_atur_kelola on sys_antrean_pengaturan;
 create policy antrean_atur_kelola on sys_antrean_pengaturan for all
   to authenticated
-  using (public.peran_saya() = 'admin')
-  with check (public.peran_saya() = 'admin');
+  using (public.boleh_antrean_pengaturan())
+  with check (public.boleh_antrean_pengaturan());
 
--- Log Antrol: dibaca admin & pendaftaran, ditulis hanya Edge Function.
+-- Log Antrol: kode `antrol_log`, ditulis hanya Edge Function.
 alter table antrol_log enable row level security;
 grant select on antrol_log to authenticated;
 revoke insert, update, delete on antrol_log from authenticated, anon;
 
 drop policy if exists antrol_log_baca on antrol_log;
 create policy antrol_log_baca on antrol_log for select
-  to authenticated using (public.peran_saya_salah_satu('admin','pendaftaran'));
+  to authenticated using (public.boleh_antrol_log());
 
 -- Akun Antrol: hanya lewat fungsi. Tabelnya sudah di-revoke di atas;
 -- view-nya perlu RLS sendiri karena security_invoker meneruskan hak
@@ -1479,7 +1505,7 @@ drop view if exists v_antrol_akun;
 create view v_antrol_akun with (security_invoker = false) as
 select username, keterangan, aktif, dibuat_pada, terakhir_dipakai, jumlah_dipakai
   from antrol_akun
- where public.peran_saya() = 'admin';
+ where public.boleh_antrean_pengaturan();
 
 grant select on v_antrol_akun to authenticated;
 grant select on v_antrean_hari_ini, v_antrean_kuota to authenticated;

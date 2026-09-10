@@ -70,11 +70,26 @@
 -- menyusunnya adalah orang yang boleh bertanggung jawab atasnya.
 -- Perawat, pendaftaran, apoteker, dan kasir tetap bisa MEMBACA dan
 -- MENCETAK ULANG surat yang sudah terbit — itu pekerjaan loket.
+-- 9 Sep 2026: lewat tabel hak_akses (bisa diatur master), bukan daftar
+-- peran tetap lagi — lihat sql/02_rls.sql bagian HAK AKSES.
 create or replace function public.boleh_surat() returns boolean
 language sql stable security definer set search_path = public
-as $$ select public.peran_teks_saya() = any (array['admin','dokter']) $$;
+as $$ select public.hak_akses_cek('surat') $$;
 
-grant execute on function public.boleh_surat() to authenticated;
+-- Siapa boleh membatalkan/menghapus surat MILIK ORANG LAIN (di luar surat
+-- sendiri, yang selalu boleh oleh dokter penerbitnya — itu tetap dijaga di
+-- kode, bukan lewat kode hak akses ini, supaya master tidak bisa mencabut
+-- hak dokter membatalkan suratnya sendiri).
+create or replace function public.boleh_surat_batal() returns boolean
+language sql stable security definer set search_path = public
+as $$ select public.hak_akses_cek('surat_batal') $$;
+
+grant execute on function public.boleh_surat()       to authenticated;
+grant execute on function public.boleh_surat_batal() to authenticated;
+
+insert into public.hak_akses (kode, peran, diizinkan) values
+  ('surat', 'dokter', true)
+on conflict (kode, peran) do nothing;
 
 
 -- =====================================================================
@@ -323,8 +338,8 @@ begin
   if not found then raise exception 'Surat tidak ditemukan.'; end if;
   if s.status = 'BATAL' then raise exception 'Surat ini sudah dibatalkan.'; end if;
 
-  if not (public.peran_teks_saya() = 'admin' or s.dibuat_oleh = auth.uid()) then
-    raise exception 'Hanya admin atau dokter yang menerbitkan surat ini yang boleh membatalkannya.';
+  if not (public.boleh_surat_batal() or s.dibuat_oleh = auth.uid()) then
+    raise exception 'Hanya master atau dokter yang menerbitkan surat ini yang boleh membatalkannya.';
   end if;
 
   update surat set status = 'BATAL', alasan_batal = btrim(p_alasan),
@@ -429,7 +444,7 @@ alter table ref_jenis_surat     enable row level security;
 alter table surat               enable row level security;
 alter table sys_surat_pengaturan enable row level security;
 
--- Master jenis surat: dibaca semua staf, diubah hanya admin.
+-- Master jenis surat: dibaca semua staf, diubah kode `master_data`.
 drop policy if exists ref_jenis_surat_baca on ref_jenis_surat;
 create policy ref_jenis_surat_baca on ref_jenis_surat for select
   to authenticated using (public.saya_staf());
@@ -437,8 +452,8 @@ create policy ref_jenis_surat_baca on ref_jenis_surat for select
 drop policy if exists ref_jenis_surat_tulis on ref_jenis_surat;
 create policy ref_jenis_surat_tulis on ref_jenis_surat for all
   to authenticated
-  using (public.peran_teks_saya() = 'admin')
-  with check (public.peran_teks_saya() = 'admin');
+  using (public.boleh_master_data())
+  with check (public.boleh_master_data());
 
 -- Surat: dibaca semua staf (loket mencetak ulang, kasir memeriksa
 -- kelengkapan berkas rujukan).
@@ -446,32 +461,33 @@ drop policy if exists surat_baca on surat;
 create policy surat_baca on surat for select
   to authenticated using (public.saya_staf());
 
--- Diterbitkan hanya oleh dokter dan admin.
+-- Diterbitkan hanya oleh dokter (kode `surat`).
 drop policy if exists surat_terbit on surat;
 create policy surat_terbit on surat for insert
   to authenticated with check (public.boleh_surat());
 
--- Disunting hanya oleh admin atau dokter yang menerbitkannya, dan hanya
+-- Disunting oleh yang berhak membatalkan surat orang lain (kode
+-- `surat_batal`), atau dokter yang menerbitkannya sendiri, dan hanya
 -- selama masih berstatus AKTIF. Perubahan status menjadi BATAL berjalan
 -- lewat surat_batalkan() yang SECURITY DEFINER, jadi tidak terhalang
 -- kebijakan ini.
 drop policy if exists surat_sunting on surat;
 create policy surat_sunting on surat for update
   to authenticated
-  using (public.peran_teks_saya() = 'admin'
+  using (public.boleh_surat_batal()
          or (public.boleh_surat() and dibuat_oleh = auth.uid() and status = 'AKTIF'))
-  with check (public.peran_teks_saya() = 'admin'
+  with check (public.boleh_surat_batal()
               or (public.boleh_surat() and dibuat_oleh = auth.uid()));
 
--- Menghapus surat: admin saja, dan sebaiknya tidak pernah. Surat yang
--- salah dibatalkan, bukan dihapus — nomornya tetap terpakai supaya
--- lembar yang terlanjur tercetak tidak berubah arti.
+-- Menghapus surat: kode `surat_batal` juga, dan sebaiknya tidak pernah.
+-- Surat yang salah dibatalkan, bukan dihapus — nomornya tetap terpakai
+-- supaya lembar yang terlanjur tercetak tidak berubah arti.
 drop policy if exists surat_hapus on surat;
 create policy surat_hapus on surat for delete
-  to authenticated using (public.peran_teks_saya() = 'admin');
+  to authenticated using (public.boleh_surat_batal());
 
 -- Pengaturan surat: dibaca semua staf (kopnya dibutuhkan siapa pun yang
--- mencetak), diubah hanya admin.
+-- mencetak), diubah kode `master_data`.
 drop policy if exists sys_surat_baca on sys_surat_pengaturan;
 create policy sys_surat_baca on sys_surat_pengaturan for select
   to authenticated using (public.saya_staf());
@@ -479,8 +495,8 @@ create policy sys_surat_baca on sys_surat_pengaturan for select
 drop policy if exists sys_surat_tulis on sys_surat_pengaturan;
 create policy sys_surat_tulis on sys_surat_pengaturan for all
   to authenticated
-  using (public.peran_teks_saya() = 'admin')
-  with check (public.peran_teks_saya() = 'admin');
+  using (public.boleh_master_data())
+  with check (public.boleh_master_data());
 
 
 -- =====================================================================

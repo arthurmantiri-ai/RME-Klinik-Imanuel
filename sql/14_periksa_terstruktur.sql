@@ -821,8 +821,8 @@ begin
 
     execute format('drop policy if exists %1$s_kelola on %1$s', t);
     execute format($f$create policy %1$s_kelola on %1$s for all to authenticated
-                     using (public.peran_saya() = 'admin')
-                     with check (public.peran_saya() = 'admin')$f$, t);
+                     using (public.boleh_master_data())
+                     with check (public.boleh_master_data())$f$, t);
   end loop;
 end $$;
 

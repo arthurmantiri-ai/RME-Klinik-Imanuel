@@ -74,16 +74,29 @@
 --     pasien. Admin saja. Salah tempel berarti riwayat penyakit orang
 --     lain masuk ke rekam medis seseorang, dan itu tidak bisa dibereskan
 --     dengan meminta maaf.
+-- 9 Sep 2026: lewat tabel hak_akses (bisa diatur master), bukan daftar
+-- peran tetap lagi — lihat sql/02_rls.sql bagian HAK AKSES. Isian awal
+-- (kode `kronis_kelola`: dokter+perawat) menjaga perilaku persis sama
+-- seperti sebelumnya; `kronis_migrasi` sengaja tidak diberi isian awal —
+-- tetap seperti dulu (hanya admin lama / master sekarang).
 create or replace function public.boleh_kronis_kelola() returns boolean
 language sql stable security definer set search_path = public
-as $$ select public.peran_teks_saya() = any (array['admin','dokter','perawat']) $$;
+as $$ select public.hak_akses_cek('kronis_kelola') $$;
 
 create or replace function public.boleh_kronis_migrasi() returns boolean
 language sql stable security definer set search_path = public
-as $$ select public.peran_teks_saya() = 'admin' $$;
+as $$ select public.hak_akses_cek('kronis_migrasi') $$;
 
 grant execute on function public.boleh_kronis_kelola()  to authenticated;
 grant execute on function public.boleh_kronis_migrasi() to authenticated;
+
+insert into public.hak_akses (kode, peran, diizinkan) values
+  ('kronis_kelola',     'dokter',  true),
+  ('kronis_kelola',     'perawat', true),
+  -- Dipakai js/pages/pantau_kronis.js (tab "Telepon H-1"), bukan RLS —
+  -- lihat catatan di berkas itu.
+  ('kronis_telpon_h1',  'admin',   true)
+on conflict (kode, peran) do nothing;
 
 
 -- =====================================================================
@@ -968,7 +981,7 @@ alter table kronis_riwayat_luar    enable row level security;
 alter table kronis_impor_pasien    enable row level security;
 alter table kronis_impor_baris     enable row level security;
 
--- Referensi: dibaca semua staf, diubah admin.
+-- Referensi: dibaca semua staf, diubah kode `master_data`.
 do $$
 declare t text;
 begin
@@ -979,8 +992,8 @@ begin
                      to authenticated using (public.saya_staf())$f$, t || '_baca', t);
     execute format($f$drop policy if exists %I on %I$f$, t || '_kelola', t);
     execute format($f$create policy %I on %I for all to authenticated
-                     using (public.peran_teks_saya() = 'admin')
-                     with check (public.peran_teks_saya() = 'admin')$f$, t || '_kelola', t);
+                     using (public.boleh_master_data())
+                     with check (public.boleh_master_data())$f$, t || '_kelola', t);
   end loop;
 end $$;
 

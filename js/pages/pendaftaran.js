@@ -83,7 +83,7 @@ const Pendaftaran = (() => {
           <input type="search" id="cariPasien" placeholder="Nama, no. RM, NIK, atau no. BPJS…" autofocus>
         </div>
         <div id="hasilCari"></div>
-        ${App.boleh(['pendaftaran','perawat','dokter'])
+        ${App.boleh('pasien_simpan')
           ? `<div class="divider"></div>
              <button class="btn btn-secondary btn-block" id="btnPasienBaru">
                ${UI.ikon('plus',16)} Pasien belum pernah berobat — daftarkan baru</button>` : ''}

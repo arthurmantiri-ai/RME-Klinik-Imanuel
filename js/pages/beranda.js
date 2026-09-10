@@ -77,7 +77,7 @@ const Beranda = (() => {
             <div class="card-head"><h2>Aksi cepat</h2></div>
             <div class="card-body">
               <div class="stack">
-                ${App.boleh(['pendaftaran','perawat','dokter'])
+                ${App.boleh('kunjungan_daftar')
                   ? `<a href="#/pendaftaran" class="btn btn-primary btn-block">
                        ${UI.ikon('plus',16)} Daftarkan pasien</a>` : ''}
                 <a href="#/pasien" class="btn btn-secondary btn-block">
@@ -88,7 +88,7 @@ const Beranda = (() => {
             </div>
           </div>
 
-          ${profil.peran === 'dokter' || profil.peran === 'admin' ? `
+          ${profil.peran === 'dokter' || profil.peran === 'master' ? `
           <div class="work-panel mt-16">
             <div class="work-panel-head"><h2>Menunggu Anda</h2>
               <span class="count">${perluDokter.length}</span></div>

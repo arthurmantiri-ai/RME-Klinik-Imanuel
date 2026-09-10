@@ -387,7 +387,7 @@ grant select, insert, update, delete on ref_gigi, ref_bidang_gigi, ref_kondisi_g
       icd9cm, odontogram, odontogram_riwayat, pemeriksaan_gigi, tindakan to authenticated;
 grant usage, select on all sequences in schema public to authenticated;
 
--- Master: semua staf boleh baca, hanya admin boleh ubah
+-- Master: semua staf boleh baca, kode `master_data` boleh ubah
 do $$
 declare t text;
 begin
@@ -398,12 +398,12 @@ begin
                      to authenticated using (public.saya_staf())$f$, t);
     execute format('drop policy if exists %1$s_kelola on %1$s', t);
     execute format($f$create policy %1$s_kelola on %1$s for all to authenticated
-                     using (public.peran_saya() = 'admin')
-                     with check (public.peran_saya() = 'admin')$f$, t);
+                     using (public.boleh_master_data())
+                     with check (public.boleh_master_data())$f$, t);
   end loop;
 end $$;
 
--- Odontogram & pemeriksaan gigi: ditulis dokter (termasuk dokter gigi) dan admin
+-- Odontogram & pemeriksaan gigi: kode `periksa` (dokter, termasuk dokter gigi)
 do $$
 declare t text;
 begin
@@ -414,8 +414,8 @@ begin
                      to authenticated using (public.saya_staf())$f$, t);
     execute format('drop policy if exists %1$s_tulis on %1$s', t);
     execute format($f$create policy %1$s_tulis on %1$s for all to authenticated
-                     using (public.peran_saya_salah_satu('admin','dokter'))
-                     with check (public.peran_saya_salah_satu('admin','dokter'))$f$, t);
+                     using (public.boleh_periksa())
+                     with check (public.boleh_periksa())$f$, t);
   end loop;
 end $$;
 

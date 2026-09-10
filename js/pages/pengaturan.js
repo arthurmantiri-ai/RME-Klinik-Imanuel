@@ -1,14 +1,26 @@
-/* ===================== PENGATURAN (ADMIN) ===================== */
+/* ===================== PENGATURAN =====================
+   9 Sep 2026: halaman ini sendiri sekarang dibuka lewat kode `menu_pengaturan`
+   (bisa diatur lewat Pengaturan -> Hak Akses, seperti menu lain). Tapi tab
+   "Hak Akses" DI DALAMNYA sengaja punya gerbang sendiri yang hardcode
+   master-only (`App.boleh('hak_akses')`, lihat catatan di tabHakAkses()) —
+   supaya master tidak pernah bisa mengunci dirinya sendiri dari satu-satunya
+   tempat memperbaiki hak akses, sekalipun `menu_pengaturan` sendiri suatu
+   saat dibuka untuk peran lain. */
 const Pengaturan = (() => {
 
   let tabAktif = 'klinik';
 
   async function render(el, param) {
-    if (!App.boleh([])) {  // hanya admin
-      el.innerHTML = UI.kosong('Akses ditolak', 'Halaman ini hanya untuk admin klinik.');
+    if (!App.boleh('menu_pengaturan')) {
+      el.innerHTML = UI.kosong('Akses ditolak', 'Anda tidak punya izin membuka Pengaturan.');
       return;
     }
     if (param && param[0]) tabAktif = param[0];
+    if (tabAktif === 'hak' && !App.boleh('hak_akses')) tabAktif = 'klinik';
+
+    const semuaTab = [['klinik','Profil Klinik'],['poli','Poli'],['pengguna','Pengguna'],
+       ['surat','Kop &amp; Surat'],['rujukan','Rujukan &amp; Kode PCare'],['bridging','Bridging']];
+    if (App.boleh('hak_akses')) semuaTab.push(['hak','Hak Akses']);
 
     el.innerHTML = `
       <div class="page-header mb-16">
@@ -18,8 +30,7 @@ const Pengaturan = (() => {
         </div>
       </div>
       <div class="tabs" id="tabs">
-        ${[['klinik','Profil Klinik'],['poli','Poli'],['pengguna','Pengguna'],
-           ['surat','Kop &amp; Surat'],['rujukan','Rujukan &amp; Kode PCare'],['bridging','Bridging']]
+        ${semuaTab
           .map(([k, t]) => `<button class="tab ${tabAktif === k ? 'on' : ''}" data-t="${k}">${t}</button>`).join('')}
       </div>
       <div id="isiTab">${UI.memuat(3)}</div>`;
@@ -44,6 +55,7 @@ const Pengaturan = (() => {
       if (tabAktif === 'surat')    return await tabSurat(w);
       if (tabAktif === 'rujukan')  return await tabRujukan(w);
       if (tabAktif === 'bridging') return await tabBridging(w);
+      if (tabAktif === 'hak')      return await tabHakAkses(w);
     } catch (e) {
       w.innerHTML = `<div class="banner err">${UI.esc(e.message)}</div>`;
     }
@@ -196,7 +208,11 @@ const Pengaturan = (() => {
   /* ---------------- Pengguna ---------------- */
   async function tabPengguna(w) {
     const d = await DB.daftarPegawai();
-    const PERAN = ['admin','pendaftaran','perawat','dokter','apoteker'];
+    // 9 Sep 2026: 'admin' lama -> 'master', 'pendaftaran' lama -> 'admin'.
+    // 'kasir' ditambahkan sekalian — sebelumnya hilang dari daftar ini
+    // (bug lama, bukan bagian dari penukaran nama), padahal perannya
+    // sudah ada di enum sejak 07_peran_kasir.sql.
+    const PERAN = ['master','admin','perawat','dokter','apoteker','kasir'];
     w.innerHTML = `
       <div class="banner info">
         <div><b>Cara menambah pengguna:</b> buka dasbor Supabase → <i>Authentication</i> → <i>Users</i> →
@@ -242,6 +258,131 @@ const Pengaturan = (() => {
     w.querySelectorAll('[data-aktif]').forEach(c => c.addEventListener('change', async () => {
       const { error } = await DB.sb.from('pegawai').update({ aktif: c.checked }).eq('id', c.dataset.aktif);
       UI.toast(error ? error.message : 'Status diperbarui.', error ? 'err' : 'ok');
+    }));
+  }
+
+  /* ---------------- Hak Akses (9 Sep 2026) ----------------
+     Tab ini SENGAJA punya gerbang sendiri (App.boleh('hak_akses'), dicek
+     lagi di render() sebelum tab ini bisa aktif) yang HARDCODE master-only
+     di js/app.js maupun di RLS tabel hak_akses (hak_akses_kelola) —
+     BUKAN lewat App.boleh() biasa yang bisa diatur lewat matriks ini
+     sendiri. Kalau ini ikut diatur lewat matriksnya sendiri, master bisa
+     tidak sengaja mencabut akses dirinya sendiri ke satu-satunya tempat
+     memperbaikinya, dan jalan keluarnya hanya lewat SQL Editor Supabase
+     langsung. Lihat rancangan-hak-akses-peran.md bagian "dua hak akses
+     yang tidak masuk matriks".
+
+     Dua kode LAIN yang juga sengaja TIDAK muncul di sini karena sama-sama
+     hardcode master-only (bukan karena lupa): `hak_akses` (gerbang tab
+     ini sendiri) dan `pegawai_kelola` (ubah peran pengguna di tab
+     "Pengguna" di atas — supaya peran mana pun yang diberi izin itu tidak
+     bisa menaikkan dirinya sendiri jadi master).
+
+     PERAN yang jadi kolom SENGAJA tidak termasuk master: master selalu
+     lolos semua kode lewat jaring pengaman (public.hak_akses_cek() di
+     database, App.boleh() di sini) apa pun isi tabelnya, jadi kolomnya
+     tidak berguna dan hanya membingungkan. */
+  const PERAN_DIATUR = ['admin', 'perawat', 'dokter', 'apoteker', 'kasir'];
+  const LABEL_PERAN = { admin: 'Admin', perawat: 'Perawat', dokter: 'Dokter',
+    apoteker: 'Apoteker', kasir: 'Kasir' };
+
+  // kode -> [label singkat, deskripsi untuk staf non-teknis], dikelompokkan
+  // per modul supaya tabelnya tidak jadi satu daftar panjang tak berpola.
+  // Urutan & pengelompokan mengikuti katalog di rancangan-hak-akses-peran.md.
+  const GRUP_HAK_AKSES = [
+    { grup: 'Menu yang terlihat', kode: [
+      ['menu_pendaftaran', 'Menampilkan menu "Pendaftaran" di sisi kiri'],
+      ['menu_kasir',       'Menampilkan menu "Kasir"'],
+      ['menu_laporan',     'Menampilkan menu "Laporan"'],
+      ['menu_tarif',       'Menampilkan menu "Tarif & Invoice"'],
+      ['menu_migrasi',     'Menampilkan menu "Migrasi Portal"'],
+      ['menu_pengaturan',  'Menampilkan menu "Pengaturan" (tab Hak Akses di dalamnya tetap khusus master)']
+    ]},
+    { grup: 'Data pasien & kunjungan', kode: [
+      ['pasien_simpan',    'Tambah & ubah data pasien'],
+      ['pasien_hapus',     'Hapus data pasien'],
+      ['pasien_alergi',    'Catat / ubah alergi pasien'],
+      ['kunjungan_daftar', 'Buat kunjungan baru (daftar pasien datang)'],
+      ['kunjungan_ubah',   'Ubah data kunjungan yang sedang berjalan'],
+      ['kunjungan_hapus',  'Hapus kunjungan']
+    ]},
+    { grup: 'Pelayanan medis', kode: [
+      ['kajian',  'Isi kajian awal (tanda vital)'],
+      ['periksa', 'Anamnesis, diagnosa, resep, tindakan, odontogram, kunci rekam medis'],
+      ['lab',      'Isi hasil pemeriksaan lab'],
+      ['bacaan',   'Baca & tafsir hasil penunjang (rontgen dan sejenisnya)'],
+      ['lampiran', 'Catat register arsip berkas fisik']
+    ]},
+    { grup: 'Apotek & kasir', kode: [
+      ['apotek', 'Serahkan resep di apotek'],
+      ['kasir',  'Transaksi kasir']
+    ]},
+    { grup: 'Surat keterangan', kode: [
+      ['surat',       'Terbitkan surat keterangan'],
+      ['surat_batal', 'Batalkan surat terbitan orang lain (surat sendiri selalu boleh dibatalkan)']
+    ]},
+    { grup: 'Antrean', kode: [
+      ['antrean_buat',        'Ambil / buat nomor antrean baru'],
+      ['antrean_hapus',       'Hapus baris antrean'],
+      ['antrean_pengaturan',  'Atur jadwal & kuota poli, token layar tunggu, akun Antrol — juga membuka menu "Antrean & Layar"'],
+      ['antrol_log',          'Lihat log Antrol & log bridging']
+    ]},
+    { grup: 'Buku Kronis', kode: [
+      ['kronis_kelola',    'Daftarkan / ubah pasien di Buku Kronis'],
+      ['kronis_migrasi',   'Migrasi data kronis dari portal lama'],
+      ['kronis_telpon_h1', 'Lihat tab "Telepon H-1" di Pemantauan Kronis']
+    ]},
+    { grup: 'Data acuan & laporan', kode: [
+      ['master_data',       'Kelola data acuan: faskes, poli, ICD-10/9-CM, obat, signa, referensi gigi/lab/pemeriksaan/kronis (membaca tetap terbuka semua staf)'],
+      ['laporan_lanjutan',  '5 tab lanjutan Laporan: Overview & Tren, Rujukan, Register Poli, Keuangan, Puskesmas (tab Ringkasan tetap ikut menu Laporan)'],
+      ['audit_lihat',       'Lihat log audit sistem']
+    ]}
+  ];
+
+  async function tabHakAkses(w) {
+    const baris = await DB.daftarHakAkses();
+    const diizinkan = new Set(baris.filter(b => b.diizinkan).map(b => `${b.kode}::${b.peran}`));
+
+    w.innerHTML = `
+      <div class="banner info mb-16"><div>
+        Master selalu punya semua akses dan tidak perlu dicentang di sini.
+        Perubahan berlaku untuk pengguna terkait saat mereka <b>memuat ulang
+        halaman atau masuk lagi</b> — bukan langsung saat dicentang.
+      </div></div>
+      ${GRUP_HAK_AKSES.map(g => `
+        <div class="card mb-16">
+          <div class="card-head"><h2>${UI.esc(g.grup)}</h2></div>
+          <div class="card-body tight">
+            <div class="table-wrap"><table class="tbl">
+              <thead><tr><th>Fitur</th>
+                ${PERAN_DIATUR.map(p => `<th class="text-center">${LABEL_PERAN[p]}</th>`).join('')}
+              </tr></thead>
+              <tbody>
+                ${g.kode.map(([kode, ket]) => `
+                  <tr>
+                    <td><b class="mono">${UI.esc(kode)}</b><div class="text-xs text-muted">${UI.esc(ket)}</div></td>
+                    ${PERAN_DIATUR.map(p => `
+                      <td class="text-center"><input type="checkbox"
+                        data-kode="${UI.esc(kode)}" data-peran="${p}"
+                        ${diizinkan.has(`${kode}::${p}`) ? 'checked' : ''}></td>
+                    `).join('')}
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table></div>
+          </div>
+        </div>
+      `).join('')}`;
+
+    w.querySelectorAll('[data-kode][data-peran]').forEach(c => c.addEventListener('change', async () => {
+      c.disabled = true;
+      try {
+        await DB.simpanHakAkses(c.dataset.kode, c.dataset.peran, c.checked);
+        UI.toast('Hak akses diperbarui.', 'ok');
+      } catch (e) {
+        c.checked = !c.checked;
+        UI.toast('Gagal menyimpan: ' + (e.message || e), 'err');
+      } finally { c.disabled = false; }
     }));
   }
 

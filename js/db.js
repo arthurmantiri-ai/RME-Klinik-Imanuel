@@ -34,7 +34,7 @@ const DB = (() => {
   }
 
   const bolehTulis = (peranDiizinkan) =>
-    _saya && (peranDiizinkan.includes(_saya.peran) || _saya.peran === 'admin');
+    _saya && (peranDiizinkan.includes(_saya.peran) || _saya.peran === 'master');
 
   /* --------------------------- Profil klinik --------------------------- */
   async function faskes(paksaMuat = false) {
@@ -70,6 +70,27 @@ const DB = (() => {
   async function daftarPegawai() {
     const { data, error } = await sb.from('pegawai').select('*').order('nama');
     if (error) throw error; return data;
+  }
+
+  /* ------------------------- Hak akses (9 Sep 2026) -------------------- */
+  // Kode yang diizinkan untuk PERAN SENDIRI — dimuat sekali saat masuk
+  // (lihat js/app.js -> mulai()), dipakai App.boleh(kode).
+  async function hakAksesSaya() {
+    const { data, error } = await sb.from('v_hak_akses_saya').select('kode');
+    if (error) throw error;
+    return data.map(r => r.kode);
+  }
+  // Matriks lengkap (semua peran x semua kode) — hanya master yang bisa
+  // membacanya lewat RLS, dipakai halaman Pengaturan -> Hak Akses.
+  async function daftarHakAkses() {
+    const { data, error } = await sb.from('hak_akses').select('*');
+    if (error) throw error; return data;
+  }
+  async function simpanHakAkses(kode, peran, diizinkan) {
+    const { error } = await sb.from('hak_akses')
+      .upsert({ kode, peran, diizinkan, diubah_oleh: _saya?.id, diubah_pada: new Date().toISOString() },
+              { onConflict: 'kode,peran' });
+    if (error) throw error;
   }
   async function cariIcd(kata, batas = 25) {
     if (!kata || kata.length < 2) {
@@ -1777,6 +1798,7 @@ const DB = (() => {
 
   return {
     sb, masuk, keluar, sesi, saya, bolehTulis,
+    hakAksesSaya, daftarHakAkses, simpanHakAkses,
     faskes, simpanFaskes,
     daftarPoli, daftarDokter, daftarPegawai, cariIcd, cariObat, daftarSigna,
     cariPasien, pasien, simpanPasien, alergiPasien, tambahAlergi, hapusAlergi, catatAkses,

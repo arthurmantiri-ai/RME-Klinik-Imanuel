@@ -13,8 +13,13 @@ create extension if not exists "pg_trgm";     -- untuk pencarian nama/ICD cepat
 -- ---------------------------------------------------------------------
 -- ENUM / TIPE DATA
 -- ---------------------------------------------------------------------
+-- Nama peran (9 Sep 2026): 'master' = pemilik/pengelola tertinggi sistem
+-- (dulu bernama 'admin'); 'admin' sekarang = staf loket/pendaftaran (dulu
+-- bernama 'pendaftaran' — ini istilah yang dipakai staf sehari-hari untuk
+-- petugas administrasi loket). Peran 'kasir' ditambah belakangan lewat
+-- sql/07_peran_kasir.sql (lihat catatan di berkas itu soal kenapa terpisah).
 do $$ begin
-  create type peran_pegawai as enum ('admin','pendaftaran','perawat','dokter','apoteker');
+  create type peran_pegawai as enum ('master','admin','perawat','dokter','apoteker');
 exception when duplicate_object then null; end $$;
 
 do $$ begin
@@ -93,7 +98,7 @@ create table if not exists poli (
 create table if not exists pegawai (
   id                uuid primary key references auth.users(id) on delete cascade,
   nama              text not null,
-  peran             peran_pegawai not null default 'pendaftaran',
+  peran             peran_pegawai not null default 'admin',
   nik               text,
   jenis_kelamin     jenis_kelamin_t,
   no_hp             text,

@@ -44,19 +44,36 @@
 -- Menambah nilai enum peran berarti satu berkas migrasi yang harus
 -- dijalankan sendirian (lihat 07_peran_kasir.sql) — risiko pasang yang
 -- tidak sebanding dengan manfaatnya sekarang.
+-- 9 Sep 2026: lewat tabel hak_akses (bisa diatur master), bukan daftar
+-- peran tetap lagi — lihat sql/02_rls.sql bagian HAK AKSES.
 create or replace function public.boleh_lab() returns boolean
 language sql stable security definer set search_path = public
-as $$ select public.peran_teks_saya() = any (array['admin','perawat','dokter']) $$;
+as $$ select public.hak_akses_cek('lab') $$;
 
 -- Siapa yang boleh MEMBACA/menafsirkan penunjang (rontgen, EKG, USG).
 -- Menafsirkan gambaran radiologis adalah tindakan medis, bukan tugas
--- administratif. Karena itu hanya dokter.
+-- administratif. Karena itu bawaannya hanya dokter.
 create or replace function public.boleh_bacaan() returns boolean
 language sql stable security definer set search_path = public
-as $$ select public.peran_teks_saya() = any (array['admin','dokter']) $$;
+as $$ select public.hak_akses_cek('bacaan') $$;
 
-grant execute on function public.boleh_lab()    to authenticated;
-grant execute on function public.boleh_bacaan() to authenticated;
+-- Register arsip berkas fisik: pendaftaran (sekarang 'admin'), perawat, dokter.
+create or replace function public.boleh_lampiran() returns boolean
+language sql stable security definer set search_path = public
+as $$ select public.hak_akses_cek('lampiran') $$;
+
+grant execute on function public.boleh_lab()      to authenticated;
+grant execute on function public.boleh_bacaan()   to authenticated;
+grant execute on function public.boleh_lampiran() to authenticated;
+
+insert into public.hak_akses (kode, peran, diizinkan) values
+  ('lab',      'perawat', true),
+  ('lab',      'dokter',  true),
+  ('bacaan',   'dokter',  true),
+  ('lampiran', 'admin',   true),
+  ('lampiran', 'perawat', true),
+  ('lampiran', 'dokter',  true)
+on conflict (kode, peran) do nothing;
 
 
 -- =====================================================================
@@ -513,8 +530,8 @@ declare v_status text;
 begin
   select status into v_status from lab_permintaan
    where id = coalesce(new.permintaan_id, old.permintaan_id);
-  if v_status = 'SELESAI' and public.peran_teks_saya() <> 'admin' then
-    raise exception 'Lembar hasil ini sudah selesai dan terkunci. Minta admin membuka kuncinya bila ada koreksi.'
+  if v_status = 'SELESAI' and public.peran_teks_saya() <> 'master' then
+    raise exception 'Lembar hasil ini sudah selesai dan terkunci. Minta master membuka kuncinya bila ada koreksi.'
       using errcode = '42501';
   end if;
   return coalesce(new, old);
@@ -644,8 +661,8 @@ returns void
 language plpgsql security definer set search_path = public
 as $$
 begin
-  if public.peran_teks_saya() <> 'admin' then
-    raise exception 'Hanya admin yang boleh membuka kunci lembar hasil.'
+  if public.peran_teks_saya() <> 'master' then
+    raise exception 'Hanya master yang boleh membuka kunci lembar hasil.'
       using errcode = '42501';
   end if;
   if coalesce(trim(p_alasan), '') = '' then
@@ -676,8 +693,8 @@ begin
   end if;
 
   select status into v_status from lab_permintaan where id = p_permintaan_id;
-  if v_status = 'SELESAI' and public.peran_teks_saya() <> 'admin' then
-    raise exception 'Lembar hasil yang sudah selesai hanya bisa dibatalkan admin.'
+  if v_status = 'SELESAI' and public.peran_teks_saya() <> 'master' then
+    raise exception 'Lembar hasil yang sudah selesai hanya bisa dibatalkan master.'
       using errcode = '42501';
   end if;
 
@@ -836,7 +853,7 @@ alter table lampiran           enable row level security;
 do $$
 declare t text;
 begin
-  -- Master: semua staf boleh baca, hanya admin boleh ubah.
+  -- Master data: semua staf boleh baca, kode `master_data` boleh ubah.
   foreach t in array array['ref_lab','ref_lab_rujukan','ref_lab_paket','ref_lab_paket_item']
   loop
     execute format('drop policy if exists %1$s_baca on %1$s', t);
@@ -844,8 +861,8 @@ begin
                      to authenticated using (public.saya_staf())$f$, t);
     execute format('drop policy if exists %1$s_tulis on %1$s', t);
     execute format($f$create policy %1$s_tulis on %1$s for all to authenticated
-                     using (public.peran_teks_saya() = 'admin')
-                     with check (public.peran_teks_saya() = 'admin')$f$, t);
+                     using (public.boleh_master_data())
+                     with check (public.boleh_master_data())$f$, t);
   end loop;
 end $$;
 
@@ -861,13 +878,13 @@ create policy lab_permintaan_baca on lab_permintaan for select
 -- Kalau kolom `status` boleh ditulis langsung, seluruh penguncian lembar
 -- bisa dilewati dengan tiga permintaan biasa: putar SELESAI menjadi
 -- DIKERJAKAN, betulkan angkanya, putar kembali ke SELESAI. Aturan "hanya
--- admin, dan alasannya wajib" jadi hiasan, dan koreksinya tidak
+-- master, dan alasannya wajib" jadi hiasan, dan koreksinya tidak
 -- meninggalkan jejak alasan sama sekali.
 drop policy if exists lab_permintaan_tulis on lab_permintaan;
 create policy lab_permintaan_tulis on lab_permintaan for all
   to authenticated
-  using (public.peran_teks_saya() = 'admin')
-  with check (public.peran_teks_saya() = 'admin');
+  using (public.peran_teks_saya() = 'master')
+  with check (public.peran_teks_saya() = 'master');
 
 -- Hasil lab: dibaca semua staf; ditulis hanya oleh yang berhak mengisi lab.
 -- Kasir dan pendaftaran ditolak menulis di sini — mereka hanya perlu
@@ -903,8 +920,9 @@ create policy penunjang_gigi_tulis on penunjang_gigi for all
   using (public.boleh_bacaan())
   with check (public.boleh_bacaan());
 
--- Register arsip: dibaca semua staf. Ditulis oleh pendaftaran, perawat,
--- dokter, dan admin — merekalah yang memegang berkas fisiknya saat masuk.
+-- Register arsip: dibaca semua staf. Ditulis oleh admin (loket), perawat,
+-- dokter — merekalah yang memegang berkas fisiknya saat masuk. Kode
+-- `lampiran`, lihat isian awal di atas.
 drop policy if exists lampiran_baca on lampiran;
 create policy lampiran_baca on lampiran for select
   to authenticated using (public.saya_staf());
@@ -912,8 +930,8 @@ create policy lampiran_baca on lampiran for select
 drop policy if exists lampiran_tulis on lampiran;
 create policy lampiran_tulis on lampiran for all
   to authenticated
-  using (public.peran_teks_saya() = any (array['admin','pendaftaran','perawat','dokter']))
-  with check (public.peran_teks_saya() = any (array['admin','pendaftaran','perawat','dokter']));
+  using (public.boleh_lampiran())
+  with check (public.boleh_lampiran());
 
 
 -- =====================================================================
