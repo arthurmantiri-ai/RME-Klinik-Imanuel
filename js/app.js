@@ -25,7 +25,7 @@ const App = (() => {
     { rute: '#/pantau-kronis', label: 'Pemantauan Kronis', ikon: 'stetoskop', peran: '*' },
     { rute: '#/laporan',     label: 'Laporan',       ikon: 'laporan',   kode: 'menu_laporan' },
     { grup: 'Sistem' },
-    { rute: '#/master',      label: 'Master Data',   ikon: 'pil',       kode: 'master_data' },
+    { rute: '#/master',      label: 'Master Data',   ikon: 'pil',       kode: ['master_data', 'master_data_obat'] },
     { rute: '#/tarif',       label: 'Tarif & Invoice', ikon: 'laporan', kode: 'menu_tarif' },
     { rute: '#/jadwal',      label: 'Antrean & Layar', ikon: 'jam',     kode: 'antrean_pengaturan' },
     { rute: '#/migrasi',     label: 'Migrasi Portal', ikon: 'unduh',    kode: 'menu_migrasi' },
@@ -75,7 +75,8 @@ const App = (() => {
   function gambarMenu() {
     const nav = document.getElementById('nav');
     const rute = (location.hash || '#/beranda').split('/')[1] || 'beranda';
-    const terlihat = (m) => m.peran === '*' || boleh(m.kode);
+    const terlihat = (m) => m.peran === '*'
+      || (Array.isArray(m.kode) ? m.kode.some(boleh) : boleh(m.kode));
     const bagian = [];
     MENU.forEach(m => {
       if (m.grup) { bagian.push({ grup: m.grup, isi: [] }); return; }

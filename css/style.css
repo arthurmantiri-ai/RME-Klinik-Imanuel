@@ -351,6 +351,9 @@ table.tbl .muted { color: var(--ink-500); }
 .combo-item b { display: block; font-weight: 600; }
 .combo-item span { color: var(--ink-500); font-size: 12px; }
 .combo-empty { padding: 14px; text-align: center; color: var(--ink-400); font-size: 13px; }
+.combo-item-buat { color: var(--brand-600); font-weight: 600;
+  border-top: 1px solid var(--ink-100); }
+.combo-item-buat svg { vertical-align: -2px; margin-right: 4px; }
 
 .chip-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .chip {

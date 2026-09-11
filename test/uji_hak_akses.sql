@@ -158,6 +158,53 @@ begin
     'kode yang seharusnya tidak pernah bisa diatur lewat matriks (risiko kunci-diri-sendiri)';
 end $$;
 
+\echo '--- 9. master_data_obat (sql/26): apoteker boleh kelola tabel obat SAJA'
+do $$
+declare n int; galat boolean;
+begin
+  -- Bawaan: apoteker sudah diseed true untuk master_data_obat (sql/26),
+  -- dokter dan kasir belum punya baris sama sekali untuk kode ini.
+  perform set_config('request.jwt.claim.sub','22222222-2222-2222-2222-222222222222', false);
+  assert public.boleh_master_data_obat() = true,
+    'apoteker harus lolos boleh_master_data_obat() (perilaku bawaan sql/26)';
+
+  perform set_config('request.jwt.claim.sub','33333333-3333-3333-3333-333333333333', false);
+  assert public.boleh_master_data_obat() = false,
+    'dokter tidak diberi master_data_obat maupun master_data — harus ditolak';
+
+  -- master tetap lolos lewat boleh_master_data() (jaring pengaman biasa),
+  -- bukan lewat baris apa pun di tabel hak_akses untuk kode ini.
+  perform set_config('request.jwt.claim.sub','11111111-1111-1111-1111-111111111111', false);
+  assert public.boleh_master_data_obat() = true,
+    'master harus tetap lolos boleh_master_data_obat() lewat jaring pengaman biasa';
+
+  -- Apoteker SUNGGUHAN bisa menambah baris ke tabel obat lewat RLS
+  -- (bukan lewat fungsi security definer) — inilah yang dipakai dialog
+  -- "Obat Masuk" -> "Tambah obat baru" dan halaman Master Data -> Obat.
+  perform set_config('request.jwt.claim.sub','22222222-2222-2222-2222-222222222222', true);
+  set local role authenticated;
+  with x as (
+    insert into public.obat (nama, satuan) values ('Uji Obat Apoteker', 'Tablet')
+    returning 1)
+  select count(*) into n from x;
+  reset role;
+  assert n = 1, 'apoteker harus bisa menambah obat baru lewat RLS (master_data_obat)';
+  delete from public.obat where nama = 'Uji Obat Apoteker';
+
+  -- Tapi TIDAK ikut boleh menambah ICD-10 — itu tabel lain, tetap murni
+  -- boleh_master_data(), tidak ikut lewat gara-gara master_data_obat.
+  perform set_config('request.jwt.claim.sub','22222222-2222-2222-2222-222222222222', true);
+  set local role authenticated;
+  galat := false;
+  begin
+    insert into public.icd10 (kode, nama_id) values ('UJI99', 'Uji ICD Apoteker');
+  exception when others then galat := true;
+  end;
+  reset role;
+  assert galat, 'apoteker TIDAK boleh menambah ICD-10 — master_data_obat sengaja tidak mencakupnya';
+  delete from public.icd10 where kode = 'UJI99';
+end $$;
+
 -- Bersih-bersih: kode uji tidak boleh ikut tertinggal di database.
 delete from public.hak_akses where kode like 'uji_%';
 
