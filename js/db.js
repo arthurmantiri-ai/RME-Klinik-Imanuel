@@ -118,6 +118,20 @@ const DB = (() => {
     const { data, error } = await q;
     if (error) throw error; return data;
   }
+  /* Untuk pencarian obat di Kasir (Tambah baris / Penjualan bebas) —
+     beda dari cariObat() di atas karena kasir butuh HARGA JUAL dan STOK
+     SAAT INI, bukan kode klaim BPJS. Dibaca dari v_apotek_stok, bukan
+     tabel obat langsung, supaya kasir bisa melihat stok layaknya di
+     Apotek tanpa pindah halaman — kolom yang sama, tempat yang sama
+     dengan yang dipakai apotek.js. */
+  async function cariObatJual(kata, batas = 25) {
+    let q = sb.from('v_apotek_stok')
+      .select('obat_id,nama_obat,satuan,bentuk_sediaan,kekuatan,golongan,harga_jual,stok_layak')
+      .eq('aktif', true).order('nama_obat').limit(batas);
+    if (kata && kata.trim().length >= 2) q = q.ilike('nama_obat', `%${kata.trim()}%`);
+    const { data, error } = await q;
+    if (error) throw error; return data;
+  }
   async function daftarSigna() {
     const { data, error } = await sb.from('signa').select('*').order('urutan');
     if (error) throw error; return data;
@@ -273,14 +287,28 @@ const DB = (() => {
     if (data && data.item) data.item.sort((a, b) => (a.urutan || 0) - (b.urutan || 0));
     return data;
   }
-  async function simpanResep(kunjunganId, item, catatan = null) {
+  async function simpanResep(kunjunganId, item, catatan = null, iterMaks = 0) {
     let r = await resep(kunjunganId);
+    /* Resep yang SUDAH pernah diserahkan apoteker (iter_terpakai > 0) tidak
+       boleh lagi diubah daftar/iter-nya dari layar dokter ini — lihat
+       cabang di bawah. */
     if (!r) {
       const { data, error } = await sb.from('resep')
-        .insert({ kunjungan_id: kunjunganId, catatan, dibuat_oleh: _saya?.id }).select().single();
+        .insert({ kunjungan_id: kunjunganId, catatan, dibuat_oleh: _saya?.id,
+                  iter_maks: Math.max(0, Number(iterMaks) || 0) }).select().single();
       if (error) throw error; r = data;
+    } else if (r.iter_terpakai) {
+      /* Resep ini sudah pernah diserahkan apoteker (mungkin baru
+         penyerahan pertama dari beberapa iter). Daftar butirnya sudah
+         jadi dasar riwayat penyerahan (resep_penyerahan_item) — menghapus
+         resep_item di sini akan ikut menghapus riwayat itu (referensinya
+         ON DELETE CASCADE). Tolak mentah-mentah, jangan diam-diam
+         mengabaikan sebagian perubahan dokter. */
+      throw new Error('Resep ini sudah pernah diserahkan apoteker, daftar obatnya tidak '
+        + 'bisa diubah lagi dari sini. Buat resep susulan untuk tambahan obat baru.');
     } else {
-      await sb.from('resep').update({ catatan }).eq('id', r.id);
+      const patch = { catatan, iter_maks: Math.max(0, Number(iterMaks) || 0) };
+      await sb.from('resep').update(patch).eq('id', r.id);
       const { error } = await sb.from('resep_item').delete().eq('resep_id', r.id);
       if (error) throw error;
     }
@@ -919,12 +947,16 @@ const DB = (() => {
     const { data, error } = await sb.from('resep')
       .select(`*, item:resep_item(*),
                kunjungan:kunjungan_id(id,no_kunjungan,tanggal,cara_bayar,no_antrian,
-                                      pasien:pasien_id(id,no_rm,nama,tanggal_lahir,jenis_kelamin),
-                                      poli:poli_id(nama)),
-               penulis:dibuat_oleh(nama)`)
+                                      pasien:pasien_id(id,no_rm,nama,alamat,tanggal_lahir,jenis_kelamin),
+                                      poli:poli_id(nama),
+                                      dokter:dokter_id(nama,no_sip)),
+               penulis:dibuat_oleh(nama),
+               penyerahan:resep_penyerahan(*, item:resep_penyerahan_item(*),
+                                           apoteker:apoteker_id(nama,no_sip))`)
       .eq('id', resepId).single();
     if (error) throw error;
     if (data.item) data.item.sort((a, b) => (a.urutan || 0) - (b.urutan || 0));
+    if (data.penyerahan) data.penyerahan.sort((a, b) => (a.ke_berapa || 0) - (b.ke_berapa || 0));
 
     const ids = [...new Set((data.item || []).map(i => i.obat_id).filter(Boolean))];
     if (ids.length) {
@@ -1032,6 +1064,24 @@ const DB = (() => {
 
   async function kasirTambahItem(rec) {
     const { data, error } = await sb.from('kasir_tagihan_item').insert(rec).select().single();
+    if (error) throw error; return data;
+  }
+  /* Menjual obat langsung dari Kasir: satu panggilan memotong stok FEFO
+     (kategori 'Penjualan Bebas') DAN menulis baris tagihan sekaligus,
+     lewat RPC supaya keduanya satu transaksi — bukan dua panggilan
+     terpisah yang bisa berselisih kalau salah satu gagal di tengah.
+     Harga selalu dari obat.harga saat ini (lihat sql/21_...), jadi rec
+     di sini TIDAK membawa harga_satuan sama sekali. */
+  async function kasirJualObatBebas(rec) {
+    const { data, error } = await sb.rpc('kasir_jual_obat_bebas', {
+      p_tagihan_id: rec.tagihan_id,
+      p_obat_id: rec.obat_id,
+      p_qty: rec.qty,
+      p_diskon_pct: rec.diskon_pct || 0,
+      p_ditanggung_penjamin: !!rec.ditanggung_penjamin,
+      p_urutan: rec.urutan ?? 99,
+      p_keterangan: rec.keterangan || null
+    });
     if (error) throw error; return data;
   }
   async function kasirUbahItem(id, patch) {
@@ -1323,6 +1373,40 @@ const DB = (() => {
     if (error) throw error;
     _suratSetelan = Object.assign({}, BAWAAN_SURAT, data.konfigurasi || {});
     return _suratSetelan;
+  }
+
+  /* Pengaturan template cetak Resep (logo, ukuran kertas, tampil/sembunyi
+     tiap bagian) — pola sama persis dengan pengaturan Surat di atas. */
+  const BAWAAN_RESEP = {
+    logo_data_uri: null,
+    logo_rasio: null,
+    ukuran_kertas: 'A5',
+    tampil_bb: true,
+    tampil_alergi: true,
+    tampil_validasi_farmasi: true
+  };
+
+  let _resepSetelan = null;
+
+  async function resepPengaturan(paksaMuat = false) {
+    if (_resepSetelan && !paksaMuat) return _resepSetelan;
+    let simpanan = {};
+    try {
+      const { data, error } = await sb.from('sys_resep_pengaturan')
+        .select('konfigurasi').eq('id', 1).maybeSingle();
+      if (!error && data && data.konfigurasi) simpanan = data.konfigurasi;
+    } catch (e) { /* pengaturan hilang bukan alasan resep gagal dicetak */ }
+    _resepSetelan = Object.assign({}, BAWAAN_RESEP, simpanan);
+    return _resepSetelan;
+  }
+
+  async function simpanResepPengaturan(konfigurasi) {
+    const { data, error } = await sb.from('sys_resep_pengaturan')
+      .update({ konfigurasi, updated_by: _saya?.id }).eq('id', 1)
+      .select('konfigurasi').single();
+    if (error) throw error;
+    _resepSetelan = Object.assign({}, BAWAAN_RESEP, data.konfigurasi || {});
+    return _resepSetelan;
   }
 
   async function refJenisSurat(hanyaAktif = true) {
@@ -1800,7 +1884,7 @@ const DB = (() => {
     sb, masuk, keluar, sesi, saya, bolehTulis,
     hakAksesSaya, daftarHakAkses, simpanHakAkses,
     faskes, simpanFaskes,
-    daftarPoli, daftarDokter, daftarPegawai, cariIcd, cariObat, daftarSigna,
+    daftarPoli, daftarDokter, daftarPegawai, cariIcd, cariObat, cariObatJual, daftarSigna,
     cariPasien, pasien, simpanPasien, alergiPasien, tambahAlergi, hapusAlergi, catatAkses,
     antrianHariIni, daftarKunjungan, buatKunjungan, kunjungan, ubahKunjungan,
     kajian, simpanKajian,
@@ -1827,7 +1911,7 @@ const DB = (() => {
     kasirMenunggu, kasirDaftarTagihan, kasirTagihan, kasirItem, kasirPembayaran,
     kasirLengkap, kasirSusunDariKunjungan, kasirCatatPembayaran,
     kasirHapusPembayaran, kasirHapusTagihan, kasirBuatTagihanBebas,
-    kasirTambahItem, kasirUbahItem, kasirHapusItem,
+    kasirTambahItem, kasirUbahItem, kasirHapusItem, kasirJualObatBebas,
     daftarTarif, simpanTarif, kasirRekap,
     templateInvoice, simpanTemplateInvoice,
     refLab, refLabPaket, simpanRefLab, simpanRujukan, hapusRujukan,
@@ -1837,6 +1921,7 @@ const DB = (() => {
     penunjangSimpan, penunjangPasien, penunjangKunjungan, gigiBerbacaan, hapusPenunjang,
     lampiranPasien, lampiranKunjungan, simpanLampiran, hapusLampiran,
     suratPengaturan, simpanSuratPengaturan, refJenisSurat,
+    resepPengaturan, simpanResepPengaturan,
     suratNomorBerikutnya, suratNomorTerpakai,
     buatSurat, ubahSurat, surat, daftarSurat, suratKunjungan, suratPasien,
     suratBatalkan, suratCatatCetak,

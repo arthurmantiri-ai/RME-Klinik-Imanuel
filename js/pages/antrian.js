@@ -24,8 +24,30 @@ const Antrian = (() => {
   let tab = 'LOKET';
   let jamPerbarui = null;
   let sedangMuat = false;
+  // 10 Sep 2026: dokter (umum/gigi) hanya melihat antrean POLI-nya sendiri
+  // secara bawaan, supaya tidak salah pencet "Panggil" untuk poli lain —
+  // lihat jenisSayaAtauNull()/sesuaiPoliSaya() di bawah. Peran lain
+  // (admin/perawat) tetap melihat semua poli seperti sekarang, karena
+  // mereka menangani loket/triase lintas poli. `true` = saring bawaan.
+  let saringSendiri = true;
 
   const A = () => AntreanCore;
+
+  /* Dokter umum/gigi ditandai lewat `pegawai.jenis_dokter` ('UMUM'/'GIGI',
+     diisi di Pengaturan -> Pengguna), dicocokkan ke `jenis_poli` pada tiap
+     baris antrean (v_antrean_hari_ini sudah menyertakan po.jenis). Null
+     kalau bukan dokter, atau dokter yang belum ditandai jenis-nya —
+     dalam kasus itu TIDAK disaring (aman, daripada diam-diam
+     menyembunyikan antrean dari dokter yang datanya belum lengkap). */
+  function jenisSayaAtauNull() {
+    const p = App.siapa();
+    return (p && p.peran === 'dokter' && p.jenis_dokter) ? p.jenis_dokter : null;
+  }
+  function sesuaiPoliSaya(a) {
+    const j = jenisSayaAtauNull();
+    if (!j || !saringSendiri) return true;
+    return a.jenis_poli === j;
+  }
 
   /* ================= Tabel ringkas (dipakai Beranda juga) ============= */
   /* Beranda memanggil Antrian.gambarTabel() dengan data v_antrian_hari_ini
@@ -129,6 +151,15 @@ const Antrian = (() => {
       el.querySelectorAll('#tabAntrean .tab').forEach(x => x.classList.remove('on'));
       b.classList.add('on'); tab = b.dataset.t; gambar();
     });
+    // Tombol "Lihat semua poli" / "Hanya <poli> saya" digambar ulang setiap
+    // gambarDaftar() (lihat pitaSaringPoli()), jadi didengarkan lewat
+    // delegasi di `el` (tidak pernah diganti innerHTML-nya) alih-alih
+    // dipasang ulang tiap render.
+    el.addEventListener('click', (e) => {
+      if (!e.target.closest('[data-toggle-poli]')) return;
+      saringSendiri = !saringSendiri;
+      gambar();
+    });
     el.querySelector('#btnSegar').addEventListener('click', segarkan);
     const bNomor = el.querySelector('#btnNomorBaru');
     if (bNomor) bNomor.addEventListener('click', dialogNomorBaru);
@@ -231,18 +262,39 @@ const Antrian = (() => {
 
   function saring() {
     if (tab === 'LOKET')   return semua.filter(a => a.tahap === 'LOKET' && A().masihAktif(a));
-    if (tab === 'POLI')    return semua.filter(a => a.tahap === 'POLI'  && A().masihAktif(a));
+    if (tab === 'POLI')    return semua.filter(a => a.tahap === 'POLI'  && A().masihAktif(a) && sesuaiPoliSaya(a));
     if (tab === 'SELESAI') return semua.filter(a => !A().masihAktif(a));
-    return semua;
+    return semua.filter(a => a.tahap !== 'POLI' || sesuaiPoliSaya(a));
+  }
+
+  /* Pita kecil di atas daftar, hanya untuk dokter yang jenis-nya sudah
+     ditandai dan sedang melihat tab yang bisa memuat pasien poli lain
+     (POLI/SEMUA). Menjelaskan kenapa daftarnya sudah tersaring, dan
+     menyediakan jalan keluar sementara (mis. dokter umum merangkap gigi
+     saat dokter gigi cuti) tanpa perlu ubah pengaturan permanen. */
+  function pitaSaringPoli() {
+    const j = jenisSayaAtauNull();
+    if (!j || (tab !== 'POLI' && tab !== 'SEMUA')) return '';
+    const labelJenis = j === 'GIGI' ? 'Poli Gigi' : 'Poli Umum';
+    return saringSendiri
+      ? `<div class="banner info mb-12">
+           <span class="banner-txt">Menampilkan antrean <b>${labelJenis}</b> saja.</span>
+           <button class="btn btn-secondary btn-sm" data-toggle-poli>Lihat semua poli</button>
+         </div>`
+      : `<div class="banner warn mb-12">
+           <span class="banner-txt">Menampilkan antrean <b>semua poli</b> — termasuk yang bukan ${labelJenis}.</span>
+           <button class="btn btn-secondary btn-sm" data-toggle-poli>Hanya ${labelJenis} saya</button>
+         </div>`;
   }
 
   function gambarDaftar() {
     const wadah = document.getElementById('isiAntrean');
     if (!wadah) return;
     const data = saring();
+    const pita = pitaSaringPoli();
 
     if (!data.length) {
-      wadah.innerHTML = `<div class="empty compact">
+      wadah.innerHTML = `${pita}<div class="empty compact">
         ${UI.ikon('antrian', 40)}
         <h3>${tab === 'LOKET' ? 'Tidak ada yang menunggu di loket'
              : tab === 'POLI' ? 'Tidak ada yang menunggu poli'
@@ -254,7 +306,7 @@ const Antrian = (() => {
       return;
     }
 
-    wadah.innerHTML = `<div class="table-wrap"><table class="tbl">
+    wadah.innerHTML = `${pita}<div class="table-wrap"><table class="tbl">
       <thead><tr>
         <th class="col-narrow">Nomor</th>
         <th>Pasien</th>
@@ -464,9 +516,20 @@ const Antrian = (() => {
           kotak.innerHTML = `<div class="field mb-0"><input class="w-full" value="${UI.esc(a.nama_pasien)}" disabled></div>`;
           return;
         }
+        /* Tombol "daftarkan baru" langsung di sini — supaya petugas yang
+           mendapati pesertanya belum pernah berobat tidak perlu menutup
+           dialog check-in ini dan mengulang dari halaman Pendaftaran.
+           Pasien.modalPasien() membuka modalnya SENDIRI (bertumpuk di atas
+           modal check-in ini, tidak menggantikannya), jadi nomor antrean
+           yang sedang diproses tidak pernah hilang dari layar. */
         kotak.innerHTML = `<div class="field mb-0">
           <div id="comboPasien"></div>
-          <div class="hint" id="pasienTerpilih">Belum ada pasien dipilih.</div></div>`;
+          <div class="hint" id="pasienTerpilih">Belum ada pasien dipilih.</div>
+          ${App.boleh('pasien_simpan')
+            ? `<button type="button" class="btn btn-secondary btn-sm mt-8" id="btnPasienBaruCheckin">
+                 ${UI.ikon('plus', 15)} Pasien belum pernah berobat — daftarkan baru</button>`
+            : ''}
+        </div>`;
         Komponen.comboCari({
           wadah: kotak.querySelector('#comboPasien'),
           placeholder: 'Ketik nama, NIK, atau nomor rekam medis',
@@ -485,6 +548,15 @@ const Antrian = (() => {
               ? `Dipilih: <b>${UI.esc(p.nama)}</b> (RM ${UI.esc(p.no_rm)})`
               : 'Belum ada pasien dipilih.';
           }
+        });
+
+        const btnPasienBaru = kotak.querySelector('#btnPasienBaruCheckin');
+        if (btnPasienBaru) btnPasienBaru.addEventListener('click', async () => {
+          const p = await Pasien.modalPasien();
+          if (!p) return;                      // dibatalkan — check-in tetap terbuka apa adanya
+          pasienId = p.id;
+          const info = kotak.querySelector('#pasienTerpilih');
+          info.innerHTML = `Dipilih: <b>${UI.esc(p.nama)}</b> (RM ${UI.esc(p.no_rm)})`;
         });
       },
       tombol: [

@@ -399,8 +399,8 @@ const Jadwal = (() => {
 
     w.innerHTML = `
       <div class="card mb-16">
-        <div class="card-head"><h2>Tautan layar ruang tunggu</h2>
-          <div class="sub">Buka sekali di TV atau tablet, lalu biarkan</div></div>
+        <div class="card-head"><div class="flex-1"><h2>Tautan layar ruang tunggu</h2>
+          <div class="sub">Buka sekali di TV atau tablet, lalu biarkan</div></div></div>
         <div class="card-body">
           <div class="banner info mb-12"><div>
             Layar ini <b>tidak perlu login</b>. Ia hanya bisa menampilkan
@@ -511,8 +511,8 @@ const Jadwal = (() => {
       </div></div>
 
       <div class="card mb-16">
-        <div class="card-head"><h2>Alamat web service klinik</h2>
-          <div class="sub">Yang diisikan pada formulir pendaftaran Antrean FKTP</div></div>
+        <div class="card-head"><div class="flex-1"><h2>Alamat web service klinik</h2>
+          <div class="sub">Yang diisikan pada formulir pendaftaran Antrean FKTP</div></div></div>
         <div class="card-body">
           <div class="field"><label>Base URL</label>
             <input class="w-full mono" id="baseUrl" readonly value="${UI.esc(dasar)}"></div>
@@ -567,8 +567,8 @@ const Jadwal = (() => {
       </div>
 
       <div class="card mb-16">
-        <div class="card-head"><h2>Uji coba</h2>
-          <div class="sub">Menjalankan permintaan yang sama persis dengan yang akan dikirim BPJS</div></div>
+        <div class="card-head"><div class="flex-1"><h2>Uji coba</h2>
+          <div class="sub">Menjalankan permintaan yang sama persis dengan yang akan dikirim BPJS</div></div></div>
         <div class="card-body">
           <div class="form-row">
             <div class="field"><label>Username</label>
@@ -592,8 +592,8 @@ const Jadwal = (() => {
       </div>
 
       <div class="card">
-        <div class="card-head"><h2>Log permintaan masuk</h2>
-          <div class="sub">Bukti apa yang dikirim BPJS dan apa yang kita jawab</div></div>
+        <div class="card-head"><div class="flex-1"><h2>Log permintaan masuk</h2>
+          <div class="sub">Bukti apa yang dikirim BPJS dan apa yang kita jawab</div></div></div>
         <div class="card-body tight">
           ${log.length ? `<div class="table-wrap"><table class="tbl">
             <thead><tr><th>Waktu</th><th>Jalur</th><th>Metode</th><th>Kode</th><th>Pesan</th></tr></thead>

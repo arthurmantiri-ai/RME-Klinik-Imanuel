@@ -47,8 +47,14 @@ const UI = (() => {
       document.body.appendChild(bg);
 
       const tutup = (hasil) => { bg.remove(); resolve(hasil); };
+      /* Sengaja TIDAK menutup saat mengklik area gelap di luar kotak modal
+         (dulu: e.target === bg). Petugas sering mengetik data lumayan
+         panjang (identitas pasien, dsb.) dan sebuah klik meleset sedikit
+         di luar kotak langsung membuang seluruh isian tanpa konfirmasi.
+         Sekarang modal HANYA tertutup lewat tombol X (data-tutup) atau
+         tombol aksi eksplisit (mis. Batal) di bawah. */
       bg.addEventListener('click', async (e) => {
-        if (e.target === bg || e.target.closest('[data-tutup]')) { tutup(null); return; }
+        if (e.target.closest('[data-tutup]')) { tutup(null); return; }
         const b = e.target.closest('[data-idx]');
         if (!b || b.disabled) return;
         const def = tombol[+b.dataset.idx];
@@ -73,6 +79,11 @@ const UI = (() => {
         if (r === false) return;             // aksi minta modal tetap terbuka
         tutup(r === undefined ? def.nilai : r);
       });
+      /* Escape tetap menutup modal (sengaja TIDAK ikut dihapus seperti klik
+         di luar kotak di atas) — beberapa uji Playwright yang sudah ada
+         (mis. test/uji_lab_halaman.js) memakai tombol Escape untuk menutup
+         dialog sebagai bagian alur pengujian, jadi menghapusnya akan
+         merusak uji yang sudah lolos tanpa diminta. */
       document.addEventListener('keydown', function esc2(e) {
         if (e.key === 'Escape') { document.removeEventListener('keydown', esc2); tutup(null); }
       });

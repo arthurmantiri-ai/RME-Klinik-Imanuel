@@ -15,7 +15,7 @@ const DB = (() => {
     alamat: 'Jl. Diponegoro No. 45', kelurahan: 'Sekayu', kecamatan: 'Semarang Tengah',
     kabupaten: 'Kota Semarang', provinsi: 'Jawa Tengah', telepon: '(024) 3512345',
     email: 'klinikimanuel@contoh.id', penanggung_jawab: 'dr. Arthur Mantiri',
-    kode_faskes_bpjs: '', kode_registrasi_kemenkes: '', satusehat_org_id: '',
+    kode_faskes_bpjs: '', kode_registrasi_kemenkes: '', no_sia: '', satusehat_org_id: '',
     satusehat_location_id: '', no_izin: '', bridging_mulai_tanggal: null
   };
 
@@ -503,6 +503,7 @@ const DB = (() => {
 
   const RESEP = [
     { id: 'rsp-1', kunjungan_id: 'kunj-1', no_resep: 'R260831001', status: 'DIBUAT',
+      iter_maks: 0, iter_terpakai: 0,
       dibuat_pada: jamHariIni(8, 28), item: [
         { id: 'ri-1', resep_id: 'rsp-1', obat_id: 'ob-1', nama_obat: 'Paracetamol 500 mg',
           jumlah: 10, satuan: 'Tablet', signa: '3 x sehari 1 tablet bila demam', urutan: 0 },
@@ -514,6 +515,7 @@ const DB = (() => {
   ];
 
   const ADDENDUM = [];
+  const PENYERAHAN = [];   // meniru resep_penyerahan + resep_penyerahan_item (lihat sql/23)
   const tunggu = (ms = 90) => new Promise(r => setTimeout(r, ms));
   const salin = (o) => JSON.parse(JSON.stringify(o));
 
@@ -596,6 +598,17 @@ const DB = (() => {
     if (!kata || kata.length < 2) return salin(OBAT);
     const k = kata.toLowerCase();
     return OBAT.filter(o => o.nama.toLowerCase().includes(k));
+  }
+  /* Kembaran cariObatJual() di js/db.js — dibaca dari bentuk yang sama
+     dengan apotekStok() (didefinisikan di bawah) supaya kasir demo
+     melihat harga jual & stok layak yang sama persis dengan Apotek. */
+  async function cariObatJual(kata) {
+    await tunggu(60);
+    const semua = await apotekStok();
+    const aktif = semua.filter(o => o.aktif);
+    if (!kata || kata.trim().length < 2) return aktif;
+    const k = kata.trim().toLowerCase();
+    return aktif.filter(o => o.nama_obat.toLowerCase().includes(k));
   }
 
   async function cariPasien(kata) {
@@ -1085,12 +1098,22 @@ const DB = (() => {
   }
 
   async function resep(id) { await tunggu(40); const r = RESEP.find(x => x.kunjungan_id === id); return r ? salin(r) : null; }
-  async function simpanResep(id, item, catatan) {
+  async function simpanResep(id, item, catatan, iterMaks = 0) {
     await tunggu(120);
     let r = RESEP.find(x => x.kunjungan_id === id);
-    if (!r) { r = { id: uid(), kunjungan_id: id, no_resep: 'R' + Date.now().toString().slice(-6),
-                    catatan, status: 'DIBUAT', dibuat_pada: new Date().toISOString(), item: [] };
-              RESEP.push(r); }
+    if (!r) {
+      r = { id: uid(), kunjungan_id: id, no_resep: 'R' + Date.now().toString().slice(-6),
+            catatan, status: 'DIBUAT', iter_maks: Math.max(0, Number(iterMaks) || 0),
+            iter_terpakai: 0, dibuat_pada: new Date().toISOString(), item: [] };
+      RESEP.push(r);
+    } else if (r.iter_terpakai) {
+      // Sama seperti js/db.js: resep yang sudah pernah diserahkan tidak
+      // boleh diubah daftar obat/iter-nya lagi dari layar dokter.
+      throw new Error('Resep ini sudah pernah diserahkan apoteker, daftar obatnya tidak '
+        + 'bisa diubah lagi dari sini. Buat resep susulan untuk tambahan obat baru.');
+    } else {
+      r.iter_maks = Math.max(0, Number(iterMaks) || 0);
+    }
     r.catatan = catatan;
     r.item = item.map((o, i) => ({ ...o, id: uid(), resep_id: r.id, urutan: i }));
     return salin(r);
@@ -1729,20 +1752,41 @@ const DB = (() => {
       if (b) b.stok_sisa += (t.jenis === 'KELUAR' ? t.jumlah : -t.jumlah);
       t.dibatalkan = true;
       if (t.resep_item_id) {
+        // Sama seperti sql/23_salinan_resep.sql: iter_terpakai turun satu
+        // alih-alih resep langsung dianggap belum pernah disentuh sama
+        // sekali, supaya resep iter tidak "mendapat" putaran ekstra yang
+        // tidak pernah ditulis dokter.
         RESEP.forEach(r => (r.item || []).forEach(i => {
-          if (i.id === t.resep_item_id) { i.jumlah_diserahkan = null;
-            r.status = 'DIBUAT'; r.diserahkan_pada = null; r.diserahkan_sebagian = false; }
+          if (i.id === t.resep_item_id) {
+            i.jumlah_diserahkan = null;
+            r.iter_terpakai = Math.max(0, (r.iter_terpakai || 0) - 1);
+            r.status = r.iter_terpakai > 0 ? 'ITER_BERJALAN' : 'DIBUAT';
+            r.diserahkan_pada = null; r.diserahkan_sebagian = false;
+          }
         }));
       }
     });
     return { dibatalkan: baris.length };
   }
 
-  async function apotekSerahkanResep(resepId, item) {
+  async function apotekSerahkanResep(resepId, item, tanggal, catatan) {
     const r = RESEP.find(x => x.id === resepId);
     if (!r) throw new Error('Resep tidak ditemukan.');
-    if (r.status === 'DISERAHKAN') throw new Error('Resep ini sudah diserahkan.');
+    r.iter_maks = r.iter_maks || 0;
+    r.iter_terpakai = r.iter_terpakai || 0;
+    if (r.iter_terpakai >= r.iter_maks + 1) {
+      throw new Error(`Resep ${r.no_resep || 'ini'} sudah habis diserahkan (termasuk iter), `
+        + 'tidak bisa diserahkan lagi.');
+    }
+    const keBerapa = r.iter_terpakai + 1;
+    const penyerahan = { id: uid(), resep_id: r.id, ke_berapa: keBerapa, lengkap: true,
+      catatan: catatan || null, apoteker_id: PROFIL.id, apoteker: { nama: PROFIL.nama, no_sip: PROFIL.no_sip },
+      tanggal: tanggal || hariIni, dibuat_pada: new Date().toISOString(), item: [] };
+
+    let diserahkan = 0;
     for (const it of item) {
+      const jumlah = Number(it.jumlah) || 0;
+      if (jumlah <= 0) continue;
       const ri = (r.item || []).find(x => x.id === it.resep_item_id);
       if (!ri) continue;
       /* Aplikasi sungguhan menanyakan kronis_kolam_resep_item() di sini
@@ -1751,17 +1795,30 @@ const DB = (() => {
          belum punya pendaftaran kronis aktif (menyusul di Tahap 2), jadi
          sementara selalu 'reguler' — sama seperti pasien tanpa terapi
          kronis di database sungguhan. */
-      await apotekKeluar({ obat_id: ri.obat_id, jumlah: it.jumlah, kategori: 'Resep Pasien',
+      await apotekKeluar({ obat_id: ri.obat_id, jumlah, kategori: 'Resep Pasien',
         kunjungan_id: r.kunjungan_id, resep_item_id: ri.id, keterangan: r.no_resep,
         kolam: 'reguler' });
-      ri.jumlah_diserahkan = it.jumlah;
+      ri.jumlah_diserahkan = jumlah;
+      penyerahan.item.push({ id: uid(), penyerahan_id: penyerahan.id, resep_item_id: ri.id,
+        jumlah_diminta: ri.jumlah, jumlah_diserahkan: jumlah, keterangan: it.keterangan || null });
+      diserahkan++;
     }
-    const semua = (r.item || []).filter(i => i.obat_id).length;
-    r.status = 'DISERAHKAN';
+    if (!diserahkan) throw new Error('Tidak ada butir obat yang diserahkan.');
+
+    const totalItem = (r.item || []).length;
+    const lengkap = diserahkan >= totalItem
+      && penyerahan.item.every(pi => pi.jumlah_diserahkan >= pi.jumlah_diminta);
+    penyerahan.lengkap = lengkap;
+    PENYERAHAN.push(penyerahan);
+
+    r.status = keBerapa >= r.iter_maks + 1 ? 'DISERAHKAN' : 'ITER_BERJALAN';
+    r.iter_terpakai = keBerapa;
     r.diserahkan_pada = new Date().toISOString();
     r.diserahkan_oleh = PROFIL.id;
-    r.diserahkan_sebagian = item.length < semua;
-    return { butir: item.length, dari: semua, sebagian: r.diserahkan_sebagian };
+    r.diserahkan_sebagian = !lengkap || !!r.diserahkan_sebagian;
+    return { resep_id: r.id, penyerahan_id: penyerahan.id, ke_berapa: keBerapa,
+      butir: diserahkan, dari: totalItem, lengkap,
+      iter_sisa: Math.max(0, r.iter_maks + 1 - keBerapa) };
   }
 
   async function obatUntukPencocokan() {
@@ -1856,6 +1913,7 @@ const DB = (() => {
       return { resep_id: r.id, no_resep: r.no_resep, status: r.status, catatan: r.catatan,
         dibuat_pada: r.dibuat_pada, diserahkan_pada: r.diserahkan_pada,
         diserahkan_sebagian: !!r.diserahkan_sebagian,
+        iter_maks: r.iter_maks || 0, iter_terpakai: r.iter_terpakai || 0,
         kunjungan_id: k.id, no_kunjungan: k.no_kunjungan, no_antrian: k.no_antrian,
         tanggal: k.tanggal, cara_bayar: k.cara_bayar, status_kunjungan: k.status,
         pasien_id: p.id, no_rm: p.no_rm, nama_pasien: p.nama,
@@ -1873,7 +1931,14 @@ const DB = (() => {
     const k = KUNJUNGAN.find(x => x.id === r.kunjungan_id) || {};
     const p = PASIEN.find(x => x.id === k.pasien_id) || {};
     const po = POLI.find(x => x.id === k.poli_id) || {};
-    r.kunjungan = { ...k, pasien: p, poli: po };
+    const d = PEGAWAI.find(x => x.id === k.dokter_id) || {};
+    const penulis = PEGAWAI.find(x => x.id === r.dibuat_oleh);
+    r.kunjungan = { ...k, pasien: p, poli: po, dokter: { nama: d.nama, no_sip: d.no_sip } };
+    r.penulis = penulis ? { nama: penulis.nama } : null;
+    r.iter_maks = r.iter_maks || 0;
+    r.iter_terpakai = r.iter_terpakai || 0;
+    r.penyerahan = salin(PENYERAHAN.filter(x => x.resep_id === r.id))
+      .sort((a, b) => (a.ke_berapa || 0) - (b.ke_berapa || 0));
     const stok = await apotekStok();
     (r.item || []).forEach(i => {
       i.stok = stok.find(s => s.obat_id === i.obat_id) || null;
@@ -2049,6 +2114,37 @@ const DB = (() => {
     hitungTagihan(t);
     return i;
   }
+  /* Kembaran kasir_jual_obat_bebas() di sql/21_kasir_obat_bebas.sql:
+     memotong stok FEFO (lewat apotekKeluar(), yang sudah ada) DAN
+     menulis baris tagihan dalam satu langkah, harga selalu dari
+     obat.harga saat ini. apotek_grup_id disimpan di baris supaya
+     kasirHapusItem() di bawah tahu grup mana yang harus dibatalkan
+     kalau baris ini dihapus. */
+  async function kasirJualObatBebas(rec) {
+    const t = TAGIHAN.find(x => x.id === rec.tagihan_id);
+    if (!t) throw new Error('Tagihan tidak ditemukan.');
+    if (PEMBAYARAN.some(b => b.tagihan_id === t.id))
+      throw new Error('Tagihan ini sudah menerima pembayaran, jadi rinciannya tidak bisa diubah.');
+    const o = OBAT.find(x => x.id === rec.obat_id && x.aktif !== false);
+    if (!o) throw new Error('Obat tidak ditemukan atau sudah nonaktif.');
+    if (!rec.qty || rec.qty <= 0) throw new Error('Jumlah harus lebih dari nol.');
+
+    const hasil = await apotekKeluar({
+      obat_id: rec.obat_id, jumlah: rec.qty, kategori: 'Penjualan Bebas',
+      tanggal: t.tanggal, kunjungan_id: t.kunjungan_id || null,
+      keterangan: rec.keterangan || `Penjualan bebas — kasir ${t.nomor}`
+    });
+
+    const i = { id: uid(), tagihan_id: rec.tagihan_id, sumber: 'OBAT', ref_id: rec.obat_id,
+      ref_kode: o.kode_internal || null, nama: `${o.nama} (${rec.qty} ${o.satuan})`,
+      qty: rec.qty, harga_satuan: o.harga || 0, diskon_pct: rec.diskon_pct || 0,
+      ditanggung_penjamin: !!rec.ditanggung_penjamin, urutan: rec.urutan ?? 99,
+      apotek_grup_id: hasil.grup_id, created_at: new Date().toISOString() };
+    i.total_baris = Math.round(i.qty * i.harga_satuan * (1 - (i.diskon_pct || 0) / 100));
+    TAGIHAN_ITEM.push(i);
+    hitungTagihan(t);
+    return i;
+  }
   async function kasirUbahItem(id, patch) {
     const i = TAGIHAN_ITEM.find(x => x.id === id);
     const t = TAGIHAN.find(x => x.id === i.tagihan_id);
@@ -2064,11 +2160,28 @@ const DB = (() => {
     const t = TAGIHAN.find(x => x.id === i.tagihan_id);
     if (PEMBAYARAN.some(b => b.tagihan_id === t.id))
       throw new Error('Tagihan ini sudah menerima pembayaran, jadi rinciannya tidak bisa diubah.');
+    /* Kembaran trigger kasir_trg_batal_obat_bebas di
+       sql/21_kasir_obat_bebas.sql: baris yang dibuat lewat
+       kasirJualObatBebas() ikut membatalkan grup stoknya sendiri saat
+       dihapus, supaya demo tidak diam-diam berselisih dari aplikasi
+       sungguhan (obat "hilang" dari tagihan tapi stoknya tidak pernah
+       kembali). */
+    if (i.apotek_grup_id) await apotekBatalkanGrup(i.apotek_grup_id);
     TAGIHAN_ITEM = TAGIHAN_ITEM.filter(x => x.id !== id);
     hitungTagihan(t);
   }
   async function daftarTarif() { await tunggu(30); return salin(TARIF); }
+  let urutKodeTarif = 0;
   async function simpanTarif(rec, id) {
+    /* Kembaran trigger gen_kode_tarif() di sql/21_kasir_obat_bebas.sql —
+       hanya untuk baris BARU (id kosong), sama seperti trigger yang
+       hanya BEFORE INSERT. Kode LAB/PENUNJANG tidak pernah kosong saat
+       sampai di sini (js/pages/tarif.js sudah mengisinya dari referensi
+       yang dipilih), jadi cabang 'TRF' di sini murni jaring pengaman. */
+    if (!id && (!rec.kode || !String(rec.kode).trim())) {
+      const prefix = { TINDAKAN: 'TND', LAYANAN: 'LAY', LAIN: 'LAIN' }[rec.jenis] || 'TRF';
+      rec = { ...rec, kode: `${prefix}-${String(++urutKodeTarif).padStart(4, '0')}` };
+    }
     if (id) { Object.assign(TARIF.find(t => t.id === id), rec); }
     else { TARIF.push({ id: uid(), ...rec }); }
     return rec;
@@ -2493,6 +2606,13 @@ const DB = (() => {
   async function refJenisSurat() { await tunggu(20); return salin(REF_JENIS_SURAT); }
   async function suratPengaturan() { await tunggu(20); return salin(SETELAN_SURAT); }
   async function simpanSuratPengaturan(k) { Object.assign(SETELAN_SURAT, k); return salin(SETELAN_SURAT); }
+
+  const SETELAN_RESEP = {
+    logo_data_uri: null, logo_rasio: null, ukuran_kertas: 'A5',
+    tampil_bb: true, tampil_alergi: true, tampil_validasi_farmasi: true
+  };
+  async function resepPengaturan() { await tunggu(20); return salin(SETELAN_RESEP); }
+  async function simpanResepPengaturan(k) { Object.assign(SETELAN_RESEP, k); return salin(SETELAN_RESEP); }
 
   async function suratNomorBerikutnya(jenis, tahun) {
     await tunggu(20);
@@ -3174,7 +3294,7 @@ const DB = (() => {
   }
 
   return { sb, masuk, keluar, sesi, saya, bolehTulis, hakAksesSaya, faskes, simpanFaskes,
-           daftarPoli, daftarDokter, daftarPegawai, cariIcd, cariObat, daftarSigna,
+           daftarPoli, daftarDokter, daftarPegawai, cariIcd, cariObat, cariObatJual, daftarSigna,
            cariPasien, pasien, simpanPasien, alergiPasien, tambahAlergi, hapusAlergi, catatAkses,
            antrianHariIni, daftarKunjungan, buatKunjungan, kunjungan, ubahKunjungan,
            kajian, simpanKajian, pemeriksaan, simpanPemeriksaan, finalisasi,
@@ -3200,7 +3320,7 @@ const DB = (() => {
            kasirMenunggu, kasirDaftarTagihan, kasirTagihan, kasirItem, kasirPembayaran,
            kasirLengkap, kasirSusunDariKunjungan, kasirCatatPembayaran,
            kasirHapusPembayaran, kasirHapusTagihan, kasirBuatTagihanBebas,
-           kasirTambahItem, kasirUbahItem, kasirHapusItem,
+           kasirTambahItem, kasirUbahItem, kasirHapusItem, kasirJualObatBebas,
            daftarTarif, simpanTarif, kasirRekap,
            templateInvoice, simpanTemplateInvoice,
            refLab, refLabPaket, simpanRefLab, simpanRujukan, hapusRujukan,
@@ -3210,6 +3330,7 @@ const DB = (() => {
            penunjangSimpan, penunjangPasien, penunjangKunjungan, gigiBerbacaan, hapusPenunjang,
            lampiranPasien, lampiranKunjungan, simpanLampiran, hapusLampiran,
            suratPengaturan, simpanSuratPengaturan, refJenisSurat,
+           resepPengaturan, simpanResepPengaturan,
            suratNomorBerikutnya, suratNomorTerpakai,
            buatSurat, ubahSurat, surat, daftarSurat, suratKunjungan, suratPasien,
            suratBatalkan, suratCatatCetak,

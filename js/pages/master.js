@@ -119,9 +119,9 @@ const Master = (() => {
           <td class="muted">${UI.esc([o.bentuk_sediaan, o.kekuatan].filter(Boolean).join(' · ') || '—')}</td>
           <td class="muted">${UI.esc(o.golongan || '—')}</td>
           <td class="mono ${o.kode_kfa ? '' : 'muted'}">${UI.esc(o.kode_kfa || '—')}</td>
-          <td><label class="check"><input type="checkbox" data-form="${i}"
+          <td class="check-cell"><label class="check"><input type="checkbox" data-form="${i}"
             ${o.formularium ? 'checked' : ''}><span class="text-xs">Fornas</span></label></td>
-          <td><label class="check"><input type="checkbox" data-aktif-obat="${i}"
+          <td class="check-cell"><label class="check"><input type="checkbox" data-aktif-obat="${i}"
             ${o.aktif ? 'checked' : ''}><span class="text-xs">Aktif</span></label></td>
           <td><button class="btn btn-secondary btn-sm" data-ubah-obat="${i}">Ubah</button></td>
         </tr>`).join('')}</tbody></table></div>`;
@@ -427,9 +427,9 @@ const Master = (() => {
           <td>${UI.esc(d.nama_id || '—')}</td>
           <td class="muted">${UI.esc(d.nama_en || '—')}</td>
           <td class="muted">${UI.esc(d.kategori || '—')}</td>
-          <td><label class="check"><input type="checkbox" data-fav="${i}"
+          <td class="check-cell"><label class="check"><input type="checkbox" data-fav="${i}"
             ${d.sering_dipakai ? 'checked' : ''}><span class="text-xs">Tombol cepat</span></label></td>
-          <td><label class="check"><input type="checkbox" data-aktif-icd="${i}"
+          <td class="check-cell"><label class="check"><input type="checkbox" data-aktif-icd="${i}"
             ${d.aktif ? 'checked' : ''}><span class="text-xs">Aktif</span></label></td>
           <td><button class="btn btn-secondary btn-sm" data-ubah-icd="${i}">Ubah</button></td>
         </tr>`).join('')}</tbody></table></div>`;
@@ -542,11 +542,11 @@ const Master = (() => {
           <td>${UI.esc(d.nama_id)}
             ${d.nama_en ? `<div class="text-xs text-muted">${UI.esc(d.nama_en)}</div>` : ''}</td>
           <td><span class="badge ${d.kategori === 'GIGI' ? 'b-bpjs' : 'b-umum'}">${UI.esc(d.kategori || '—')}</span></td>
-          <td><label class="check"><input type="checkbox" data-gigi="${i}"
+          <td class="check-cell"><label class="check"><input type="checkbox" data-gigi="${i}"
             ${d.per_gigi ? 'checked' : ''}><span class="text-xs">Per gigi</span></label></td>
-          <td><label class="check"><input type="checkbox" data-favt="${i}"
+          <td class="check-cell"><label class="check"><input type="checkbox" data-favt="${i}"
             ${d.sering_dipakai ? 'checked' : ''}><span class="text-xs">Sering</span></label></td>
-          <td><label class="check"><input type="checkbox" data-aktift="${i}"
+          <td class="check-cell"><label class="check"><input type="checkbox" data-aktift="${i}"
             ${d.aktif ? 'checked' : ''}><span class="text-xs">Aktif</span></label></td>
           <td><button class="btn btn-secondary btn-sm" data-ubah-t="${i}">Ubah</button></td>
         </tr>`).join('')}</tbody></table></div>`;

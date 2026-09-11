@@ -158,7 +158,11 @@ const Tarif = (() => {
           <div class="field"><label>Nama tampil *</label>
             <input type="text" name="nama" value="${UI.esc(t?.nama || '')}"></div>
           <div class="field"><label>Kode internal</label>
-            <input type="text" name="kode" value="${UI.esc(t?.kode || '')}"></div>
+            <input type="text" name="kode" value="${UI.esc(t?.kode || '')}"
+                   placeholder="Kosongkan untuk dibuat otomatis">
+            <div class="hint">Kosongkan saja kalau tidak punya kode tertentu — dibuat otomatis
+              saat disimpan (mis. TND-0001). Untuk Laboratorium/Penunjang, kode selalu mengikuti
+              pemeriksaan yang dipilih di atas.</div></div>
         </div>
         <div class="form-row c2">
           <div class="field"><label>Berlaku mulai</label>

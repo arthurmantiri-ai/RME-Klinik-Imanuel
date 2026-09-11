@@ -1518,7 +1518,18 @@ const KopKlinik = (() => {
   const rasio  = () => _rasioGanti || RASIO_BAWAAN;
   const bawaan = () => !_ganti;
 
-  return { BAWAAN, RASIO_BAWAAN, pasang, gambar, rasio, bawaan };
+  /* Logo bawaan untuk cetak Resep saat klinik belum mengunggah logo sendiri
+     lewat Pengaturan > Resep. SVG polos (hati + palang) supaya ringan dan
+     tidak butuh berkas gambar terpisah — dipakai langsung sebagai markup,
+     bukan data URI, karena inline SVG selalu tajam di segala ukuran cetak. */
+  const LOGO_RESEP_BAWAAN =
+    '<svg width="38" height="38" viewBox="0 0 64 64">' +
+      '<path d="M32 55 C10 40 4 26 14 16 C21 9 30 11 32 20 C34 11 43 9 50 16 C60 26 54 40 32 55 Z" ' +
+        'fill="none" stroke="#000" stroke-width="2.6"/>' +
+      '<path d="M32 24v20M22 34h20" stroke="#000" stroke-width="3.4" stroke-linecap="round"/>' +
+    '</svg>';
+
+  return { BAWAAN, RASIO_BAWAAN, pasang, gambar, rasio, bawaan, LOGO_RESEP_BAWAAN };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = KopKlinik;

@@ -149,7 +149,7 @@ const Rekam = (() => {
           <h3 class="mb-8">Diagnosa</h3>
           ${rm.diagnosa.length === 0
             ? '<p class="text-muted text-sm mb-0">Tidak ada diagnosa tercatat.</p>'
-            : `<table class="tbl" style="border:1px solid var(--ink-200);border-radius:6px">
+            : `<div class="table-wrap"><table class="tbl" style="border:1px solid var(--ink-200);border-radius:6px">
                 <thead><tr><th style="width:90px">Kode</th><th>Diagnosa</th>
                   <th style="width:100px">Jenis</th><th style="width:80px">Kasus</th></tr></thead>
                 <tbody>${rm.diagnosa.map(d => `<tr>
@@ -157,19 +157,19 @@ const Rekam = (() => {
                   <td>${UI.esc(d.nama)}</td>
                   <td>${d.jenis === 'PRIMER'
                     ? '<span class="badge b-bpjs">Primer</span>' : '<span class="badge b-umum">Sekunder</span>'}</td>
-                  <td class="muted">${UI.esc(d.kasus)}</td></tr>`).join('')}</tbody></table>`}
+                  <td class="muted">${UI.esc(d.kasus)}</td></tr>`).join('')}</tbody></table></div>`}
 
           ${(rm.tindakan && rm.tindakan.length) ? `
             <div class="divider"></div>
             <h3 class="mb-8">Tindakan</h3>
-            <table class="tbl" style="border:1px solid var(--ink-200);border-radius:6px">
+            <div class="table-wrap"><table class="tbl" style="border:1px solid var(--ink-200);border-radius:6px">
               <thead><tr><th style="width:90px">Kode</th><th>Tindakan</th>
                 <th style="width:80px">Gigi</th><th style="width:80px">Jumlah</th></tr></thead>
               <tbody>${rm.tindakan.map(t => `<tr>
                 <td class="mono"><b>${UI.esc(t.kode_icd9)}</b></td>
                 <td>${UI.esc(t.nama)}${t.catatan ? `<div class="text-xs text-muted">${UI.esc(t.catatan)}</div>` : ''}</td>
                 <td class="mono">${UI.esc(t.fdi || '—')}</td>
-                <td>${t.jumlah}</td></tr>`).join('')}</tbody></table>
+                <td>${t.jumlah}</td></tr>`).join('')}</tbody></table></div>
           ` : ''}
 
           ${blokPenunjang(labRM, bacaanRM, arsipRM)}
@@ -178,12 +178,12 @@ const Rekam = (() => {
           <h3 class="mb-8">Terapi / Resep</h3>
           ${!rm.resep || !rm.resep.item?.length
             ? '<p class="text-muted text-sm mb-0">Tidak ada obat diresepkan.</p>'
-            : `<table class="tbl" style="border:1px solid var(--ink-200);border-radius:6px">
+            : `<div class="table-wrap"><table class="tbl" style="border:1px solid var(--ink-200);border-radius:6px">
                 <thead><tr><th>Obat</th><th style="width:110px">Jumlah</th><th style="width:240px">Aturan pakai</th></tr></thead>
                 <tbody>${rm.resep.item.map(i => `<tr>
                   <td><b>${UI.esc(i.nama_obat)}</b></td>
                   <td>${UI.esc(String(i.jumlah))} ${UI.esc(i.satuan || '')}</td>
-                  <td>${UI.esc(i.signa || '-')}</td></tr>`).join('')}</tbody></table>`}
+                  <td>${UI.esc(i.signa || '-')}</td></tr>`).join('')}</tbody></table></div>`}
 
           <div class="divider"></div>
           <h3 class="mb-8">Tindak lanjut &amp; edukasi</h3>
@@ -296,7 +296,7 @@ const Rekam = (() => {
     return `
       <div class="divider"></div>
       <h3 class="mb-8">Pemeriksaan fisik</h3>
-      <table class="tbl" style="border:1px solid var(--ink-200);border-radius:6px">
+      <div class="table-wrap"><table class="tbl" style="border:1px solid var(--ink-200);border-radius:6px">
         <thead><tr><th style="width:210px">Sistem</th>
           <th style="width:150px">Keadaan</th><th>Uraian</th></tr></thead>
         <tbody>${isi.map(s => {
@@ -308,7 +308,7 @@ const Rekam = (() => {
                  : f.status === 'ABNORMAL' ? `<b>${UI.esc(f.temuan || '—')}</b>`
                  : '<span class="muted">—</span>'}</td>
           </tr>`;
-        }).join('')}</tbody></table>
+        }).join('')}</tbody></table></div>
       ${Array.isArray(pm.diagnosis_banding) && pm.diagnosis_banding.length
         ? `<div class="text-sm mt-12">${baris('Diagnosis banding',
             pm.diagnosis_banding.map(d => d.nama + (d.kode ? ` (${d.kode})` : '')).join(', '))}</div>`
@@ -333,7 +333,7 @@ const Rekam = (() => {
             ? '· ' + UI.esc(lp.nama_lab_luar || 'lab luar')
               + (lp.no_lembar_luar ? ' no. ' + UI.esc(lp.no_lembar_luar) : '')
             : '· laboratorium klinik'}</div>
-        <table class="tbl" style="border:1px solid var(--ink-200);border-radius:6px">
+        <div class="table-wrap"><table class="tbl" style="border:1px solid var(--ink-200);border-radius:6px">
           <thead><tr><th>Pemeriksaan</th><th style="width:110px">Hasil</th>
             <th style="width:80px">Satuan</th><th style="width:150px">Nilai rujukan</th>
             <th style="width:110px">Tanda</th></tr></thead>
@@ -349,7 +349,7 @@ const Rekam = (() => {
               <td class="muted mono" style="font-size:12px">${UI.esc(h.rujukan_teks || '—')}</td>
               <td ${t.berat >= 3 ? 'style="font-weight:700"' : ''}>${UI.esc(t.berat ? t.label : '')}</td>
             </tr>`;
-          }).join('')}</tbody></table>`;
+          }).join('')}</tbody></table></div>`;
     }).join('');
 
     const blokBacaan = bacaan.map(b => `

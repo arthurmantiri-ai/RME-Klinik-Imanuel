@@ -324,6 +324,12 @@ table.tbl .muted { color: var(--ink-500); }
   color: var(--brand-800); display: grid; place-items: center;
   font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums;
   border: 1px solid var(--brand-100);
+  /* Nomor antrean online berbentuk "U-002" (huruf + tanda hubung + angka),
+     bukan cuma angka pendek seperti nomor loket biasa. Tanpa nowrap,
+     browser boleh melipat baris tepat sesudah tanda hubung saat kolom
+     tabelnya sempit — hasilnya "U-" dan "002" jadi dua baris terpisah
+     dan meluber dari kotak bundar ini. */
+  white-space: nowrap;
 }
 
 /* ===================== PENCARIAN & PILIH ===================== */
@@ -731,7 +737,12 @@ table.tbl .muted { color: var(--ink-500); }
 .col-shrink{width:1%}
 /* Kontrol kecil di dalam sel tabel (select/input jenis, kasus, fdi, signa) */
 .ctl-sm{padding:5px 8px;font-size:12.5px}
-.ctl-num{width:64px;padding:5px 7px;text-align:center}
+/* Selektor ditulis "input.ctl-num" (bukan ".ctl-num" saja) supaya spesifisitasnya
+   menyamai (lalu menang urutan sumber atas) aturan global "input[type=number]{width:100%}"
+   di atas — kalau cuma ".ctl-num", aturan global itu SELALU menang walau class ini
+   ditulis belakangan di berkas ini, dan kotak angka melebar penuh mendorong kotak
+   di sampingnya (kejadian 10 Sep 2026). */
+input.ctl-num{width:72px;min-width:72px;flex-shrink:0;padding:5px 7px;text-align:center}
 /* Kotak gulir dengan tinggi maksimum — daftar hasil lab/penunjang panjang */
 .scroll-box{max-height:260px;overflow-y:auto;border:1px solid var(--ink-200);border-radius:var(--radius);padding:10px}
 .scroll-box.tall{max-height:340px}
@@ -910,6 +921,74 @@ table.tbl .muted { color: var(--ink-500); }
 }
 
 /* =====================================================================
+   SENTUH & TABLET (11 Sep 2026) — supaya RME nyaman dipakai pegawai lewat
+   tablet, dan tetap terpakai untuk hal ringkas lewat HP, TANPA mengubah
+   tampilan desktop mouse+papan-ketik sama sekali. Sengaja dipisah jadi
+   dua jenis kondisi, tidak digabung ke breakpoint lebar (max-width) di
+   atas: laptop yang jendelanya dikecilkan sampai lebar HP TIDAK ikut
+   berubah oleh blok kedua di bawah, karena inputnya tetap mouse.
+   ===================================================================== */
+
+/* --- Cegah Safari iOS otomatis mem-zoom seluruh halaman saat kotak isian
+   disentuh: perilaku bawaan browser mobile begitu font-size kotak yang
+   difokuskan < 16px. Dibatasi ke lebar tablet ke bawah (bukan pointer:coarse)
+   supaya laptop layar sentuh dengan mouse+trackpad sebagai input utama
+   tidak ikut kena, dan supaya tipografi desktop (14px) tidak berubah. --- */
+@media (max-width: 1024px) {
+  input[type=text], input[type=email], input[type=password], input[type=number],
+  input[type=date], input[type=tel], input[type=search], input[type=time],
+  select, textarea { font-size: 16px; }
+  /* Kotak kecil di dalam sel tabel: kalau ikut naik ke 16px, kolomnya jadi
+     terlalu lebar dan tabel meluber lebih parah — dikecualikan dengan
+     spesifisitas selector yang sama-sama satu-elemen-satu-kelas seperti
+     .ctl-num, supaya tetap menang atas aturan 16px di atas. */
+  input.ctl-num, select.ctl-sm, input.ctl-sm { font-size: 14px; }
+}
+
+/* --- Target sentuh: tombol, tab, kotak centang, dan ikon aksi diperbesar
+   ke sekitar 44px (ukuran minimum yang disarankan Apple/Google untuk
+   ujung jari), HANYA untuk perangkat yang sentuhnya adalah input utama
+   (hover:none + pointer:coarse) — laptop dengan mouse/trackpad tidak
+   berubah sama sekali walau jendelanya dikecilkan selebar HP, karena
+   pointer-nya tetap "fine". --- */
+@media (hover: none) and (pointer: coarse) {
+  .btn { min-height: 44px; padding-top: 11px; padding-bottom: 11px; }
+  .btn-sm { min-height: 38px; padding-top: 8px; padding-bottom: 8px; }
+  .btn-icon { width: 44px; height: 44px; }
+  .menu-toggle.btn-icon { width: 44px; height: 44px; }
+  .tab { min-height: 44px; display: inline-flex; align-items: center; }
+  .nav a { min-height: 44px; }
+  .check input { width: 20px; height: 20px; }
+  .radio-chip { padding-top: 9px; padding-bottom: 9px; }
+  .chip-quick, .chip-btn { padding-top: 8px; padding-bottom: 8px; }
+  .combo-item { min-height: 44px; display: flex; align-items: center; flex-wrap: wrap; }
+  table.tbl td { padding-top: 13px; padding-bottom: 13px; }
+  .odo-svg { width: 40px; height: 40px; }
+  .odo-nomor { padding: 5px 7px; }
+  /* Hilangkan jeda ±300ms sebelum tap dianggap sah + cegah double-tap-zoom
+     tidak sengaja di tombol/tautan yang sering diketuk cepat berurutan
+     (mis. papan Antrean, dialog check-in). */
+  a, button, .radio-chip, .chip-quick, .chip-btn, .odo-chip, .tab, .work-row.clickable { touch-action: manipulation; }
+}
+
+/* --- Sel tabel berisi HANYA kotak centang (mis. kolom Aktif/Favorit di
+   Master Data & Pengaturan Pengguna): kotak+labelnya dibuat memenuhi
+   SELURUH sel, termasuk area padding sel, supaya mengetuk di mana saja di
+   dalam sel itu tetap mencentang/membatalkan — bukan cuma tepat di kotak
+   16-20px atau tulisan kecil di sampingnya. Berlaku untuk mouse maupun
+   sentuh (target lebih besar tidak merugikan siapa pun). Ditandai lewat
+   kelas `check-cell` pada <td> itu sendiri (lihat markup di
+   master.js/pengaturan.js) — TIDAK otomatis untuk semua sel, karena sel
+   tabel lain biasanya punya lebih dari satu elemen di dalamnya. Padding
+   dipindah dari <td> ke <label> supaya ukuran visualnya tidak berubah sama
+   sekali, cuma area kliknya yang melebar. */
+table.tbl td.check-cell { padding: 0; position: relative; }
+table.tbl td.check-cell > label.check {
+  position: absolute; inset: 0; box-sizing: border-box;
+  padding: 11px 14px; margin: 0; align-items: center;
+}
+
+/* =====================================================================
    ODONTOGRAM
    ===================================================================== */
 .odo-palet {
@@ -1026,9 +1105,25 @@ table.tbl .muted { color: var(--ink-500); }
 .sticky-atas { position: sticky; top: 16px; }
 
 /* Isian surat memakai kisi 12 kolom; lebar tiap kolom ditentukan oleh
-   `kolom` pada daftar isian di js/surat_core.js. */
+   `kolom` pada daftar isian di js/surat_core.js.
+   PERBAIKAN 10 Sep 2026: sebelum ini, kelas lebar (.field-compact,
+   .field-half, .field-full, dst — dipasang oleh medanHtml() di surat.js
+   lewat peta KELAS_SPAN) hanya punya aturan grid-column di bawah
+   `.form-grid >`, TIDAK di bawah `.surat-isian >`. Akibatnya semua kolom
+   pada formulir surat (Anamnesa/keluhan, Hasil pemeriksaan, Diagnosa, dst)
+   jatuh ke lebar bawaan grid (1 kolom dari 12) berapa pun nilai `kolom`
+   yang diminta di surat_core.js — kotaknya jadi sempit dan textarea-nya
+   melipat/scroll walau sudah diberi kolom:12. Baris di bawah menduplikasi
+   aturan .form-grid supaya .surat-isian ikut menghormati kelasnya. */
 .surat-isian { display: grid; grid-template-columns: repeat(12, minmax(0,1fr)); gap: 14px; }
-.surat-isian > .field { margin-bottom: 0; }
+.surat-isian > .field { margin-bottom: 0; min-width: 0; grid-column: span 4; }
+.surat-isian > .field-compact.xs { grid-column: span 2; }
+.surat-isian > .field-compact { grid-column: span 3; }
+.surat-isian > .field-wide { grid-column: span 9; }
+.surat-isian > .field-half { grid-column: span 6; }
+.surat-isian > .field-span-4 { grid-column: span 4; }
+.surat-isian > .field-span-8 { grid-column: span 8; }
+.surat-isian > .field-full { grid-column: 1 / -1; }
 
 /* Pratinjau: iframe selebar A4 sungguhan (794px pada 96dpi) yang
    dikecilkan dengan transform, supaya pemenggalan barisnya sama persis

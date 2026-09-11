@@ -665,12 +665,17 @@ const Kasir = (() => {
      ================================================================== */
   async function dialogItemManual(tagihanId, bpjs) {
     let simpan = false;
+    let obatTerpilih = null;   // { obat_id, nama_obat, satuan, harga_jual, stok_layak }
     const tarif = await DB.daftarTarif({}).catch(() => []);
 
     await UI.modal({
       judul: 'Tambah baris',
       isi: `
-        <div class="field"><label>Ambil dari master tarif</label>
+        <div class="field"><label>Cari obat — memotong stok apotek otomatis</label>
+          <div id="cariObatBebas"></div>
+          <div class="hint" id="infoObatBebas">Kosongkan sama sekali kalau baris ini bukan obat
+            (mis. tindakan, surat, biaya lain-lain).</div></div>
+        <div class="field"><label>Atau ambil dari master tarif</label>
           <select id="pilihTarif"><option value="">— ketik sendiri di bawah —</option>
             ${tarif.map(t => `<option value="${UI.esc(t.id)}" data-nama="${UI.esc(t.nama)}"
               data-tarif="${t.tarif}">${UI.esc(t.nama)} — ${rp(t.tarif)}</option>`).join('')}
@@ -689,28 +694,74 @@ const Kasir = (() => {
           <div class="hint">Kunjungan BPJS. Untuk layanan di luar tanggungan —
             surat keterangan, obat non-formularium — biarkan tidak tercentang.</div></div>` : ''}`,
       siap: (badan) => {
-        badan.querySelector('#pilihTarif').addEventListener('change', (e) => {
+        const namaEl = badan.querySelector('[name=nama]');
+        const hargaEl = badan.querySelector('[name=harga_satuan]');
+        const selTarif = badan.querySelector('#pilihTarif');
+        const info = badan.querySelector('#infoObatBebas');
+
+        const pakaiObat = (o) => {
+          obatTerpilih = o;
+          selTarif.value = '';
+          namaEl.value = o.nama_obat;
+          namaEl.readOnly = true;
+          hargaEl.value = o.harga_jual || 0;
+          hargaEl.readOnly = true;
+          info.innerHTML = `<b>${UI.esc(o.nama_obat)}</b> dipilih — harga &amp; potong stok
+            otomatis dari master Obat. Stok layak: <b>${o.stok_layak} ${UI.esc(o.satuan)}</b>.
+            <button type="button" class="btn btn-secondary btn-sm" id="btnBatalObatBebas"
+              style="margin-left:8px">Batalkan pilihan</button>`;
+          info.querySelector('#btnBatalObatBebas').addEventListener('click', lepasObat);
+        };
+        const lepasObat = () => {
+          obatTerpilih = null;
+          namaEl.readOnly = false; namaEl.value = '';
+          hargaEl.readOnly = false; hargaEl.value = 0;
+          info.textContent = 'Kosongkan sama sekali kalau baris ini bukan obat '
+            + '(mis. tindakan, surat, biaya lain-lain).';
+        };
+
+        Komponen.comboCari({
+          wadah: badan.querySelector('#cariObatBebas'),
+          placeholder: 'Cari nama obat… (contoh: paracetamol, amox)',
+          cariFn: (kata) => DB.cariObatJual(kata),
+          formatFn: (o) => `<b>${UI.esc(o.nama_obat)}</b>
+            <span>${rp(o.harga_jual)} · stok layak ${o.stok_layak} ${UI.esc(o.satuan)}</span>`,
+          onPilih: (o) => pakaiObat(o)
+        });
+
+        selTarif.addEventListener('change', (e) => {
           const o = e.target.selectedOptions[0];
           if (!o.value) return;
-          badan.querySelector('[name=nama]').value = o.dataset.nama;
-          badan.querySelector('[name=harga_satuan]').value = o.dataset.tarif;
+          if (obatTerpilih) lepasObat();
+          namaEl.value = o.dataset.nama;
+          hargaEl.value = o.dataset.tarif;
         });
       },
       tombol: [
         { teks: 'Batal', nilai: null },
         { teks: 'Tambah', kelas: 'btn-primary', aksi: async (badan) => {
             const f = UI.nilaiForm(badan);
-            if (!f.nama) { UI.toast('Uraian wajib diisi.', 'err'); return false; }
-            const sel = badan.querySelector('#pilihTarif');
             try {
-              await DB.kasirTambahItem({
-                tagihan_id: tagihanId, sumber: 'MANUAL',
-                ref_id: sel.value || null,
-                nama: f.nama, qty: Number(f.qty) || 1,
-                harga_satuan: Number(f.harga_satuan) || 0,
-                diskon_pct: Number(f.diskon_pct) || 0,
-                ditanggung_penjamin: !!f.ditanggung_penjamin, urutan: 99
-              });
+              if (obatTerpilih) {
+                const qty = Number(f.qty) || 0;
+                if (qty <= 0) { UI.toast('Jumlah harus lebih dari nol.', 'err'); return false; }
+                await DB.kasirJualObatBebas({
+                  tagihan_id: tagihanId, obat_id: obatTerpilih.obat_id, qty,
+                  diskon_pct: Number(f.diskon_pct) || 0,
+                  ditanggung_penjamin: !!f.ditanggung_penjamin, urutan: 99
+                });
+              } else {
+                if (!f.nama) { UI.toast('Uraian wajib diisi.', 'err'); return false; }
+                const sel = badan.querySelector('#pilihTarif');
+                await DB.kasirTambahItem({
+                  tagihan_id: tagihanId, sumber: 'MANUAL',
+                  ref_id: sel.value || null,
+                  nama: f.nama, qty: Number(f.qty) || 1,
+                  harga_satuan: Number(f.harga_satuan) || 0,
+                  diskon_pct: Number(f.diskon_pct) || 0,
+                  ditanggung_penjamin: !!f.ditanggung_penjamin, urutan: 99
+                });
+              }
               simpan = true; return true;
             } catch (e) { UI.toast(e.message, 'err'); return false; }
           } }

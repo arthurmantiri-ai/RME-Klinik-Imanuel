@@ -40,13 +40,21 @@ const Apotek = (() => {
      MUAT DATA
      ------------------------------------------------------------------ */
   async function muat() {
-    const [b, s, t, a] = await Promise.all([
+    const [b, s, t, a, sd] = await Promise.all([
       DB.apotekBatch(),
       DB.apotekStok(),
       DB.apotekTransaksi({ dari: tglMundur(HARI_RIWAYAT) }),
-      DB.antreanFarmasi({})
+      DB.antreanFarmasi({}),
+      // Resep yang statusnya sudah DISERAHKAN SENGAJA dikecualikan dari
+      // panggilan di atas (supaya antrean "Menunggu" tidak tenggelam oleh
+      // seluruh arsip resep klinik). Tapi tab "Sudah diserahkan" di bawah
+      // butuh sebagian dari resep DISERAHKAN itu juga — misalnya untuk
+      // mencetak ulang Salinan Resep — jadi diambil terpisah, dibatasi
+      // HARI INI saja supaya tidak menarik seluruh riwayat resep klinik.
+      DB.antreanFarmasi({ tanggal: UI.hariIni(), semua: true })
     ]);
-    batch = b; stok = s; transaksi = t; antrean = a;
+    batch = b; stok = s; transaksi = t;
+    antrean = [...a, ...sd.filter(x => x.status === 'DISERAHKAN')];
   }
 
   async function segarkan() {
@@ -203,7 +211,8 @@ const Apotek = (() => {
           <td>${lencanaResep(a)}</td>
           <td class="nowrap">
             ${!selesai && bolehTulis()
-              ? `<button class="btn btn-primary btn-sm" data-serah="${a.resep_id}">Serahkan</button>`
+              ? `<button class="btn btn-primary btn-sm" data-serah="${a.resep_id}">
+                   ${a.status === 'ITER_BERJALAN' ? 'Serahkan iter' : 'Serahkan'}</button>`
               : `<button class="btn btn-secondary btn-sm" data-lihat="${a.resep_id}">Lihat</button>`}
           </td>
         </tr>`).join('')}</tbody></table></div>`;
@@ -221,6 +230,9 @@ const Apotek = (() => {
       return a.diserahkan_sebagian
         ? '<span class="badge b-warn">Sebagian</span>'
         : '<span class="badge b-ok">Diserahkan</span>';
+    }
+    if (a.status === 'ITER_BERJALAN') {
+      return `<span class="badge b-info">Iter ${a.iter_terpakai || 0}/${(a.iter_maks || 0) + 1}</span>`;
     }
     return '<span class="badge b-info">Menunggu</span>';
   }
@@ -966,6 +978,35 @@ const Apotek = (() => {
     const sudah = r.status === 'DISERAHKAN';
     const bacaSaja = hanyaLihat || sudah || !bolehTulis();
 
+    /* iter (resep boleh diulang): iter_maks = jumlah pengulangan SELAIN
+       penyerahan pertama, jadi total jatah penyerahan = iter_maks + 1.
+       Lihat sql/23_salinan_resep.sql untuk aturan penguncian di database —
+       tampilan di sini hanya mengikuti status yang sudah dihitung sana. */
+    const iterMaks = r.iter_maks || 0;
+    const iterTerpakai = r.iter_terpakai || 0;
+    const totalJatah = iterMaks + 1;
+    const iterBerjalan = r.status === 'ITER_BERJALAN';
+    const riwayat = r.penyerahan || [];
+
+    const judulIter = iterMaks > 0 ? ` — iter ${iterTerpakai}/${totalJatah} terpakai` : '';
+
+    const baganRiwayat = riwayat.length ? `
+      <div class="field mt-14 mb-0">
+        <label>Riwayat penyerahan</label>
+        <div class="table-wrap"><table class="tbl text-xs"><thead><tr>
+          <th>Ke-</th><th>Tanggal</th><th>Apoteker</th><th>Status</th><th class="col-shrink"></th>
+        </tr></thead><tbody>${riwayat.map(pn => `
+          <tr>
+            <td>${pn.ke_berapa}</td>
+            <td>${UI.tglIndo(pn.tanggal)}</td>
+            <td>${UI.esc(pn.apoteker?.nama || '—')}</td>
+            <td>${pn.lengkap ? '<span class="badge b-ok">Lengkap</span>'
+                             : '<span class="badge b-warn">Sebagian</span>'}</td>
+            <td><button type="button" class="btn btn-ghost btn-sm no-print"
+                  data-cetak-salinan="${pn.id}">${UI.ikon('cetak',14)} Salinan</button></td>
+          </tr>`).join('')}</tbody></table></div>
+      </div>` : '';
+
     const baris = (r.item || []).map((it, i) => {
       const s = it.stok || {};
       const layak = Number(s.stok_layak || 0);
@@ -1028,7 +1069,8 @@ const Apotek = (() => {
 
     await UI.modal({
       judul: sudah ? `Resep ${r.no_resep || ''} — sudah diserahkan`
-                   : `Serahkan resep ${r.no_resep || ''}`,
+           : iterBerjalan ? `Serahkan resep ${r.no_resep || ''}${judulIter} — lanjutan iter`
+                          : `Serahkan resep ${r.no_resep || ''}${judulIter}`,
       lebar: true,
       isi: `
         <div class="patient-bar mb-14">
@@ -1041,10 +1083,17 @@ const Apotek = (() => {
         ${banerKronis}
         ${sudah ? `<div class="banner ok mb-16"><div>Diserahkan
             ${UI.tglIndo(r.diserahkan_pada)} ${UI.jam(r.diserahkan_pada)}.
-            ${r.diserahkan_sebagian ? '<b>Sebagian butir tidak diserahkan.</b>' : ''}</div></div>`
+            ${r.diserahkan_sebagian ? '<b>Sebagian butir tidak diserahkan.</b>' : ''}
+            ${iterMaks > 0 ? ' Jatah iter sudah habis (' + totalJatah + '/' + totalJatah + ').' : ''}</div></div>`
+          : iterBerjalan ? `<div class="banner info mb-16"><div>Resep iter — sudah diserahkan
+              <b>${iterTerpakai}</b> dari <b>${totalJatah}</b> jatah. Ini akan dicatat sebagai
+              penyerahan ke-${iterTerpakai + 1}, dan Salinan Resep baru akan tercetak untuk
+              pasien setelah disimpan.</div></div>`
           : adaKurang ? `<div class="banner warn mb-16"><div>Ada butir yang stoknya
               <b>kurang dari jumlah resep</b>. Isi jumlah yang benar-benar diserahkan —
-              itulah yang dicatat keluar dan yang ditagihkan ke pasien, bukan angka resepnya.</div></div>`
+              itulah yang dicatat keluar dan yang ditagihkan ke pasien, bukan angka resepnya.
+              ${iterMaks > 0 ? ' Karena resep ini iter, pasien bisa kembali lagi memakai '
+                + 'jatah iter untuk kekurangannya.' : ''}</div></div>`
           : `<div class="banner info mb-16"><div>Isi kolom terakhir dengan jumlah yang
               <b>benar-benar diserahkan</b>. Stok dipotong urutan FEFO, tertaut ke kunjungan
               pasien ini, dan langsung muncul di tagihan kasir.</div></div>`}
@@ -1057,11 +1106,19 @@ const Apotek = (() => {
         ${r.catatan ? `<div class="field mt-14">
           <label>Catatan dokter</label><div class="text-xs">${UI.esc(r.catatan)}</div></div>` : ''}
         ${bacaSaja ? '' : `<div class="field mt-14">
-          <label>Catatan apoteker</label><input type="text" name="catatan"></div>`}`,
+          <label>Catatan apoteker</label><input type="text" name="catatan"></div>`}
+        ${baganRiwayat}`,
+      siap: (badan) => {
+        badan.addEventListener('click', (e) => {
+          const c = e.target.closest('[data-cetak-salinan]');
+          if (c) cetakSalinanResep(r, c.dataset.cetakSalinan);
+        });
+      },
       tombol: bacaSaja
         ? [{ teks: 'Tutup', nilai: null }]
         : [{ teks: 'Batal', nilai: null },
-           { teks: 'Serahkan & potong stok', kelas: 'btn-primary', aksi: async (badan) => {
+           { teks: iterBerjalan ? 'Serahkan iter & potong stok' : 'Serahkan & potong stok',
+             kelas: 'btn-primary', aksi: async (badan) => {
               const item = [...badan.querySelectorAll('[data-item]')]
                 .map(i => ({ resep_item_id: i.dataset.item, jumlah: Number(i.value) || 0 }))
                 .filter(i => i.jumlah > 0);
@@ -1077,11 +1134,145 @@ const Apotek = (() => {
               }
 
               const catatan = badan.querySelector('[name=catatan]')?.value || null;
-              await DB.apotekSerahkanResep(resepId, item, UI.hariIni(), catatan);
-              UI.toast('Obat diserahkan, stok terpotong.');
+              let hasil;
+              try {
+                hasil = await DB.apotekSerahkanResep(resepId, item, UI.hariIni(), catatan);
+              } catch (e) { UI.toast(e.message || 'Gagal menyerahkan resep.', 'err', 6000); return false; }
+              UI.toast(iterMaks > 0 && hasil?.iter_sisa > 0
+                ? `Obat diserahkan, stok terpotong. Sisa jatah iter: ${hasil.iter_sisa}.`
+                : 'Obat diserahkan, stok terpotong.');
               await segarkan();
+
+              // Cetak Salinan Resep dari data terbaru (termasuk penyerahan yang
+              // baru saja tercatat) — legal sebagai bukti obat yang benar-benar
+              // diserahkan, bukan sekadar apa yang ditulis dokter.
+              if (hasil?.penyerahan_id) {
+                try {
+                  const r2 = await DB.resepUntukFarmasi(resepId);
+                  cetakSalinanResep(r2, hasil.penyerahan_id);
+                } catch (e) { /* pencetakan gagal tidak boleh mengulang penyerahan */ }
+              }
             } }]
     });
+  }
+
+  /* ==================================================================
+     CETAK SALINAN RESEP (apograph) — Permenkes 73/2016: tiap kali obat
+     diserahkan (termasuk tiap iterasi resep iter), pasien berhak atas
+     dokumen ini. Menandai per butir: det (diserahkan penuh), det
+     sebagian (kurang dari resep), atau nedet (tidak diserahkan sama
+     sekali — habis/kadaluarsa/dll), plus tanda p.c.c. dan identitas
+     apoteker (APA) yang menyerahkan.
+     ================================================================== */
+  async function cetakSalinanResep(r, penyerahanId) {
+    const pn = (r.penyerahan || []).find(x => x.id === penyerahanId);
+    if (!pn) { UI.toast('Data penyerahan tidak ditemukan.', 'err'); return; }
+
+    const [f, rs] = await Promise.all([
+      DB.faskes().catch(() => ({ nama: CONFIG.NAMA_KLINIK })),
+      DB.resepPengaturan().catch(() => ({}))
+    ]);
+    const k = r.kunjungan || {};
+    const p = k.pasien || {};
+    const dokter = k.dokter?.nama || '';
+    const sipDokter = k.dokter?.no_sip || '';
+    const apoteker = pn.apoteker || {};
+
+    const alamatFaskes = [f.alamat, f.kelurahan, f.kecamatan, f.kabupaten]
+      .filter(Boolean).join(', ');
+    const logoHtml = rs.logo_data_uri
+      ? `<img src="${rs.logo_data_uri}" alt="" style="flex-shrink:0;max-width:44px;max-height:44px">`
+      : `<span style="flex-shrink:0">${KopKlinik.LOGO_RESEP_BAWAAN}</span>`;
+
+    // Salinan Resep wajib memuat SETIAP butir resep asli, bukan hanya yang
+    // disebut di p_item saat menyerahkan — butir yang samasekali tidak
+    // dimasukkan apoteker (habis/kadaluarsa, dilewati begitu saja) tetap
+    // harus tercatat "nedet", bukan hilang begitu saja dari salinannya.
+    const olehItemId = new Map((pn.item || []).map(pi => [pi.resep_item_id, pi]));
+    const barisObat = (r.item || []).map(it => {
+      const pi = olehItemId.get(it.id);
+      const diminta = Number((pi ? pi.jumlah_diminta : it.jumlah) || 0);
+      const diserahkan = Number((pi && pi.jumlah_diserahkan) || 0);
+      const tanda = !pi || diserahkan <= 0 ? 'nedet'
+        : diserahkan < diminta ? `det ${diserahkan} dari ${diminta} ${UI.esc(it.satuan || '')}`
+        : 'det';
+      return `<div class="obat">
+        <div class="nm">${UI.esc(it.nama_obat || '—')} &nbsp; No. ${UI.esc(String(diminta))}
+          &nbsp; <i>(${tanda})</i></div>
+        <div class="sg">S. ${UI.esc(it.signa || '')}</div>
+      </div>`;
+    }).join('');
+
+    const iterMaks = r.iter_maks || 0;
+    const totalJatah = iterMaks + 1;
+    const ketIter = iterMaks > 0
+      ? `<div class="baris"><span>iter ${iterMaks}× — penyerahan ke-${pn.ke_berapa} dari ${totalJatah}</span></div>`
+      : '';
+
+    const w = window.open('', '_blank', 'width=760,height=900');
+    w.document.write(`<html><head><title>Salinan Resep — ${UI.esc(p.nama || '')}</title><style>
+      *{box-sizing:border-box}
+      body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:9mm;font-size:9.7pt;color:#000}
+      .lembar{border:1.6px solid #000}
+      .kop{display:flex;align-items:center;gap:10px;padding:7px 10px;border-bottom:2.2px solid #000}
+      .kop .teks{flex:1;text-align:center}
+      .kop .teks h1{margin:0;font-size:12.5pt;letter-spacing:.4px}
+      .kop .teks p{margin:1px 0;font-size:8pt}
+      .judul{text-align:center;font-weight:bold;font-size:11pt;letter-spacing:2.5px;
+        padding:4px;border-bottom:1.4px solid #000;position:relative}
+      .pcc{position:absolute;right:10px;top:4px;font-style:italic;font-weight:normal;
+        font-size:9.5pt;letter-spacing:normal;border:1.2px solid #000;padding:1px 6px;border-radius:3px}
+      .identitas{padding:7px 10px;border-bottom:1.4px solid #000}
+      .baris{display:flex;gap:14px;margin-bottom:4px}
+      .baris > span{flex:1}
+      .badan{padding:10px 14px}
+      .rx{font-size:20pt;font-weight:bold;font-family:Georgia,'Times New Roman',serif;margin:0 0 6px}
+      .obat{margin:0 0 10px 20px}
+      .obat .nm{font-size:10pt;font-weight:600}
+      .obat .nm i{font-weight:normal;font-size:8.5pt}
+      .obat .sg{margin-left:16px;font-style:italic;font-size:9pt}
+      .apa{padding:10px 14px 16px;text-align:right}
+      .apa .garis{margin:34px 0 3px;border-top:1px solid #000;width:220px;margin-left:auto}
+      .apa .nm{font-weight:600}
+      @media print{@page{size:${rs.ukuran_kertas === 'A6' ? 'A6' : 'A5'} portrait;margin:8mm}}
+    </style></head><body><div class="lembar">
+      <div class="kop">
+        ${logoHtml}
+        <div class="teks">
+          <h1>${UI.esc(f.nama || '')}</h1>
+          <p>${UI.esc(alamatFaskes)}</p>
+          <p>${f.telepon ? 'Telp. ' + UI.esc(f.telepon) : ''}</p>
+          ${f.no_sia ? `<p>No. SIA: ${UI.esc(f.no_sia)}</p>` : ''}
+        </div>
+      </div>
+      <div class="judul">SALINAN RESEP<span class="pcc">p.c.c.</span></div>
+
+      <div class="identitas">
+        <div class="baris"><span>No. Resep : ${UI.esc(r.no_resep || '—')}</span>
+          <span>Tgl. resep : ${UI.tglIndo(k.tanggal)}</span></div>
+        <div class="baris"><span>Nama dokter : ${UI.esc(dokter)}</span>
+          <span>SIP : ${UI.esc(sipDokter)}</span></div>
+        <div class="baris"><span>Nama pasien : ${UI.esc(p.nama || '')}</span>
+          <span>Usia : ${UI.umurTeks(p.tanggal_lahir)}</span></div>
+        <div class="baris"><span>Tgl. penyerahan ini : ${UI.tglIndo(pn.tanggal)}</span></div>
+        ${ketIter}
+      </div>
+
+      <div class="badan">
+        <div class="rx">R/</div>
+        ${barisObat}
+      </div>
+
+      <div class="apa">
+        <div>${UI.esc([f.kelurahan, f.kabupaten].filter(Boolean).join(', '))}, ${UI.tglIndo(pn.tanggal)}</div>
+        <div>Pengelola Apotek,</div>
+        <div class="garis"></div>
+        <div class="nm">${UI.esc(apoteker.nama || '—')}</div>
+        <div>SIPA : ${UI.esc(apoteker.no_sip || '—')}</div>
+      </div>
+    </div></body></html>`);
+    w.document.close(); w.focus();
+    setTimeout(() => { w.print(); }, 400);
   }
 
   /* ==================================================================

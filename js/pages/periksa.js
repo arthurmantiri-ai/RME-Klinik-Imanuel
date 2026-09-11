@@ -27,6 +27,8 @@ const Periksa = (() => {
   let daftarDiagnosa = [];    // [{kode, nama, jenis, kasus}]
   let dxBanding = [];         // [{kode, nama}]
   let daftarResep = [];       // [{obat_id, nama_obat, jumlah, satuan, signa, frekuensi, dosis, ...}]
+  let resepIterMaks = 0;      // "iter Nx" — boleh diulang N kali di apotek tanpa periksa lagi
+  let resepSudahDiserahkan = false; // resep pernah diserahkan apoteker → daftar obat & iter terkunci
   let daftarTindakan = [];    // [{kode, nama, fdi, jumlah, catatan}]
   let signaCepat = [];
   let icdFavorit = [];
@@ -119,6 +121,11 @@ const Periksa = (() => {
       frekuensi: i.frekuensi, dosis: i.dosis, keterangan: i.keterangan
     }));
     daftarResep.forEach(lengkapiSigna);
+    resepIterMaks = rs?.iter_maks || 0;
+    // Sekali resep sudah pernah diserahkan apoteker (walau baru satu dari
+    // beberapa iterasinya), daftar obat & jumlah iter dikunci dari layar
+    // ini — lihat penjelasan di DB.simpanResep().
+    resepSudahDiserahkan = !!(rs?.iter_terpakai);
 
     /* Dua hal berbeda yang sama-sama membuat layar ini hanya bisa dibaca:
        rekam medis sudah difinalisasi, atau peran pengguna memang bukan dokter.
@@ -544,13 +551,26 @@ const Periksa = (() => {
 
   /* ---------------- P — Terapi ---------------- */
   function kartuTerapi(terkunci) {
+    const iterKontrol = terkunci
+      ? (resepIterMaks > 0 ? `<span class="badge b-info">Iter ${resepIterMaks}x</span>` : '')
+      : (resepSudahDiserahkan
+          ? `<span class="badge b-info" title="Resep sudah pernah diserahkan apoteker, jatah iter tidak bisa diubah lagi dari sini">
+               Iter ${resepIterMaks}x — terkunci</span>`
+          : `<label class="text-xs flex items-center gap-6" style="margin-right:10px" title="Boleh diulang N kali di apotek tanpa periksa lagi (resep kronis)">
+               Iter <input type="number" id="resepIter" min="0" max="9" step="1" value="${resepIterMaks}"
+                      class="ctl-sm" style="width:52px"> x
+             </label>`);
     return `
       <div class="card">
         <div class="card-head"><div class="flex-1"><h2>P — Resep &amp; terapi</h2>
           <div class="sub">Cari obat, tentukan jumlah dan aturan pakai</div></div>
+          ${iterKontrol}
           <button class="btn btn-secondary btn-sm no-print" id="btnCetakResep">${UI.ikon('cetak',15)} Cetak</button>
         </div>
         <div class="card-body" id="formTerapi">
+          ${!terkunci && resepSudahDiserahkan ? `<div class="hint mb-12">Resep ini sudah pernah diserahkan
+            apoteker. Daftar obat & jatah iter tidak bisa diubah lagi dari sini — buat resep susulan
+            untuk tambahan obat baru.</div>` : ''}
           ${terkunci ? '' : `<div id="cariObat" class="mb-12"></div>`}
           <div id="tabelResep"></div>
 
@@ -826,6 +846,11 @@ const Periksa = (() => {
 
       el.querySelector('#btnSimpanDraf').addEventListener('click', () => simpan(false));
       el.querySelector('#btnFinal').addEventListener('click', () => simpan(true));
+      const inputIter = el.querySelector('#resepIter');
+      if (inputIter) inputIter.addEventListener('change', () => {
+        resepIterMaks = Math.max(0, Math.min(9, Number(inputIter.value) || 0));
+        inputIter.value = resepIterMaks;
+      });
       pasangSimpanOtomatis();
     } else {
       const ba = el.querySelector('#btnAddendum');
@@ -1170,7 +1195,7 @@ const Periksa = (() => {
     const bpjs = kj.cara_bayar === 'BPJS';
 
     w.innerHTML = `<div class="table-wrap"><table class="tbl">
-      <thead><tr><th>Obat</th><th class="col-w90">Jumlah</th>
+      <thead><tr><th>Obat</th><th class="col-w170">Jumlah</th>
         <th class="col-w230">Aturan pakai</th>
         ${terkunci ? '' : '<th class="col-shrink"></th>'}</tr></thead>
       <tbody>${daftarResep.map((r, i) => `
@@ -1756,7 +1781,7 @@ const Periksa = (() => {
     try {
       await DB.simpanPemeriksaan(kj.id, d);
       await DB.simpanDiagnosa(kj.id, daftarDiagnosa);
-      await DB.simpanResep(kj.id, daftarResep);
+      await DB.simpanResep(kj.id, daftarResep, null, resepIterMaks);
       await DB.simpanTindakan(kj.id, daftarTindakan);
 
       if (poliGigi) {
@@ -2132,53 +2157,169 @@ const Periksa = (() => {
     } catch (e) { w.innerHTML = ''; }
   }
 
+  /* Cetak resep — mengikuti format kertas resep fisik Klinik Pratama Imanuel
+     (kop + identitas pasien + R/ + kotak Validasi Farmasi), dibangun dari
+     nol dengan CSS supaya bisa dicetak di kertas kosong biasa (tidak perlu
+     kertas resep pracetak). Lihat foto resep asli yang jadi acuan (dikirim
+     Arthur 10 Sep 2026) untuk tata letak persisnya.
+
+     Yang diisi otomatis oleh sistem: identitas pasien, tanggal, poli,
+     usia, jenis kelamin, berat badan (dari kajian awal perawat), riwayat
+     alergi OBAT (dari kotak Alergi di atas — bukan ditebak: kalau perawat/
+     dokter belum menandainya, kotak Ya/Tidak sengaja dibiarkan KOSONG,
+     bukan otomatis "Tidak"), daftar R/, nama dokter & SIP.
+
+     Yang SENGAJA dibiarkan kosong (kotak kosong, bukan tercentang) supaya
+     diisi tangan: seluruh kotak Validasi Farmasi (Telaah Resep + Pemberian
+     Informasi Obat) dan kedua kotak paraf. Itu memang pemeriksaan fisik
+     yang dilakukan petugas farmasi SAAT menyerahkan obat — mencentangnya
+     otomatis dari sistem meniadakan gunanya sebagai pengecekan keselamatan
+     pasien. */
   async function cetakResep() {
     if (!daftarResep.length) { UI.toast('Belum ada obat untuk dicetak.', 'warn'); return; }
-    const f = await DB.faskes().catch(() => ({ nama: CONFIG.NAMA_KLINIK }));
+    const [f, rs] = await Promise.all([
+      DB.faskes().catch(() => ({ nama: CONFIG.NAMA_KLINIK })),
+      DB.resepPengaturan().catch(() => ({}))
+    ]);
     const p = kj.pasien;
     const dokter = kj.dokter?.nama || App.siapa().nama;
     const sip = kj.dokter?.no_sip || App.siapa().no_sip || '';
 
+    const alamatFaskes = [f.alamat, f.kelurahan, f.kecamatan, f.kabupaten]
+      .filter(Boolean).join(', ');
+    const jk = p.jenis_kelamin === 'L' ? 'L' : p.jenis_kelamin === 'P' ? 'P' : null;
+    const bb = ka?.berat_badan != null && ka.berat_badan !== '' ? ka.berat_badan : null;
+    const alObat = alergiKode.OBAT;
+    const alergiYa = !!(alObat && alObat.nama && !/^tidak ada/i.test(alObat.nama));
+    const alergiTidak = !!(alObat && alObat.nama && /^tidak ada/i.test(alObat.nama));
+
+    /* Bagian mana yang ditampilkan diatur lewat Pengaturan > Resep
+       (sys_resep_pengaturan) — lihat DB.resepPengaturan(). Bawaannya semua
+       ON supaya klinik yang belum pernah membuka pengaturan ini tetap
+       mendapat template lengkap seperti sebelum fitur ini ada. */
+    const tampilBb = rs.tampil_bb !== false;
+    const tampilAlergi = rs.tampil_alergi !== false;
+    const tampilValidasi = rs.tampil_validasi_farmasi !== false;
+    const ukuranHalaman = rs.ukuran_kertas === 'A6' ? 'A6' : 'A5';
+    const logoHtml = rs.logo_data_uri
+      ? `<img src="${rs.logo_data_uri}" alt="" style="flex-shrink:0;max-width:44px;max-height:44px">`
+      : `<span style="flex-shrink:0">${KopKlinik.LOGO_RESEP_BAWAAN}</span>`;
+
+    const cek = (on) => `<span class="cek${on ? ' on' : ''}"></span>`;
+    const lingkar = (huruf) => `<span class="${jk === huruf ? 'lingkar' : ''}">${huruf}</span>`;
+
+    const isiBb = tampilBb && bb != null ? UI.esc(String(bb)) : '';
+    const isiSebutkan = tampilAlergi && alergiYa ? UI.esc(alObat.nama) : '';
+    const barisBb = (isiBb || isiSebutkan) ? `
+        <div class="baris"><span>${isiBb ? 'BB : ' + isiBb + ' Kg' : ''}</span>
+          <span>${isiSebutkan ? 'Sebutkan ' + isiSebutkan : ''}</span></div>` : '';
+
+    /* Validasi Farmasi & kedua kotak paraf SELALU dicetak kosong (cek(false)
+       untuk semua item) — ini bukan bug, ini kesengajaan: kolom ini adalah
+       verifikasi manual apoteker/petugas farmasi saat obat diserahkan, jadi
+       sistem tidak boleh pernah mencentangnya sendiri. Yang bisa diatur
+       lewat Pengaturan hanyalah TAMPIL/TIDAKnya seluruh kolom ini. */
+    const kolomKanan = tampilValidasi ? `
+        <div class="kanan">
+          <div class="vjudul">VALIDASI FARMASI</div>
+          <div class="vsub">Telaah Resep :</div>
+          <span class="item">${cek(false)}Resep terbaca</span>
+          <span class="item">${cek(false)}Tepat identitas Pasien</span>
+          <span class="item">${cek(false)}Tepat obat</span>
+          <span class="item">${cek(false)}Tepat Dosis</span>
+          <span class="item">${cek(false)}Tepat Rute pemberian Obat</span>
+          <span class="item">${cek(false)}Tepat waktu pemberian obat</span>
+          <div class="vsub">Pemberian informasi Obat kepada Pasien :</div>
+          <span class="item">${cek(false)}Indikasi obat</span>
+          <span class="item">${cek(false)}Cara minum obat</span>
+          <span class="item">${cek(false)}Cara penyimpanan</span>
+          <span class="item">${cek(false)}Kemungkinan ESO</span>
+          <div class="paraf">
+            <div class="lbl">Paraf &amp; nama pasien penerima obat,</div>
+            <div class="garis"></div>
+          </div>
+          <div class="paraf">
+            <div class="lbl">Paraf petugas yang menyerahkan Obat,</div>
+            <div class="garis"></div>
+          </div>
+        </div>` : '';
+
     const w = window.open('', '_blank', 'width=760,height=900');
     w.document.write(`<html><head><title>Resep — ${UI.esc(p.nama)}</title><style>
-      body{font-family:'Times New Roman',Georgia,serif;padding:28px 34px;font-size:13pt;color:#000}
-      .kop{text-align:center;border-bottom:2.5px solid #000;padding-bottom:9px;margin-bottom:16px}
-      .kop h1{margin:0;font-size:17pt;letter-spacing:.5px}
-      .kop p{margin:2px 0;font-size:10pt}
-      .baris{display:flex;gap:26px;font-size:11pt;margin-bottom:3px}
-      .rx{font-size:34pt;font-weight:bold;font-family:Georgia,serif;margin:14px 0 4px}
-      .obat{margin:0 0 13px 30px}
-      .obat .nm{font-size:13.5pt}
-      .obat .sg{margin-left:26px;font-style:italic;font-size:12pt}
-      .ttd{margin-top:44px;text-align:right;font-size:11pt}
-      .ttd .garis{margin-top:56px;border-top:1px solid #000;display:inline-block;padding-top:3px;min-width:210px}
-      @media print{@page{margin:1.3cm}}
-    </style></head><body>
+      *{box-sizing:border-box}
+      body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:9mm;font-size:9.7pt;color:#000}
+      .lembar{border:1.6px solid #000}
+      .kop{display:flex;align-items:center;gap:10px;padding:7px 10px;border-bottom:2.2px solid #000}
+      .kop .teks{flex:1;text-align:center}
+      .kop .teks h1{margin:0;font-size:12.5pt;letter-spacing:.4px}
+      .kop .teks p{margin:1px 0;font-size:8pt}
+      .judul{text-align:center;font-weight:bold;font-size:11pt;letter-spacing:2.5px;
+        padding:4px;border-bottom:1.4px solid #000}
+      .identitas{padding:7px 10px;border-bottom:1.4px solid #000}
+      .baris{display:flex;gap:14px;margin-bottom:4px}
+      .baris > span{flex:1}
+      .badan{display:flex;min-height:255px}
+      .kiri{flex:1.5;padding:10px;border-right:1.4px solid #000;display:flex;flex-direction:column}
+      .kiri.penuh{flex:1;border-right:none}
+      .kanan{flex:1;padding:7px 9px;font-size:8.3pt}
+      .rx{font-size:20pt;font-weight:bold;font-family:Georgia,'Times New Roman',serif;margin:0 0 6px}
+      .obat{margin:0 0 10px 20px}
+      .obat .nm{font-size:10pt;font-weight:600}
+      .obat .sg{margin-left:16px;font-style:italic;font-size:9pt}
+      .dokter{margin-top:auto;padding-top:12px;font-size:9pt}
+      .dokter div{margin-bottom:9px}
+      .vjudul{font-weight:bold;text-align:center;margin-bottom:6px;font-size:9pt}
+      .vsub{font-weight:700;margin:8px 0 3px}
+      .item{display:block;margin-bottom:3px}
+      .cek{display:inline-block;width:10px;height:10px;border:1.2px solid #000;
+        margin-right:5px;vertical-align:-1px;position:relative}
+      .cek.on::after{content:'';position:absolute;left:1px;top:-2px;width:4px;height:7px;
+        border:solid #000;border-width:0 2px 2px 0;transform:rotate(38deg)}
+      .paraf{margin-top:12px}
+      .paraf .lbl{font-size:8.3pt;line-height:1.25}
+      .paraf .garis{margin-top:30px;border-top:1px solid #000}
+      .lingkar{border:1.3px solid #000;border-radius:50%;padding:0 4px}
+      @media print{@page{size:${ukuranHalaman} portrait;margin:8mm}}
+    </style></head><body><div class="lembar">
       <div class="kop">
-        <h1>${UI.esc(f.nama)}</h1>
-        <p>${UI.esc([f.alamat, f.kelurahan, f.kecamatan, f.kabupaten].filter(Boolean).join(', ') || '')}</p>
-        <p>${f.telepon ? 'Telp. ' + UI.esc(f.telepon) : ''}</p>
+        ${logoHtml}
+        <div class="teks">
+          <h1>${UI.esc(f.nama)}</h1>
+          <p>${UI.esc(alamatFaskes)}</p>
+          <p>${f.telepon ? 'Telp. ' + UI.esc(f.telepon) : ''}</p>
+          ${f.kode_registrasi_kemenkes ? `<p>Surat Ijin Klinik: ${UI.esc(f.kode_registrasi_kemenkes)}</p>` : ''}
+        </div>
       </div>
-      <div class="baris"><span><b>Nama</b>&nbsp;: ${UI.esc(p.nama)}</span>
-        <span><b>Umur</b>&nbsp;: ${UI.umurTeks(p.tanggal_lahir)}</span>
-        <span><b>No. RM</b>&nbsp;: ${UI.esc(p.no_rm)}</span></div>
-      <div class="baris"><span><b>Alamat</b>&nbsp;: ${UI.esc(p.alamat || '-')}</span></div>
-      <div class="baris"><span><b>Tanggal</b>&nbsp;: ${UI.tglIndo(kj.tanggal)}</span>
-        <span><b>Cara bayar</b>&nbsp;: ${UI.esc(kj.cara_bayar)}</span></div>
+      <div class="judul">RESEP${resepIterMaks > 0
+        ? ` <span style="font-weight:normal;font-size:8.5pt;letter-spacing:normal">(iter ${resepIterMaks}×)</span>`
+        : ''}</div>
 
-      <div class="rx">R/</div>
-      ${daftarResep.map(r => `
-        <div class="obat">
-          <div class="nm">${UI.esc(r.nama_obat)} &nbsp; No. ${UI.esc(String(r.jumlah))}</div>
-          <div class="sg">S. ${UI.esc(r.signa || '')}</div>
-        </div>`).join('')}
-
-      <div class="ttd">
-        ${UI.esc(f.kabupaten || '')}${f.kabupaten ? ', ' : ''}${UI.tglIndo(kj.tanggal)}<br>
-        Dokter,
-        <div class="garis">${UI.esc(dokter)}${sip ? '<br>SIP: ' + UI.esc(sip) : ''}</div>
+      <div class="identitas">
+        <div class="baris"><span>Nama : ${UI.esc(p.nama)}</span>
+          <span>Tgl. : ${UI.tglIndo(kj.tanggal)}</span></div>
+        <div class="baris"><span>Alamat : ${UI.esc(p.alamat || '')}</span>
+          <span>Poli : ${UI.esc(kj.poli?.nama || '')} &nbsp; ${lingkar('L')}/${lingkar('P')}</span></div>
+        <div class="baris"><span>Usia : ${UI.umurTeks(p.tanggal_lahir)}</span>
+          <span>${tampilAlergi ? `Riwayat Alergi Obat &nbsp; ${cek(alergiYa)}Ya &nbsp; ${cek(alergiTidak)}Tidak` : ''}</span></div>
+        ${barisBb}
       </div>
-    </body></html>`);
+
+      <div class="badan">
+        <div class="kiri${tampilValidasi ? '' : ' penuh'}">
+          <div class="rx">R/</div>
+          ${daftarResep.map(r => `
+            <div class="obat">
+              <div class="nm">${UI.esc(r.nama_obat)} &nbsp; No. ${UI.esc(String(r.jumlah))}</div>
+              <div class="sg">S. ${UI.esc(r.signa || '')}</div>
+            </div>`).join('')}
+          <div class="dokter">
+            <div>Nama Dokter : ${UI.esc(dokter)}</div>
+            <div>SIP : ${UI.esc(sip)}</div>
+          </div>
+        </div>
+        ${kolomKanan}
+      </div>
+    </div></body></html>`);
     w.document.close(); w.focus();
     setTimeout(() => { w.print(); }, 400);
   }

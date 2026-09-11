@@ -19,7 +19,8 @@ const Pengaturan = (() => {
     if (tabAktif === 'hak' && !App.boleh('hak_akses')) tabAktif = 'klinik';
 
     const semuaTab = [['klinik','Profil Klinik'],['poli','Poli'],['pengguna','Pengguna'],
-       ['surat','Kop &amp; Surat'],['rujukan','Rujukan &amp; Kode PCare'],['bridging','Bridging']];
+       ['surat','Kop &amp; Surat'],['resep','Resep'],
+       ['rujukan','Rujukan &amp; Kode PCare'],['bridging','Bridging']];
     if (App.boleh('hak_akses')) semuaTab.push(['hak','Hak Akses']);
 
     el.innerHTML = `
@@ -53,6 +54,7 @@ const Pengaturan = (() => {
       if (tabAktif === 'poli')     return await tabPoli(w);
       if (tabAktif === 'pengguna') return await tabPengguna(w);
       if (tabAktif === 'surat')    return await tabSurat(w);
+      if (tabAktif === 'resep')    return await tabResep(w);
       if (tabAktif === 'rujukan')  return await tabRujukan(w);
       if (tabAktif === 'bridging') return await tabBridging(w);
       if (tabAktif === 'hak')      return await tabHakAkses(w);
@@ -93,6 +95,12 @@ const Pengaturan = (() => {
               <input type="email" name="email" value="${UI.esc(f.email)}"></div>
             <div class="field"><label>Penanggung jawab</label>
               <input type="text" name="penanggung_jawab" value="${UI.esc(f.penanggung_jawab)}"></div>
+          </div>
+          <div class="field mb-16">
+            <label>No. SIA <span class="opt">(Surat Izin Apotek)</span></label>
+            <input type="text" name="no_sia" value="${UI.esc(f.no_sia)}" class="mw-220">
+            <div class="hint">Dicetak di kop Salinan Resep saat apoteker menyerahkan obat —
+              tidak memengaruhi resep dokter yang biasa.</div>
           </div>
 
           <fieldset class="fieldset mt-16">
@@ -224,7 +232,8 @@ const Pengaturan = (() => {
         <div class="card-head"><h2>Pengguna sistem</h2>
           <span class="text-sm text-muted">${d.length} akun</span></div>
         <div class="card-body tight">
-          <div class="table-wrap"><table class="tbl"><thead><tr><th>Nama</th><th>Peran</th><th>Jenis dokter</th><th>No. SIP</th>
+          <div class="table-wrap"><table class="tbl"><thead><tr><th>Nama</th><th>Peran</th><th>Jenis dokter</th>
+            <th>No. SIP / SIPA</th>
             <th>Kode dokter PCare</th><th>IHS Practitioner</th><th>Status</th></tr></thead>
             <tbody>${d.map(p => `<tr>
               <td><b>${UI.esc(p.nama)}</b></td>
@@ -237,10 +246,12 @@ const Pengaturan = (() => {
                      <option value="UMUM" ${p.jenis_dokter === 'UMUM' ? 'selected' : ''}>Dokter umum</option>
                      <option value="GIGI" ${p.jenis_dokter === 'GIGI' ? 'selected' : ''}>Dokter gigi</option>
                    </select>`}</td>
-              <td class="mono muted">${UI.esc(p.no_sip || '—')}</td>
+              <td><input type="text" data-no-sip="${p.id}" value="${UI.esc(p.no_sip || '')}"
+                class="ctl-sm mono" style="width:150px"
+                placeholder="${p.peran === 'apoteker' ? 'No. SIPA' : p.peran === 'dokter' ? 'No. SIP' : '—'}"></td>
               <td class="mono muted">${UI.esc(p.kode_dokter_pcare || '—')}</td>
               <td class="mono muted">${UI.esc(p.satusehat_practitioner_id || '—')}</td>
-              <td><label class="check"><input type="checkbox" data-aktif="${p.id}"
+              <td class="check-cell"><label class="check"><input type="checkbox" data-aktif="${p.id}"
                 ${p.aktif ? 'checked' : ''}><span>Aktif</span></label></td>
             </tr>`).join('')}</tbody></table></div>
         </div>
@@ -258,6 +269,15 @@ const Pengaturan = (() => {
     w.querySelectorAll('[data-aktif]').forEach(c => c.addEventListener('change', async () => {
       const { error } = await DB.sb.from('pegawai').update({ aktif: c.checked }).eq('id', c.dataset.aktif);
       UI.toast(error ? error.message : 'Status diperbarui.', error ? 'err' : 'ok');
+    }));
+    // Satu kolom no_sip dipakai bergantian sebagai No. SIP (dokter/perawat)
+    // atau No. SIPA (apoteker) — lihat komentar kolomnya di 01_schema.sql.
+    // Nilai ini yang dipakai menandatangani Salinan Resep saat apoteker
+    // menyerahkan obat (lihat cetakSalinanResep() di js/pages/apotek.js).
+    w.querySelectorAll('[data-no-sip]').forEach(inp => inp.addEventListener('change', async () => {
+      const { error } = await DB.sb.from('pegawai')
+        .update({ no_sip: inp.value.trim() || null }).eq('id', inp.dataset.noSip);
+      UI.toast(error ? error.message : 'No. SIP/SIPA diperbarui.', error ? 'err' : 'ok');
     }));
   }
 
@@ -547,6 +567,141 @@ const Pengaturan = (() => {
         await DB.simpanSuratPengaturan(simpan);
         KopKlinik.pasang(simpan.kop_data_uri, simpan.kop_rasio);
         UI.toast('Pengaturan surat tersimpan.', 'ok');
+        await gambarTab(w);
+      } catch (err) {
+        UI.toast('Gagal menyimpan: ' + (err.message || err), 'err');
+      } finally { b.disabled = false; }
+    });
+  }
+
+  /* ---------------- Resep ----------------
+     Template cetak Resep (logo, ukuran kertas, tampil/sembunyi bagian)
+     disimpan di sys_resep_pengaturan — pola sama seperti kop surat di atas.
+     Logo resep jauh lebih kecil daripada kop surat (dicetak ±38px persegi
+     di pojok kiri atas), jadi lebar maksimalnya sengaja lebih kecil supaya
+     tidak menyimpan gambar beresolusi tinggi yang sia-sia. */
+  const LEBAR_LOGO_RESEP_MAKS = 400;
+  const UKURAN_LOGO_RESEP_MAKS = 250 * 1024;
+
+  async function tabResep(w) {
+    const p = await DB.resepPengaturan(true);
+    let logoBaru = null;   // { dataUri, lebar, tinggi } bila diganti
+
+    const gambarLogo = () => p.logo_data_uri || null;
+
+    w.innerHTML = `
+      <div class="card">
+        <div class="card-head"><div class="flex-1"><h2>Logo resep</h2>
+          <div class="sub">Dicetak di pojok kiri atas kertas resep, di
+            samping nama &amp; alamat klinik</div></div></div>
+        <div class="card-body">
+          <div class="mb-12" id="bungkusPratinjauLogo">
+            ${gambarLogo()
+              ? `<img class="kop-pratinjau" id="pratinjauLogo" src="${gambarLogo()}" alt="Logo resep yang sedang dipakai">`
+              : `<div class="text-xs text-muted">Memakai logo bawaan (bentuk hati + palang polos).</div>`}
+          </div>
+          <div class="text-xs text-muted mb-12" id="asalLogo">
+            ${p.logo_data_uri ? 'Logo unggahan klinik.' : 'Logo bawaan yang disertakan bersama aplikasi.'}
+          </div>
+          <div class="form-row c2">
+            <div class="field mb-0">
+              <label for="fileLogoResep">Ganti logo (JPG atau PNG)</label>
+              <input type="file" id="fileLogoResep" accept="image/png,image/jpeg">
+              <div class="hint">Gambarnya dikecilkan otomatis ke lebar
+                ${LEBAR_LOGO_RESEP_MAKS} piksel. Pakai gambar persegi atau
+                mendekati persegi — logo ini dicetak kecil.</div>
+            </div>
+            <div class="field mb-0">
+              <label>&nbsp;</label>
+              <button class="btn btn-ghost btn-block" id="btnLogoResepBawaan"
+                ${p.logo_data_uri ? '' : 'disabled'}>Kembalikan ke logo bawaan</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="flex-1"><h2>Kertas &amp; bagian yang dicetak</h2>
+          <div class="sub">Sesuaikan dengan kertas kosong yang dipakai klinik</div></div></div>
+        <div class="card-body">
+          <div class="field">
+            <label for="fUkuranKertas">Ukuran kertas</label>
+            <select id="fUkuranKertas">
+              <option value="A5" ${p.ukuran_kertas === 'A6' ? '' : 'selected'}>A5</option>
+              <option value="A6" ${p.ukuran_kertas === 'A6' ? 'selected' : ''}>A6</option>
+            </select>
+          </div>
+          <label class="check mt-12"><input type="checkbox" id="cTampilBb"
+            ${p.tampil_bb === false ? '' : 'checked'}>
+            <span>Tampilkan berat badan pasien.</span></label>
+          <label class="check mt-8"><input type="checkbox" id="cTampilAlergi"
+            ${p.tampil_alergi === false ? '' : 'checked'}>
+            <span>Tampilkan riwayat alergi obat.</span></label>
+          <label class="check mt-8"><input type="checkbox" id="cTampilValidasi"
+            ${p.tampil_validasi_farmasi === false ? '' : 'checked'}>
+            <span>Tampilkan kolom Validasi Farmasi &amp; paraf penyerahan obat
+              di sisi kanan resep.</span></label>
+        </div>
+        <div class="card-foot">
+          <button class="btn btn-primary" id="btnSimpanResep">Simpan pengaturan</button>
+        </div>
+      </div>
+
+      <div class="banner info"><div>
+        <b>Kolom Validasi Farmasi &amp; paraf selalu tercetak kosong.</b>
+        Kotak-kotak ini adalah verifikasi manual apoteker/petugas farmasi saat
+        obat diserahkan ke pasien — sistem tidak pernah mencentangnya sendiri.
+        Pengaturan di atas hanya menentukan tampil atau tidaknya kolom ini,
+        bukan isinya.
+      </div></div>`;
+
+    w.querySelector('#fileLogoResep').addEventListener('change', async (e) => {
+      const berkas = e.target.files && e.target.files[0];
+      if (!berkas) return;
+      try {
+        const hasil = await kecilkanGambar(berkas, LEBAR_LOGO_RESEP_MAKS);
+        if (hasil.dataUri.length > UKURAN_LOGO_RESEP_MAKS * 1.4) {
+          UI.toast('Gambar logo terlalu besar setelah dikecilkan. Pakai gambar ' +
+                   'yang lebih sederhana.', 'err');
+          return;
+        }
+        logoBaru = hasil;
+        w.querySelector('#bungkusPratinjauLogo').innerHTML =
+          `<img class="kop-pratinjau" id="pratinjauLogo" src="${hasil.dataUri}" alt="Pratinjau logo baru">`;
+        w.querySelector('#asalLogo').textContent =
+          `Logo baru — ${hasil.lebar}×${hasil.tinggi} piksel, ` +
+          `${Math.round(hasil.dataUri.length / 1024)} KB. Belum tersimpan.`;
+        w.querySelector('#btnLogoResepBawaan').disabled = false;
+      } catch (err) {
+        UI.toast(err.message || 'Gambar gagal dibaca.', 'err');
+      }
+    });
+
+    w.querySelector('#btnLogoResepBawaan').addEventListener('click', () => {
+      logoBaru = { dataUri: null, lebar: null, tinggi: null };
+      w.querySelector('#bungkusPratinjauLogo').innerHTML =
+        `<div class="text-xs text-muted">Memakai logo bawaan (bentuk hati + palang polos).</div>`;
+      w.querySelector('#asalLogo').textContent = 'Akan kembali ke logo bawaan. Belum tersimpan.';
+      w.querySelector('#fileLogoResep').value = '';
+    });
+
+    w.querySelector('#btnSimpanResep').addEventListener('click', async (e) => {
+      const b = e.currentTarget;
+      b.disabled = true;
+      try {
+        const baru = {
+          ukuran_kertas: w.querySelector('#fUkuranKertas').value,
+          tampil_bb: w.querySelector('#cTampilBb').checked,
+          tampil_alergi: w.querySelector('#cTampilAlergi').checked,
+          tampil_validasi_farmasi: w.querySelector('#cTampilValidasi').checked
+        };
+        if (logoBaru) {
+          baru.logo_data_uri = logoBaru.dataUri;
+          baru.logo_rasio = logoBaru.dataUri ? logoBaru.lebar / logoBaru.tinggi : null;
+        }
+        const simpan = Object.assign({}, p, baru);
+        await DB.simpanResepPengaturan(simpan);
+        UI.toast('Pengaturan resep tersimpan.', 'ok');
         await gambarTab(w);
       } catch (err) {
         UI.toast('Gagal menyimpan: ' + (err.message || err), 'err');
