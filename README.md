@@ -1,7 +1,7 @@
 # RME Klinik Imanuel
 
 Rekam Medis Elektronik untuk klinik pratama BPJS — rawat jalan.
-Biaya operasional Rp 0 (Supabase + Netlify paket gratis).
+Biaya operasional Rp 0 (Supabase + Cloudflare Pages paket gratis).
 
 **Mulai dari sini → [PANDUAN.md](PANDUAN.md)**
 

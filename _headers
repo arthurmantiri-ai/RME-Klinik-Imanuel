@@ -1,0 +1,22 @@
+# Header keamanan untuk Cloudflare Pages.
+# Cloudflare membaca berkas ini otomatis dari akar situs — tidak perlu
+# diatur ulang di dashboard. Format ini juga dikenali Netlify, jadi berkas
+# ini aman dibiarkan bila suatu saat pindah hosting lagi.
+#
+# Sumber eksternal yang benar-benar dipakai aplikasi ini (lihat CSP di bawah):
+#   - cdn.jsdelivr.net    -> pustaka supabase-js
+#   - cdnjs.cloudflare.com -> pdfmake (dimuat saat cetak surat/PDF)
+#   - fonts.googleapis.com / fonts.gstatic.com -> font Inter
+#   - *.supabase.co (project Anda) -> API & realtime (https + wss)
+#
+# Kalau setelah deploy ada fitur yang macet dan Console (F12) menampilkan
+# pesan "Refused to ...", baris Content-Security-Policy di bawah ini yang
+# perlu dilonggarkan (atau dihapus sementara untuk memastikan penyebabnya).
+
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), camera=(), microphone=(), payment=(), usb=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://mvszcxjlcdutjidfoccu.supabase.co wss://mvszcxjlcdutjidfoccu.supabase.co; frame-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'

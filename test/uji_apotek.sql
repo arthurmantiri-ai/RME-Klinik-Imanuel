@@ -195,7 +195,7 @@ begin
       {"resep_item_id":"fffffff1-0000-0000-0000-000000000002","jumlah":10}]'::jsonb);
 
   assert (h->>'butir')::int = 2, 'dua butir harus terserahkan';
-  assert (h->>'sebagian')::boolean = false, 'resep lengkap tidak boleh ditandai sebagian';
+  assert (h->>'lengkap')::boolean = true, 'resep lengkap harus ditandai lengkap';
 
   select * into r from resep where id='eeeeeee1-0000-0000-0000-000000000001';
   assert r.status = 'DISERAHKAN', format('status resep harus DISERAHKAN, dapat %s', r.status);

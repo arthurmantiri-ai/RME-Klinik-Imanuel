@@ -1,7 +1,7 @@
 # RME Klinik Imanuel — Panduan Pemasangan
 
 Rekam Medis Elektronik untuk klinik pratama BPJS, rawat jalan.
-Biaya: **Rp 0** (Supabase free tier + Netlify free tier).
+Biaya: **Rp 0** (Supabase free tier + Cloudflare Pages free tier).
 
 ---
 
@@ -13,7 +13,7 @@ Biaya: **Rp 0** (Supabase free tier + Netlify free tier).
 4. [Langkah 2 — Jalankan lima belas berkas SQL](#langkah-2--jalankan-lima-belas-berkas-sql)
 5. [Langkah 3 — Buat akun master pertama](#langkah-3--buat-akun-master-pertama)
 6. [Langkah 4 — Hubungkan aplikasi ke database](#langkah-4--hubungkan-aplikasi-ke-database)
-7. [Langkah 5 — Unggah ke Netlify](#langkah-5--unggah-ke-netlify)
+7. [Langkah 5 — Deploy ke Cloudflare Pages](#langkah-5--deploy-ke-cloudflare-pages)
 8. [Langkah 6 — Isi data klinik](#langkah-6--isi-data-klinik)
 9. [Alur pemakaian harian](#alur-pemakaian-harian)
 10. [Layar pemeriksaan dokter](#layar-pemeriksaan-dokter)
@@ -99,7 +99,8 @@ rme-imanuel/
 ## 2. Yang perlu Anda siapkan
 
 - Akun **Supabase** — https://supabase.com (gratis, cukup daftar dengan GitHub/email)
-- Akun **Netlify** — https://netlify.com (gratis)
+- Akun **GitHub** — tempat kode ini di-push (repo `arthurmantiri-ai/RME-Klinik-Imanuel`)
+- Akun **Cloudflare** — https://dash.cloudflare.com/sign-up (gratis)
 - Peramban modern (Chrome/Edge/Firefox)
 
 Tidak perlu memasang apa pun di komputer. Tidak perlu kartu kredit.
@@ -244,18 +245,47 @@ Simpan.
 
 ---
 
-## Langkah 5 — Unggah ke Netlify
+## Langkah 5 — Deploy ke Cloudflare Pages
 
-1. Kompres seluruh isi folder `rme-imanuel` menjadi satu berkas ZIP —
-   pastikan `index.html` berada **di akar ZIP**, bukan di dalam subfolder.
-2. Buka https://app.netlify.com/drop
-3. Seret berkas ZIP ke halaman itu.
-4. Netlify memberi alamat seperti `https://nama-acak-123.netlify.app`.
-5. **Site configuration** → **Change site name** untuk mengganti jadi mis. `rme-imanuel`.
+Kode ada di repo GitHub `arthurmantiri-ai/RME-Klinik-Imanuel`. Cloudflare Pages
+membangun ulang situs otomatis setiap kali ada push ke branch `main` — tidak perlu
+unggah manual lagi.
 
-Buka alamat itu, masuk dengan akun dari Langkah 3.
+1. Push perubahan (termasuk `js/config.js` yang sudah diisi kredensial Supabase Anda)
+   ke branch `main` di GitHub.
+2. Masuk ke https://dash.cloudflare.com → **Workers & Pages** → **Create application**
+   → tab **Pages** → **Connect to Git**.
+3. Pilih repo `RME-Klinik-Imanuel`, klik **Begin setup**.
+4. Isi pengaturan build:
+   - **Project name**: mis. `rme-imanuel` (menentukan alamat `rme-imanuel.pages.dev`)
+   - **Production branch**: `main`
+   - **Framework preset**: `None`
+   - **Build command**: kosongkan
+   - **Build output directory**: `/` (akar repo — situs ini murni HTML/JS statis,
+     tidak ada langkah build)
+5. Klik **Save and Deploy**. Tunggu ±1 menit.
 
-> **Membatasi akses.** Di Netlify, **Site configuration → Access control → Password protection** bisa menambah kata sandi di depan situs. Berguna supaya alamatnya tidak terbuka bagi publik, sebagai lapisan tambahan di atas login aplikasi.
+Cloudflare memberi alamat `https://rme-imanuel.pages.dev` (atau nama project Anda).
+Buka alamat itu, masuk dengan akun dari Langkah 3. Untuk memakai domain sendiri,
+buka **Custom domains** di project Pages tersebut dan ikuti langkah yang ditampilkan.
+
+> **Membatasi akses (setara "Password protection" di Netlify, tapi lebih kuat).**
+> Buka **Zero Trust** (menu terpisah di dashboard Cloudflare, sama-sama gratis untuk
+> ≤50 pengguna) → **Access → Applications** → **Add an application** → **Self-hosted**.
+> Arahkan ke domain/alamat Pages Anda, lalu buat **policy** yang hanya mengizinkan
+> daftar email staf klinik (atau domain email klinik Anda) masuk — Cloudflare akan
+> mengirim kode OTP ke email itu sebelum halaman login aplikasi sendiri muncul.
+> Ini lapisan tambahan di depan login Supabase, dan tidak bisa dilewati orang di
+> luar daftar yang Anda tentukan.
+>
+> **Berkas keamanan yang sudah disiapkan.** Berkas `_headers` di akar repo mengatur
+> header keamanan (anti-clickjacking, HSTS, Content-Security-Policy yang membatasi
+> sumber skrip hanya ke domain yang benar-benar dipakai aplikasi ini) — Cloudflare
+> Pages membacanya otomatis, tidak perlu diatur manual di dashboard. Setelah deploy
+> pertama, coba semua alur utama (masuk, cetak resep/struk/surat sebagai PDF, impor
+> Excel apotek, layar `display.html`) dan lihat Console peramban (F12) — kalau ada
+> pesan merah berbunyi *"Refused to ..."*, beri tahu saya baris CSP mana yang perlu
+> dilonggarkan.
 
 ---
 
@@ -1386,7 +1416,7 @@ tahu langkahnya bekerja sebelum benar-benar membutuhkannya.
 | Supabase Database | 500 MB | ± 150.000–250.000 kunjungan (data teks murni) |
 | Supabase Storage | 1 GB | **Tidak dipakai sama sekali** — lihat [Lab & pemeriksaan penunjang](#lab--pemeriksaan-penunjang) |
 | Supabase Edge Function | 500.000 panggilan/bulan | Jauh lebih dari cukup |
-| Netlify | 100 GB bandwidth/bulan | Jauh lebih dari cukup |
+| Cloudflare Pages | Bandwidth tanpa batas; 500 build/bulan | Jauh lebih dari cukup |
 | Cadangan otomatis | **Tidak ada di paket gratis** | Harus dicadangkan sendiri — lihat [Cadangan data](#cadangan-data) |
 
 **Kenapa penyimpanan berkas kosong.** Foto rontgen dan lembar hasil sengaja tidak
