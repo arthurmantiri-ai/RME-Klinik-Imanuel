@@ -1733,6 +1733,28 @@ const DB = (() => {
     if (error) throw error; return data;
   }
 
+  /* --------------------- Pra-daftar pasien (migrasi dari nol) -----------
+     Dipakai HANYA saat RME dipasang dari nol dan portal punya banyak orang
+     yang perlu didaftarkan sekaligus sebelum Migrasi Portal (di atas) bisa
+     menemukan pasangannya. Lihat sql/24_pasien_cari_mirip.sql dan
+     js/pra_daftar_core.js untuk alasan lengkapnya. */
+  async function pasienCariMirip(nama, nik = null, noBpjs = null, batas = 5) {
+    const { data, error } = await sb.rpc('pasien_cari_mirip',
+      { p_nama: nama, p_nik: nik, p_no_bpjs: noBpjs, p_batas: batas });
+    if (error) throw error; return data || [];
+  }
+
+  /* Insert langsung ke tabel pasien — jalur PERSIS SAMA dengan pendaftaran
+     satu-per-satu biasa (simpanPasien di atas), hanya saja sekaligus
+     banyak baris. Trigger gen_no_rm() dan audit tetap berjalan per baris,
+     jadi tiap pasien baru tetap dapat nomor RM berurutan dan tercatat di
+     audit_log — TIDAK ada jalan pintas yang melewati keduanya. */
+  async function pasienBuatMassal(baris) {
+    const { data, error } = await sb.from('pasien').insert(baris)
+      .select('id,no_rm,nama,tanggal_lahir,jenis_kelamin,nik,no_bpjs');
+    if (error) throw error; return data || [];
+  }
+
   /* --------------------- Kronis: pemantauan (Tahap 2) ------------------- */
   async function kronisPantauObat() {
     const { data, error } = await sb.from('v_kronis_obat_bulan_ini')
@@ -1936,6 +1958,7 @@ const DB = (() => {
     kronisImporRingkas, kronisImporDaftar, kronisImporBaris, kronisImporUsulan,
     kronisImporTampung, kronisImporCocokkan, kronisImporBatalCocok,
     kronisImporAbaikan, kronisImporOtomatis, kronisImporBersihkan,
+    pasienCariMirip, pasienBuatMassal,
     kronisPantauObat, kronisPantauLab, kronisPantauStatin, kronisTelponH1,
     kronisPasien, kronisStatinPasien, kronisUsulanDiagnosa,
     kronisDaftarSimpan, kronisTerapiSelesai, kronisH3Cek,

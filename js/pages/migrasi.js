@@ -30,7 +30,13 @@ const Migrasi = (() => {
   let usulan = [];
   let berkas = [];              // hasil baca berkas yang belum dikirim
 
+  // Tab 0 — Pra-daftar Pasien (hanya dipakai saat RME dipasang dari nol)
+  let praBerkas = null;         // { baris, dikenal, kolomAsing } dari PraDaftarCore.bacaBerkas
+  let praMemeriksa = false;     // sedang memanggil pasien_cari_mirip satu per satu?
+  let praSudahDiperiksa = false;
+
   const UKURAN_KIRIM = 500;     // baris per panggilan kronis_impor_tampung
+  const UKURAN_KIRIM_PASIEN = 200; // baris per panggilan pasienBuatMassal
 
   async function render(el, param) {
     if (!App.boleh('menu_migrasi')) {
@@ -52,7 +58,7 @@ const Migrasi = (() => {
       <div id="ringkasMigrasi" class="mb-16"></div>
 
       <div class="tabs" id="tabs">
-        ${[['unggah', '1. Unggah Berkas'], ['cocok', '2. Cocokkan Pasien']]
+        ${[['pradaftar', 'Pra-daftar Pasien'], ['unggah', '1. Unggah Berkas'], ['cocok', '2. Cocokkan Pasien']]
           .map(([k, t]) => `<button class="tab ${tabAktif === k ? 'on' : ''}" data-t="${k}">${t}</button>`)
           .join('')}
       </div>
@@ -111,10 +117,273 @@ const Migrasi = (() => {
   async function gambarTab(w) {
     w.innerHTML = UI.memuat(3);
     try {
+      if (tabAktif === 'pradaftar') return tabPraDaftar(w);
       if (tabAktif === 'unggah') return tabUnggah(w);
       return await tabCocok(w);
     } catch (e) {
       w.innerHTML = `<div class="banner err"><div>${UI.esc(e.message || e)}</div></div>`;
+    }
+  }
+
+  /* ==================================================================== */
+  /*  TAB 0 — PRA-DAFTAR PASIEN (opsional — hanya untuk pemasangan dari    */
+  /*  nol, ketika RME belum punya satu pun pasien terdaftar dan portal     */
+  /*  punya banyak orang yang perlu dicocokkan)                            */
+  /* ==================================================================== */
+
+  function csvSel(v) {
+    const s = v == null ? '' : String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+
+  function unduhTeks(namaBerkas, teks) {
+    // BOM di depan: tanpa itu Excel Indonesia sering membaca UTF-8
+    // sebagai encoding lain dan nama berhuruf non-ASCII jadi kacau.
+    const blob = new Blob(['\uFEFF' + teks], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = namaBerkas;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  const KEPALA_TEMPLAT = ['nama', 'nik', 'no_bpjs', 'tanggal_lahir', 'jenis_kelamin', 'alamat'];
+
+  async function unduhTemplat(w, dariTitipan) {
+    let baris = [];
+    if (dariTitipan) {
+      const daftarTitipan = await DB.kronisImporDaftar('MENUNGGU', '', 9999);
+      baris = daftarTitipan.map(d => [d.nama_pasien || '', '', d.no_bpjs || '', '', '', '']);
+      if (!baris.length) {
+        UI.toast('Tabel titipan masih kosong — templat diunduh tanpa baris.', 'warn', 5000);
+      }
+    }
+    const teks = [KEPALA_TEMPLAT.join(',')]
+      .concat(baris.map(r => r.map(csvSel).join(','))).join('\r\n');
+    unduhTeks(dariTitipan ? 'templat-pra-daftar-dari-titipan.csv' : 'templat-pra-daftar-kosong.csv', teks);
+  }
+
+  function tabPraDaftar(w) {
+    w.innerHTML = `
+      <div class="banner info mb-16">
+        <div>Dipakai HANYA kalau RME belum punya satu pun pasien terdaftar dan
+          portal punya banyak orang sekaligus. Kalau pasiennya sedikit, daftarkan
+          satu per satu lewat <b>Pendaftaran</b> seperti biasa — di situ Anda bisa
+          langsung menanyakan data yang meragukan ke pasiennya.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>1. Unduh templat</h3></div>
+        <div class="card-body text-muted">
+          <p class="mt-0">Kolom <b>nama</b> dan <b>no_bpjs</b> diisi otomatis dari orang
+            yang masih menunggu di tab <b>1. Unggah Berkas</b> / <b>2. Cocokkan Pasien</b>
+            (kalau sudah pernah diunggah). Kolom <b>tanggal_lahir</b> dan
+            <b>jenis_kelamin</b> WAJIB diisi manual dari kartu BPJS/KTP/catatan kertas —
+            RME tidak bisa menerbitkan nomor rekam medis tanpa keduanya.</p>
+        </div>
+        <div class="card-foot">
+          <button class="btn btn-primary" id="btnTemplatTitipan">
+            ${UI.ikon('unduh')} Unduh templat dari titipan</button>
+          <button class="btn btn-ghost" id="btnTemplatKosong">Unduh templat kosong</button>
+        </div>
+      </div>
+
+      <div class="card mt-16">
+        <div class="card-head"><h3>2. Isi tanggal lahir &amp; jenis kelamin, lalu unggah lagi</h3></div>
+        <div class="card-body">
+          <p class="text-muted mt-0">Jenis kelamin: <code>L</code> atau <code>P</code>.
+            Tanggal lahir: <code>YYYY-MM-DD</code> atau <code>DD/MM/YYYY</code>. Kolom NIK
+            boleh dikosongkan.</p>
+          <input type="file" id="berkasPra" class="w-full" accept=".csv,text/csv">
+          <div id="pratinjauPra" class="mt-14"></div>
+        </div>
+        <div class="card-foot" id="kakiPra"></div>
+      </div>`;
+
+    w.querySelector('#btnTemplatTitipan').addEventListener('click', () => unduhTemplat(w, true));
+    w.querySelector('#btnTemplatKosong').addEventListener('click', () => unduhTemplat(w, false));
+    w.querySelector('#berkasPra').addEventListener('change', (e) => bacaBerkasPra(w, e.target.files));
+
+    praBerkas = null; praSudahDiperiksa = false;
+    gambarPratinjauPra(w);
+  }
+
+  function bacaBerkasPra(w, files) {
+    const f = (files || [])[0];
+    praBerkas = null; praSudahDiperiksa = false;
+    if (!f) { gambarPratinjauPra(w); return; }
+    const fr = new FileReader();
+    fr.onload = () => {
+      try {
+        praBerkas = PraDaftarCore.bacaBerkas(String(fr.result || ''));
+      } catch (e) {
+        UI.toast(e.message || e, 'err', 6000);
+        praBerkas = { baris: [], dikenal: new Set(), kolomAsing: [] };
+      }
+      gambarPratinjauPra(w);
+    };
+    fr.onerror = () => {
+      UI.toast('Berkas tidak terbaca.', 'err');
+      praBerkas = { baris: [], dikenal: new Set(), kolomAsing: [] };
+      gambarPratinjauPra(w);
+    };
+    fr.readAsText(f);
+  }
+
+  function gambarPratinjauPra(w) {
+    const wadah = w.querySelector('#pratinjauPra');
+    const kaki = w.querySelector('#kakiPra');
+    if (!praBerkas || !praBerkas.baris.length) {
+      wadah.innerHTML = `<div class="text-muted">Belum ada berkas dipilih.</div>`;
+      kaki.innerHTML = '';
+      return;
+    }
+
+    const r = PraDaftarCore.ringkas(praBerkas.baris);
+    const siapDikirim = praBerkas.baris.filter(b =>
+      b.siap && !(b.mirip && b.mirip.length && !b.paksa));
+    const perluTinjau = praBerkas.baris.filter(b => b.siap && b.mirip && b.mirip.length && !b.paksa);
+
+    wadah.innerHTML = `
+      ${praBerkas.kolomAsing.length ? `<div class="banner warn mb-12">${UI.ikon('peringatan')}
+        <div>Kolom tidak dikenal, dilewati: ${praBerkas.kolomAsing.map(UI.esc).join(', ')}</div></div>` : ''}
+      <div class="grid grid-4 mb-12">
+        <div class="card stat"><div class="lbl">Baris terbaca</div><div class="val tabular">${r.total}</div></div>
+        <div class="card stat"><div class="lbl">Siap didaftarkan</div><div class="val tabular">${r.siap}</div></div>
+        <div class="card stat"><div class="lbl">Tidak lengkap</div><div class="val tabular">${r.tidakLengkap}</div></div>
+        <div class="card stat"><div class="lbl">Perlu ditinjau</div>
+          <div class="val tabular">${perluTinjau.length}</div></div>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Baris</th><th>Nama</th><th>Lahir</th><th>JK</th><th>NIK</th>
+          <th>No. BPJS</th><th>Status</th></tr></thead>
+        <tbody>${praBerkas.baris.map((b, i) => `
+          <tr>
+            <td class="mono text-muted">${b.baris}</td>
+            <td>${UI.esc(b.nama || '—')}</td>
+            <td class="mono">${b.tanggal_lahir ? UI.esc(b.tanggal_lahir) : '—'}</td>
+            <td>${b.jenis_kelamin ? UI.esc(b.jenis_kelamin) : '—'}</td>
+            <td class="mono">${b.nik ? UI.esc(b.nik) : '—'}</td>
+            <td class="mono">${b.no_bpjs ? UI.esc(b.no_bpjs) : '—'}</td>
+            <td>${statusBarisPra(b, i)}</td>
+          </tr>`).join('')}
+        </tbody></table></div>`;
+
+    wadah.querySelectorAll('[data-paksa]').forEach(chk => {
+      chk.addEventListener('change', (e) => {
+        praBerkas.baris[Number(e.target.dataset.paksa)].paksa = e.target.checked;
+        gambarPratinjauPra(w);
+      });
+    });
+
+    kaki.innerHTML = `
+      ${!praSudahDiperiksa ? `<button class="btn btn-secondary" id="btnCekMirip">
+          Periksa kemiripan dengan pasien yang sudah ada</button>` : ''}
+      <button class="btn btn-primary" id="btnDaftarkanMassal" ${siapDikirim.length ? '' : 'disabled'}>
+        ${UI.ikon('unduh')} Daftarkan ${siapDikirim.length} pasien</button>`;
+    if (!praSudahDiperiksa) {
+      kaki.querySelector('#btnCekMirip').addEventListener('click', () => cekKemiripanPra(w));
+    }
+    kaki.querySelector('#btnDaftarkanMassal').addEventListener('click', () => kirimPraDaftar(w));
+  }
+
+  function statusBarisPra(b, i) {
+    if (!b.siap) return `<span class="badge b-danger" title="${UI.esc(b.wajib.join(' '))}">Tidak lengkap</span>`;
+    if (b.mirip && b.mirip.length) {
+      const top = b.mirip[0];
+      const lencana = `<span class="badge b-warn">Mirip: ${UI.esc(top.nama)} (${UI.esc(top.no_rm)})</span>`;
+      if (b.paksa) return lencana + ` <span class="badge b-ok ml-4">Tetap didaftarkan</span>`;
+      return lencana + `<label class="ml-6 text-sm"><input type="checkbox" data-paksa="${i}">
+        Tetap daftarkan, ini orang berbeda</label>`;
+    }
+    if (b.peringatan && b.peringatan.length) {
+      return `<span class="badge b-info" title="${UI.esc(b.peringatan.join(' '))}">Siap (ada catatan)</span>`;
+    }
+    return `<span class="badge b-ok">Siap</span>`;
+  }
+
+  async function cekKemiripanPra(w) {
+    if (praMemeriksa) return;
+    if (typeof DB.pasienCariMirip !== 'function') {
+      UI.toast('Pra-daftar Pasien belum didukung di mode demo — coba di aplikasi sungguhan.', 'warn', 6000);
+      return;
+    }
+    praMemeriksa = true;
+    const btn = w.querySelector('#btnCekMirip');
+    const target = praBerkas.baris.filter(b => b.siap);
+    try {
+      for (let i = 0; i < target.length; i++) {
+        const b = target[i];
+        if (btn) btn.textContent = `Memeriksa ${i + 1}/${target.length}…`;
+        try {
+          b.mirip = await DB.pasienCariMirip(b.nama, b.nik, b.no_bpjs, 3);
+        } catch (e) {
+          // Satu baris gagal diperiksa tidak boleh menghentikan sisanya —
+          // baris itu tetap tampil, hanya saja tanpa usulan kemiripan.
+          b.mirip = [];
+        }
+      }
+      praSudahDiperiksa = true;
+    } finally {
+      praMemeriksa = false;
+      gambarPratinjauPra(w);
+    }
+  }
+
+  async function kirimPraDaftar(w) {
+    const btn = w.querySelector('#btnDaftarkanMassal');
+    const siapDikirim = praBerkas.baris.filter(b =>
+      b.siap && !(b.mirip && b.mirip.length && !b.paksa));
+    if (!siapDikirim.length) return;
+    if (typeof DB.pasienBuatMassal !== 'function') {
+      UI.toast('Pra-daftar Pasien belum didukung di mode demo — coba di aplikasi sungguhan.', 'warn', 6000);
+      return;
+    }
+
+    if (!await UI.konfirmasi(`Daftarkan ${siapDikirim.length} pasien baru?`,
+      'Setiap baris akan mendapat nomor rekam medis baru — identitas seumur hidup. ' +
+      'Baris yang ditandai "Tidak lengkap" atau belum ditinjau kemiripannya tidak ikut ' +
+      'dikirim.')) return;
+
+    btn.disabled = true;
+    const asli = btn.innerHTML;
+    let masuk = 0;
+    const gagal = [];
+    try {
+      for (let i = 0; i < siapDikirim.length; i += UKURAN_KIRIM_PASIEN) {
+        const potong = siapDikirim.slice(i, i + UKURAN_KIRIM_PASIEN);
+        btn.innerHTML = `Mendaftarkan ${i + potong.length}/${siapDikirim.length}…`;
+        const rows = potong.map(b => ({
+          nama: b.nama, nik: b.nik, no_bpjs: b.no_bpjs,
+          tanggal_lahir: b.tanggal_lahir, jenis_kelamin: b.jenis_kelamin,
+          alamat: b.alamat
+        }));
+        try {
+          const hasil = await DB.pasienBuatMassal(rows);
+          masuk += hasil.length;
+        } catch (e) {
+          // NIK unik bisa membentur pasien yang sudah ada di antara waktu
+          // pratinjau dan pengiriman (mis. dua staf bekerja bersamaan).
+          // Potongan ini dilewati dan dilaporkan, potongan lain tetap jalan.
+          gagal.push(`Baris Excel ${potong[0].baris}–${potong[potong.length - 1].baris}: ${e.message || e}`);
+        }
+      }
+      UI.modal({
+        judul: 'Pra-daftar selesai',
+        isi: `<p><b>${masuk}</b> pasien baru terdaftar dengan nomor rekam medis baru.</p>
+              ${gagal.length ? `<p class="text-muted">Gagal: ${gagal.map(UI.esc).join('; ')}</p>` : ''}
+              <p class="text-muted mt-12">Lanjutkan ke tab <b>2. Cocokkan Pasien</b> dan
+                tekan <b>Tempel otomatis</b> — nomor BPJS yang tadi kosong sekarang sudah
+                ada pasangannya.</p>`,
+        tombol: [{ teks: 'Tutup', kelas: 'btn-primary' }]
+      });
+      praBerkas = null; praSudahDiperiksa = false;
+      w.querySelector('#berkasPra').value = '';
+      gambarPratinjauPra(w);
+      await muatRingkas();
+    } finally {
+      btn.innerHTML = asli;
+      btn.disabled = false;
     }
   }
 

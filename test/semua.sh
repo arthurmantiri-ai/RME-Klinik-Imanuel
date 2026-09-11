@@ -14,6 +14,7 @@ printf 'surat_core    '; node test/uji_surat_core.js   | tail -1
 printf 'periksa_core  '; node test/uji_periksa_core.js | tail -1
 printf 'antrean_core  '; node test/uji_antrean_core.js | tail -1
 printf 'kronis_core   '; node test/uji_kronis_core.js  | tail -1
+printf 'pra_daftar    '; node test/uji_pra_daftar_core.js | tail -1
 printf 'kronis_pantau '; node test/uji_kronis_pantau_core.js | tail -1
 printf 'laporan_core  '; node test/uji_laporan_core.js | tail -1
 echo
