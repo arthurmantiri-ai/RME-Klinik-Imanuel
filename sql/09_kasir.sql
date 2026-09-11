@@ -47,12 +47,34 @@ as $$ select public.hak_akses_cek('kasir') $$;
 
 grant execute on function public.boleh_kasir() to authenticated;
 
+-- 11 Sep 2026: kode `menu_tarif` sebelumnya hanya mengatur TERLIHAT/
+-- tidaknya menu "Tarif & Invoice" (lihat js/app.js), sementara hak
+-- MENULIS Master Tarif tetap lewat boleh_master_data() — kode yang jauh
+-- lebih luas (obat, poli, ICD-10/9-CM, signa, dst). Akibatnya kasir yang
+-- diberi menu_tarif tetap ditolak database saat menyimpan tarif baru.
+-- boleh_tarif() memakai kode YANG SAMA (menu_tarif) supaya satu centang
+-- di Pengaturan -> Hak Akses membuka halaman SEKALIGUS mengizinkan
+-- menulis tarif, tanpa ikut membuka Master Data lain yang tidak diminta.
+-- Tab "Tampilan invoice" di halaman yang sama SENGAJA TETAP memakai
+-- boleh_master_data() (lihat bagian I di bawah + js/pages/tarif.js) —
+-- perubahan tampilan cetak berlaku untuk SEMUA kasir sekaligus, jadi
+-- tetap dikunci ke master/admin.
+create or replace function public.boleh_tarif() returns boolean
+language sql stable security definer set search_path = public
+as $$ select public.hak_akses_cek('menu_tarif') $$;
+
+grant execute on function public.boleh_tarif() to authenticated;
+
 insert into public.hak_akses (kode, peran, diizinkan) values
   ('kasir',       'kasir', true),
   -- Menu "Kasir" untuk peran kasir sendiri: baris ini ditaruh di sini
   -- (bukan di sql/02_rls.sql bersama menu_* lain) karena nilai enum
   -- 'kasir' baru ada setelah sql/07_peran_kasir.sql dijalankan.
-  ('menu_kasir',  'kasir', true)
+  ('menu_kasir',  'kasir', true),
+  -- 11 Sep 2026: kasir boleh membuka Tarif & Invoice DAN mengubah Master
+  -- Tarif (lihat boleh_tarif() di atas). Master tetap bisa mencabutnya
+  -- kembali lewat Pengaturan -> Hak Akses kapan saja.
+  ('menu_tarif',  'kasir', true)
 on conflict (kode, peran) do nothing;
 
 
@@ -663,7 +685,8 @@ alter table kasir_pembayaran     enable row level security;
 alter table sys_template_invoice enable row level security;
 
 -- Tarif: semua staf boleh melihat (dokter perlu tahu biaya tindakan
--- sebelum menyarankannya), hanya admin yang mengubah.
+-- sebelum menyarankannya). Mengubah/menambah lewat kode `menu_tarif`
+-- (bukan lagi master_data) — 11 Sep 2026, lihat boleh_tarif() di atas.
 drop policy if exists tarif_baca on kasir_tarif;
 create policy tarif_baca on kasir_tarif for select
   to authenticated using (public.saya_staf());
@@ -671,8 +694,8 @@ create policy tarif_baca on kasir_tarif for select
 drop policy if exists tarif_kelola on kasir_tarif;
 create policy tarif_kelola on kasir_tarif for all
   to authenticated
-  using (public.boleh_master_data())
-  with check (public.boleh_master_data());
+  using (public.boleh_tarif())
+  with check (public.boleh_tarif());
 
 drop policy if exists tagihan_baca on kasir_tagihan;
 create policy tagihan_baca on kasir_tagihan for select

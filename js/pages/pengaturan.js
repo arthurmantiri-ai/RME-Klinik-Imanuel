@@ -314,7 +314,7 @@ const Pengaturan = (() => {
       ['menu_pendaftaran', 'Menampilkan menu "Pendaftaran" di sisi kiri'],
       ['menu_kasir',       'Menampilkan menu "Kasir"'],
       ['menu_laporan',     'Menampilkan menu "Laporan"'],
-      ['menu_tarif',       'Menampilkan menu "Tarif & Invoice"'],
+      ['menu_tarif',       'Menampilkan menu "Tarif & Invoice" dan mengelola tarif layanan (tab "Tampilan invoice" tetap khusus master)'],
       ['menu_migrasi',     'Menampilkan menu "Migrasi Portal"'],
       ['menu_pengaturan',  'Menampilkan menu "Pengaturan" (tab Hak Akses di dalamnya tetap khusus master)']
     ]},

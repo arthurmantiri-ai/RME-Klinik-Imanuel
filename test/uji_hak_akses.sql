@@ -68,6 +68,13 @@ begin
   assert public.boleh_apotek() = public.hak_akses_cek('apotek'),
     'boleh_apotek() harus sama persis dengan hak_akses_cek(''apotek'')';
   assert public.boleh_apotek() = true, 'apoteker harus tetap boleh apotek (perilaku bawaan)';
+
+  -- 'menu_tarif' diseed true untuk kasir sejak 11 Sep 2026
+  -- (lihat sql/09_kasir.sql / sql/25_tarif_kasir.sql).
+  perform set_config('request.jwt.claim.sub','44444444-4444-4444-4444-444444444444', false);
+  assert public.boleh_tarif() = public.hak_akses_cek('menu_tarif'),
+    'boleh_tarif() harus sama persis dengan hak_akses_cek(''menu_tarif'')';
+  assert public.boleh_tarif() = true, 'kasir harus tetap boleh tarif (perilaku bawaan)';
 end $$;
 
 \echo '--- 5. Tabel hak_akses: dibaca semua staf aktif'

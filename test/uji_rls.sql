@@ -175,23 +175,44 @@ begin
   assert n = 1, 'master harus bisa mengubah template invoice';
 end $$;
 
-\echo '--- 8. Tarif: semua staf membaca, hanya master menulis'
+\echo '--- 8. Tarif: semua staf membaca, kasir & master mengubah (kode menu_tarif)'
 do $$
-declare n int;
+declare n int; nilai_lama numeric; v_id uuid;
 begin
   assert uji_terlihat('33333333-3333-3333-3333-333333333333',
     'select count(*) from kasir_tarif') > 0,
     'dokter perlu tahu biaya tindakan sebelum menyarankannya';
 
+  select id, tarif into v_id, nilai_lama from kasir_tarif
+   where kode_icd9 = '89.01' order by berlaku_mulai desc limit 1;
+
+  -- Kasir diberi kode `menu_tarif` sejak 11 Sep 2026 (lihat sql/09_kasir.sql
+  -- dan sql/25_tarif_kasir.sql) supaya bisa menaikkan tarif sendiri, tanpa
+  -- menunggu master online.
   perform set_config('request.jwt.claim.sub','44444444-4444-4444-4444-444444444444', true);
   set local role authenticated;
   begin
-    with x as (update kasir_tarif set tarif = 1 where true returning 1)
+    with x as (update kasir_tarif set tarif = 999999 where id = v_id returning 1)
       select count(*) into n from x;
   exception when others then n := 0;
   end;
   reset role;
-  assert n = 0, 'kasir tidak boleh mengubah tarif';
+  assert n = 1, 'kasir yang punya kode menu_tarif harus boleh mengubah tarif';
+
+  -- Kembalikan nilainya supaya tidak mengubah hasil uji lain yang berjalan
+  -- sesudah berkas ini di database yang sama (lihat test/jalankan.sh).
+  update kasir_tarif set tarif = nilai_lama where id = v_id;
+
+  -- Peran lain yang tidak punya kode menu_tarif (dokter) tetap ditolak.
+  perform set_config('request.jwt.claim.sub','33333333-3333-3333-3333-333333333333', true);
+  set local role authenticated;
+  begin
+    with x as (update kasir_tarif set tarif = 1 where id = v_id returning 1)
+      select count(*) into n from x;
+  exception when others then n := 0;
+  end;
+  reset role;
+  assert n = 0, 'dokter tanpa kode menu_tarif tidak boleh mengubah tarif';
 end $$;
 
 \echo '--- 9. Fungsi RPC tetap menegakkan peran walau dipanggil authenticated'

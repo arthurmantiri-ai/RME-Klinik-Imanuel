@@ -552,7 +552,7 @@ const DB = (() => {
              'kajian', 'periksa', 'menu_pendaftaran', 'menu_laporan', 'lab', 'bacaan',
              'lampiran', 'surat', 'kronis_kelola', 'antrean_buat'],
     apoteker: ['pasien_alergi', 'kunjungan_ubah', 'apotek'],
-    kasir: ['menu_kasir', 'kasir']
+    kasir: ['menu_kasir', 'kasir', 'menu_tarif']
   };
   async function hakAksesSaya() {
     await tunggu(20);

@@ -389,12 +389,15 @@ const Tarif = (() => {
                 mencetak ke printer, jadi ini bukan tiruan.</div>
             </div>
           </div>
+          ${App.boleh('master_data') ? `
           <div class="btn-group">
             <button class="btn btn-primary" id="btnSimpanTpl">Simpan</button>
             <button class="btn btn-secondary" id="btnBatalTpl">Batalkan</button>
             <button class="btn btn-secondary" id="btnBawaanTpl">Nilai bawaan</button>
           </div>
-          <div class="hint" id="statusTpl" style="margin-top:8px"></div>
+          <div class="hint" id="statusTpl" style="margin-top:8px"></div>` : `
+          <div class="banner info"><div>Tampilan invoice hanya bisa diubah oleh master.
+            Anda tetap bisa melihat pengaturan yang berlaku di sebelah kiri.</div></div>`}
         </div>
       </div>`;
 
