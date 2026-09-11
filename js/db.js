@@ -730,6 +730,13 @@ const DB = (() => {
     if (error) throw error;
     return { jumlah: data.length };
   }
+  /* Hapus permanen. Obat yang sudah pernah dipakai di resep atau punya
+     riwayat stok apotek DITOLAK oleh constraint foreign key di database —
+     bukan dihapus paksa. Untuk obat semacam itu, nonaktifkan saja. */
+  async function hapusObat(id) {
+    const { error } = await sb.from('obat').delete().eq('id', id);
+    if (error) throw error;
+  }
 
   /* --- ICD-10 --- */
   async function daftarIcd10(kata = '', hanyaFavorit = false, batas = 200) {
@@ -749,6 +756,12 @@ const DB = (() => {
     if (error) throw error;
     return data;
   }
+  /* Hapus permanen. Ditolak database bila kode ini masih dipakai sebagai
+     diagnosa pada suatu kunjungan. */
+  async function hapusIcd10(kode) {
+    const { error } = await sb.from('icd10').delete().eq('kode', kode);
+    if (error) throw error;
+  }
 
   /* --- ICD-9-CM --- */
   async function daftarIcd9(kata = '', kategori = null, batas = 200) {
@@ -766,6 +779,12 @@ const DB = (() => {
                    : sb.from('icd9cm').insert(rec).select().single();
     const { data, error } = await q;
     if (error) throw error; return data;
+  }
+  /* Hapus permanen. Ditolak database bila kode ini masih dipakai sebagai
+     tindakan pada suatu kunjungan atau tarif kasir. */
+  async function hapusIcd9(kode) {
+    const { error } = await sb.from('icd9cm').delete().eq('kode', kode);
+    if (error) throw error;
   }
 
   /* ===================== KESIAPAN DATA BRIDGING ====================== */
@@ -1165,6 +1184,13 @@ const DB = (() => {
   }
   async function hapusRujukan(id) {
     const { error } = await sb.from('ref_lab_rujukan').delete().eq('id', id);
+    if (error) throw error;
+  }
+  /* Hapus permanen pemeriksaan lab. Baris nilai rujukan miliknya (dan
+     keanggotaan paket) ikut terhapus otomatis; ditolak database bila
+     pemeriksaan ini sudah pernah punya hasil pasien. */
+  async function hapusLab(id) {
+    const { error } = await sb.from('ref_lab').delete().eq('id', id);
     if (error) throw error;
   }
 
@@ -1922,8 +1948,8 @@ const DB = (() => {
     refSistemFisik, refVital: refVitalSemua,
     alergiKode, setAlergiKode,
     pcarePratinjau, observasiSatuSehat, kesiapanKode, simpanPpk, simpanPemetaanKode,
-    daftarObat, simpanObat, imporObat,
-    daftarIcd10, simpanIcd10, daftarIcd9, simpanIcd9,
+    daftarObat, simpanObat, imporObat, hapusObat,
+    daftarIcd10, simpanIcd10, hapusIcd10, daftarIcd9, simpanIcd9, hapusIcd9,
     kesiapanPasien, kesiapanKunjungan, ringkasanKesiapan,
     ambilSemua,
     apotekBatch, apotekStok, apotekTransaksi, apotekMasuk, apotekKeluar,
@@ -1936,7 +1962,7 @@ const DB = (() => {
     kasirTambahItem, kasirUbahItem, kasirHapusItem, kasirJualObatBebas,
     daftarTarif, simpanTarif, kasirRekap,
     templateInvoice, simpanTemplateInvoice,
-    refLab, refLabPaket, simpanRefLab, simpanRujukan, hapusRujukan,
+    refLab, refLabPaket, simpanRefLab, simpanRujukan, hapusRujukan, hapusLab,
     labMinta, labMintaLuar, labAntrean, labPermintaan, labKunjungan, labPasien,
     simpanHasilLab, labSelesaikan, labBukaKunci, labBatalkan,
     labTren, labBelumSelesai,

@@ -15,6 +15,63 @@ const Master = (() => {
   const SATUAN = ['Tablet', 'Kapsul', 'Botol', 'Tube', 'Sachet', 'Ampul', 'Vial',
                   'Pot', 'Strip', 'Bungkus', 'mL'];
 
+  /* ================================================================ *
+   *  HAPUS DATA (dipakai oleh semua tab)
+   *
+   *  Baris master ditaut ke banyak tempat (resep, stok apotek, tindakan,
+   *  hasil lab, dst). Bukan aplikasi ini yang memutuskan mana yang aman
+   *  dihapus — constraint foreign key di database yang menolaknya kalau
+   *  baris itu sudah pernah dipakai. Di sini kita cuma menerjemahkan
+   *  penolakan itu jadi pesan yang dimengerti petugas, dan untuk "Hapus
+   *  Semua" kita coba satu per satu supaya baris yang aman tetap
+   *  terhapus walau ada baris lain yang ditolak.
+   * ================================================================ */
+  function pesanGagalHapus(e) {
+    const p = ((e && e.message) || '').toLowerCase();
+    if (p.includes('foreign key') || p.includes('violates'))
+      return 'Sudah pernah dipakai di data lain (resep, tindakan, stok, atau hasil pasien), jadi tidak bisa dihapus. Nonaktifkan saja lewat kotak centang Aktif.';
+    return (e && e.message) || 'Gagal menghapus.';
+  }
+
+  async function hapusMassal(daftar, ambilId, fnHapus) {
+    let berhasil = 0; const gagal = [];
+    for (const item of daftar) {
+      try { await fnHapus(ambilId(item)); berhasil++; }
+      catch (e) { gagal.push(item); }
+    }
+    return { berhasil, gagal };
+  }
+
+  function ringkasanHapus(berhasil, jmlGagal) {
+    if (!jmlGagal) return `${berhasil} baris berhasil dihapus.`;
+    if (!berhasil) return `Tidak ada yang terhapus — seluruh ${jmlGagal} baris masih dipakai di data lain.`;
+    return `${berhasil} baris berhasil dihapus, ${jmlGagal} baris dilewati karena masih dipakai di data lain.`;
+  }
+
+  /* Konfirmasi "Hapus Semua" minta diketik ulang supaya tidak terpicu
+     klik tidak sengaja — ini menghapus permanen, bukan menonaktifkan. */
+  async function modalHapusSemua(label, jumlah) {
+    return await UI.modal({
+      judul: `Hapus semua ${label}?`,
+      isi: `
+        <div class="banner err mb-16">${UI.ikon('peringatan', 16)}
+          <div><b>${jumlah} baris akan dicoba dihapus permanen.</b> Baris yang
+          sudah pernah dipakai di data lain otomatis ditolak database dan
+          tidak ikut terhapus — hanya yang belum pernah dipakai yang benar-benar
+          hilang. Baris yang berhasil dihapus tidak bisa dikembalikan.</div></div>
+        <div class="field mb-0"><label>Ketik <b>HAPUS</b> untuk melanjutkan</label>
+          <input type="text" id="ketikHapusSemua" autocomplete="off"></div>`,
+      tombol: [
+        { teks: 'Batal', nilai: false },
+        { teks: 'Hapus semua', kelas: 'btn-danger', aksi: (b) => {
+            const v = b.querySelector('#ketikHapusSemua').value.trim().toUpperCase();
+            if (v !== 'HAPUS') { UI.toast('Ketik HAPUS untuk mengonfirmasi.', 'err'); return false; }
+            return true;
+          } }
+      ]
+    }) === true;
+  }
+
   async function render(el, param) {
     if (!App.boleh('master_data')) {
       el.innerHTML = UI.kosong('Akses ditolak', 'Anda tidak punya izin membuka Master Data.');
@@ -73,6 +130,7 @@ const Master = (() => {
             <span class="nowrap">Tampilkan yang nonaktif</span></label>
           <button class="btn btn-secondary btn-sm" id="btnImpor">${UI.ikon('unduh',15)} Impor CSV</button>
           <button class="btn btn-secondary btn-sm" id="btnEkspor">Ekspor CSV</button>
+          <button class="btn btn-secondary btn-sm" id="btnHapusSemuaObat">${UI.ikon('hapus',15)} Hapus semua</button>
           <button class="btn btn-primary btn-sm" id="btnObatBaru">${UI.ikon('plus',15)} Tambah obat</button>
         </div>
         <div class="card-body tight" id="tabelObat">${UI.memuat(4)}</div>
@@ -95,6 +153,13 @@ const Master = (() => {
     w.querySelector('#btnEkspor').addEventListener('click', () => eksporObat(cache.obat));
     w.querySelector('#btnImpor').addEventListener('click', async () => {
       if (await modalImporObat()) muat();
+    });
+    w.querySelector('#btnHapusSemuaObat').addEventListener('click', async () => {
+      if (!cache.obat.length) { UI.toast('Tidak ada obat untuk dihapus.', 'warn'); return; }
+      if (!await modalHapusSemua('obat yang sedang tampil', cache.obat.length)) return;
+      const { berhasil, gagal } = await hapusMassal(cache.obat, (o) => o.id, DB.hapusObat);
+      UI.toast(ringkasanHapus(berhasil, gagal.length), gagal.length ? 'warn' : 'ok', 6000);
+      muat();
     });
 
     await muat();
@@ -123,11 +188,23 @@ const Master = (() => {
             ${o.formularium ? 'checked' : ''}><span class="text-xs">Fornas</span></label></td>
           <td class="check-cell"><label class="check"><input type="checkbox" data-aktif-obat="${i}"
             ${o.aktif ? 'checked' : ''}><span class="text-xs">Aktif</span></label></td>
-          <td><button class="btn btn-secondary btn-sm" data-ubah-obat="${i}">Ubah</button></td>
+          <td class="text-right"><button class="btn btn-secondary btn-sm" data-ubah-obat="${i}">Ubah</button>
+            <button class="btn btn-ghost btn-sm" data-hapus-obat="${i}">Hapus</button></td>
         </tr>`).join('')}</tbody></table></div>`;
 
     t.querySelectorAll('[data-ubah-obat]').forEach(b => b.addEventListener('click', async () => {
       if (await modalObat(data[+b.dataset.ubahObat])) gambarTab(document.getElementById('isiMaster'));
+    }));
+    t.querySelectorAll('[data-hapus-obat]').forEach(b => b.addEventListener('click', async () => {
+      const o = data[+b.dataset.hapusObat];
+      if (!await UI.konfirmasi(`Hapus obat "${o.nama}"?`,
+          'Baris ini dihapus permanen. Kalau masih pernah dipakai di resep atau stok apotek, penghapusan akan ditolak — nonaktifkan saja lewat kotak centang Aktif.',
+          'Hapus', true)) return;
+      try {
+        await DB.hapusObat(o.id);
+        UI.toast('Obat dihapus.', 'ok');
+        gambarTab(document.getElementById('isiMaster'));
+      } catch (e) { UI.toast(pesanGagalHapus(e), 'err', 6000); }
     }));
     t.querySelectorAll('[data-aktif-obat]').forEach(c => c.addEventListener('change', async () => {
       const o = data[+c.dataset.aktifObat];
@@ -395,6 +472,7 @@ const Master = (() => {
           </div>
           <label class="check"><input type="checkbox" id="hanyaFav">
             <span class="nowrap">Hanya yang sering dipakai</span></label>
+          <button class="btn btn-secondary btn-sm" id="btnHapusSemuaIcd">${UI.ikon('hapus',15)} Hapus semua</button>
           <button class="btn btn-primary btn-sm" id="btnIcdBaru">${UI.ikon('plus',15)} Tambah diagnosa</button>
         </div>
         <div class="card-body tight" id="tabelIcd">${UI.memuat(4)}</div>
@@ -411,6 +489,13 @@ const Master = (() => {
     w.querySelector('#hanyaFav').addEventListener('change', muat);
     w.querySelector('#btnIcdBaru').addEventListener('click', async () => {
       if (await modalIcd10()) muat();
+    });
+    w.querySelector('#btnHapusSemuaIcd').addEventListener('click', async () => {
+      if (!cache.icd10.length) { UI.toast('Tidak ada diagnosa untuk dihapus.', 'warn'); return; }
+      if (!await modalHapusSemua('diagnosa ICD-10 yang sedang tampil', cache.icd10.length)) return;
+      const { berhasil, gagal } = await hapusMassal(cache.icd10, (d) => d.kode, DB.hapusIcd10);
+      UI.toast(ringkasanHapus(berhasil, gagal.length), gagal.length ? 'warn' : 'ok', 6000);
+      muat();
     });
     await muat();
   }
@@ -431,7 +516,8 @@ const Master = (() => {
             ${d.sering_dipakai ? 'checked' : ''}><span class="text-xs">Tombol cepat</span></label></td>
           <td class="check-cell"><label class="check"><input type="checkbox" data-aktif-icd="${i}"
             ${d.aktif ? 'checked' : ''}><span class="text-xs">Aktif</span></label></td>
-          <td><button class="btn btn-secondary btn-sm" data-ubah-icd="${i}">Ubah</button></td>
+          <td class="text-right"><button class="btn btn-secondary btn-sm" data-ubah-icd="${i}">Ubah</button>
+            <button class="btn btn-ghost btn-sm" data-hapus-icd="${i}">Hapus</button></td>
         </tr>`).join('')}</tbody></table></div>`;
 
     t.querySelectorAll('[data-fav]').forEach(c => c.addEventListener('change', async () => {
@@ -446,6 +532,17 @@ const Master = (() => {
     }));
     t.querySelectorAll('[data-ubah-icd]').forEach(b => b.addEventListener('click', async () => {
       if (await modalIcd10(data[+b.dataset.ubahIcd])) gambarTab(document.getElementById('isiMaster'));
+    }));
+    t.querySelectorAll('[data-hapus-icd]').forEach(b => b.addEventListener('click', async () => {
+      const d = data[+b.dataset.hapusIcd];
+      if (!await UI.konfirmasi(`Hapus diagnosa ${d.kode}?`,
+          'Baris ini dihapus permanen. Kalau masih dipakai sebagai diagnosa pada suatu kunjungan, penghapusan akan ditolak — nonaktifkan saja lewat kotak centang Aktif.',
+          'Hapus', true)) return;
+      try {
+        await DB.hapusIcd10(d.kode);
+        UI.toast('Diagnosa dihapus.', 'ok');
+        gambarTab(document.getElementById('isiMaster'));
+      } catch (e) { UI.toast(pesanGagalHapus(e), 'err', 6000); }
     }));
   }
 
@@ -509,6 +606,7 @@ const Master = (() => {
             <option value="UMUM">Umum</option>
             <option value="PENUNJANG">Penunjang</option>
           </select>
+          <button class="btn btn-secondary btn-sm" id="btnHapusSemuaT">${UI.ikon('hapus',15)} Hapus semua</button>
           <button class="btn btn-primary btn-sm" id="btnTBaru">${UI.ikon('plus',15)} Tambah tindakan</button>
         </div>
         <div class="card-body tight" id="tabelT">${UI.memuat(4)}</div>
@@ -525,6 +623,13 @@ const Master = (() => {
     w.querySelector('#filterKategori').addEventListener('change', muat);
     w.querySelector('#btnTBaru').addEventListener('click', async () => {
       if (await modalIcd9()) muat();
+    });
+    w.querySelector('#btnHapusSemuaT').addEventListener('click', async () => {
+      if (!cache.icd9.length) { UI.toast('Tidak ada tindakan untuk dihapus.', 'warn'); return; }
+      if (!await modalHapusSemua('tindakan ICD-9-CM yang sedang tampil', cache.icd9.length)) return;
+      const { berhasil, gagal } = await hapusMassal(cache.icd9, (d) => d.kode, DB.hapusIcd9);
+      UI.toast(ringkasanHapus(berhasil, gagal.length), gagal.length ? 'warn' : 'ok', 6000);
+      muat();
     });
     await muat();
   }
@@ -548,7 +653,8 @@ const Master = (() => {
             ${d.sering_dipakai ? 'checked' : ''}><span class="text-xs">Sering</span></label></td>
           <td class="check-cell"><label class="check"><input type="checkbox" data-aktift="${i}"
             ${d.aktif ? 'checked' : ''}><span class="text-xs">Aktif</span></label></td>
-          <td><button class="btn btn-secondary btn-sm" data-ubah-t="${i}">Ubah</button></td>
+          <td class="text-right"><button class="btn btn-secondary btn-sm" data-ubah-t="${i}">Ubah</button>
+            <button class="btn btn-ghost btn-sm" data-hapus-t="${i}">Hapus</button></td>
         </tr>`).join('')}</tbody></table></div>`;
 
     const ubah = async (d, patch, kotak) => {
@@ -563,6 +669,17 @@ const Master = (() => {
       ubah(data[+c.dataset.aktift], { aktif: c.checked }, c)));
     t.querySelectorAll('[data-ubah-t]').forEach(b => b.addEventListener('click', async () => {
       if (await modalIcd9(data[+b.dataset.ubahT])) gambarTab(document.getElementById('isiMaster'));
+    }));
+    t.querySelectorAll('[data-hapus-t]').forEach(b => b.addEventListener('click', async () => {
+      const d = data[+b.dataset.hapusT];
+      if (!await UI.konfirmasi(`Hapus tindakan ${d.kode}?`,
+          'Baris ini dihapus permanen. Kalau masih dipakai sebagai tindakan pada suatu kunjungan atau tarif kasir, penghapusan akan ditolak — nonaktifkan saja lewat kotak centang Aktif.',
+          'Hapus', true)) return;
+      try {
+        await DB.hapusIcd9(d.kode);
+        UI.toast('Tindakan dihapus.', 'ok');
+        gambarTab(document.getElementById('isiMaster'));
+      } catch (e) { UI.toast(pesanGagalHapus(e), 'err', 6000); }
     }));
   }
 
@@ -643,6 +760,7 @@ const Master = (() => {
         <div class="card-head">
           <div class="flex-1"><h2>Pemeriksaan laboratorium</h2>
             <div class="sub">Daftar pemeriksaan, satuannya, dan nilai rujukannya</div></div>
+          <button class="btn btn-secondary btn-sm" id="btnHapusSemuaLab">${UI.ikon('hapus',15)} Hapus semua</button>
           <button class="btn btn-primary btn-sm" id="btnLabBaru">${UI.ikon('plus',15)} Tambah</button>
         </div>
         <div class="card-body">
@@ -653,26 +771,41 @@ const Master = (() => {
       </div>`;
 
     cache.lab = await DB.refLab(false);
-    const gambar = (q = '') => {
-      const k = (q || '').toLowerCase();
-      gambarTabelLab(w.querySelector('#tabelLab'), cache.lab.filter(m =>
-        !k || m.nama.toLowerCase().includes(k) || m.kode.toLowerCase().includes(k)));
+    const labTerfilter = () => {
+      const k = (w.querySelector('#cariLab').value || '').toLowerCase();
+      return cache.lab.filter(m => !k || m.nama.toLowerCase().includes(k) || m.kode.toLowerCase().includes(k));
     };
-    w.querySelector('#cariLab').addEventListener('input',
-      UI.tunda((e) => gambar(e.target.value), 200));
+    const gambar = () => gambarTabelLab(w.querySelector('#tabelLab'), labTerfilter());
+    w.querySelector('#cariLab').addEventListener('input', UI.tunda(gambar, 200));
     w.querySelector('#btnLabBaru').addEventListener('click', async () => {
       if (await modalLab(null)) {
         cache.lab = await DB.refLab(false);
-        gambar(w.querySelector('#cariLab').value);
+        gambar();
       }
+    });
+    w.querySelector('#btnHapusSemuaLab').addEventListener('click', async () => {
+      const daftar = labTerfilter();
+      if (!daftar.length) { UI.toast('Tidak ada pemeriksaan untuk dihapus.', 'warn'); return; }
+      if (!await modalHapusSemua('pemeriksaan lab yang sedang tampil', daftar.length)) return;
+      const { berhasil, gagal } = await hapusMassal(daftar, (m) => m.id, DB.hapusLab);
+      UI.toast(ringkasanHapus(berhasil, gagal.length), gagal.length ? 'warn' : 'ok', 6000);
+      cache.lab = await DB.refLab(false);
+      gambar();
     });
     w.querySelector('#tabelLab').addEventListener('click', async (e) => {
       const b = e.target.closest('[data-lab]'); if (!b) return;
       const m = cache.lab.find(x => x.id === b.dataset.lab);
-      if (b.dataset.aksi === 'rujukan') await modalRujukan(m);
+      if (b.dataset.aksi === 'rujukan') { await modalRujukan(m); }
+      else if (b.dataset.aksi === 'hapus') {
+        if (!await UI.konfirmasi(`Hapus pemeriksaan "${m.nama}"?`,
+            'Baris ini beserta nilai rujukannya dihapus permanen. Kalau pemeriksaan ini sudah pernah punya hasil pasien, penghapusan akan ditolak — nonaktifkan saja lewat kotak centang Aktif.',
+            'Hapus', true)) return;
+        try { await DB.hapusLab(m.id); UI.toast('Pemeriksaan dihapus.', 'ok'); }
+        catch (e2) { UI.toast(pesanGagalHapus(e2), 'err', 6000); return; }
+      }
       else if (!await modalLab(m)) return;
       cache.lab = await DB.refLab(false);
-      gambar(w.querySelector('#cariLab').value);
+      gambar();
     });
     gambar();
   }
@@ -699,6 +832,7 @@ const Master = (() => {
         <td class="text-right">
           <button class="btn btn-ghost btn-sm" data-lab="${m.id}" data-aksi="rujukan">Nilai rujukan</button>
           <button class="btn btn-ghost btn-sm" data-lab="${m.id}" data-aksi="ubah">Ubah</button>
+          <button class="btn btn-ghost btn-sm" data-lab="${m.id}" data-aksi="hapus">Hapus</button>
         </td></tr>`).join('')}</tbody></table></div>`;
   }
 
