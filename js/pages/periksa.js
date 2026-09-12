@@ -31,6 +31,8 @@ const Periksa = (() => {
   let resepSudahDiserahkan = false; // resep pernah diserahkan apoteker → daftar obat & iter terkunci
   let daftarTindakan = [];    // [{kode, nama, fdi, jumlah, catatan}]
   let signaCepat = [];
+  let comboObat = null;        // handle combo pencarian obat (untuk fokus balik otomatis)
+  let fokusResepTarget = null; // { tipe: 'jumlah'|'signa'|'cari', idx } — ke mana fokus pindah pada gambarResep() berikutnya
   let icdFavorit = [];
   let simpanOtomatis = null;
 
@@ -571,7 +573,9 @@ const Periksa = (() => {
           ${!terkunci && resepSudahDiserahkan ? `<div class="hint mb-12">Resep ini sudah pernah diserahkan
             apoteker. Daftar obat & jatah iter tidak bisa diubah lagi dari sini — buat resep susulan
             untuk tambahan obat baru.</div>` : ''}
-          ${terkunci ? '' : `<div id="cariObat" class="mb-12"></div>`}
+          ${terkunci ? '' : `<div id="cariObat" class="mb-8"></div>
+            <div class="text-xs text-muted mb-12">Tips: setelah memilih obat, tekan <b>Enter</b> di kolom
+              Jumlah lalu Aturan pakai untuk lompat cepat ke obat berikutnya tanpa mouse.</div>`}
           <div id="tabelResep"></div>
 
           <div class="form-row c2 mt-16">
@@ -1146,7 +1150,7 @@ const Periksa = (() => {
    *  RESEP
    * =================================================================== */
   function pasangPencarianObat() {
-    Komponen.comboCari({
+    comboObat = Komponen.comboCari({
       wadah: document.getElementById('cariObat'),
       placeholder: 'Cari obat… (contoh: paracetamol, amox)',
       cariFn: (kata) => DB.cariObat(kata),
@@ -1154,6 +1158,24 @@ const Periksa = (() => {
         <span>${UI.esc([o.bentuk_sediaan, o.golongan].filter(Boolean).join(' · '))}</span>`,
       onPilih: (o) => tambahObat(o)
     });
+  }
+
+  /* Pindahkan fokus sesuai fokusResepTarget setelah tabel resep digambar
+     ulang. Dipanggil di akhir gambarResep() — dipisah dari innerHTML
+     supaya elemen yang dituju sudah ada di DOM. */
+  function terapkanFokusResep() {
+    if (!fokusResepTarget) return;
+    const target = fokusResepTarget; fokusResepTarget = null;
+    const w = document.getElementById('tabelResep');
+    if (target.tipe === 'jumlah') {
+      const el = w.querySelector(`[data-jml="${target.idx}"]`);
+      if (el) { el.focus(); el.select(); }
+    } else if (target.tipe === 'signa') {
+      const el = w.querySelector(`[data-signa="${target.idx}"]`);
+      if (el) { el.focus(); el.select(); }
+    } else if (target.tipe === 'cari' && comboObat) {
+      comboObat.fokus();
+    }
   }
 
   function tambahObat(o) {
@@ -1167,6 +1189,7 @@ const Periksa = (() => {
     };
     lengkapiSigna(r);
     daftarResep.push(r);
+    fokusResepTarget = { tipe: 'jumlah', idx: daftarResep.length - 1 };
     gambarResep(); perbaruiRingkasKirim();
   }
 
@@ -1188,6 +1211,7 @@ const Periksa = (() => {
     if (!daftarResep.length) {
       w.innerHTML = `<div class="banner info mb-0"><div>Belum ada obat diresepkan.
         ${terkunci ? '' : 'Ketik nama obat di kotak pencarian di atas.'}</div></div>`;
+      terapkanFokusResep();
       return;
     }
     const opsiSigna = signaCepat.map(s =>
@@ -1217,20 +1241,48 @@ const Periksa = (() => {
         </tr>`).join('')}</tbody></table></div>
       <datalist id="signaOpsi">${opsiSigna}</datalist>`;
 
+    terapkanFokusResep();
     if (terkunci) return;
     w.querySelectorAll('[data-hapus-obat]').forEach(b => b.addEventListener('click', () => {
-      daftarResep.splice(+b.dataset.hapusObat, 1); gambarResep(); perbaruiRingkasKirim();
-    }));
-    w.querySelectorAll('[data-jml]').forEach(inp => inp.addEventListener('change', () => {
-      daftarResep[+inp.dataset.jml].jumlah = Math.max(1, Number(inp.value) || 1);
-    }));
-    w.querySelectorAll('[data-signa]').forEach(inp => inp.addEventListener('change', () => {
-      const r = daftarResep[+inp.dataset.signa];
-      r.signa = inp.value;
-      r.frekuensi = null; r.dosis = null;   // dihitung ulang dari kalimat baru
-      lengkapiSigna(r);
+      daftarResep.splice(+b.dataset.hapusObat, 1);
+      fokusResepTarget = { tipe: 'cari' };
       gambarResep(); perbaruiRingkasKirim();
     }));
+    w.querySelectorAll('[data-jml]').forEach(inp => {
+      inp.addEventListener('change', () => {
+        daftarResep[+inp.dataset.jml].jumlah = Math.max(1, Number(inp.value) || 1);
+      });
+      // Enter di kolom Jumlah → commit angka, lompat ke Aturan pakai baris yang sama
+      inp.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        const i = +inp.dataset.jml;
+        daftarResep[i].jumlah = Math.max(1, Number(inp.value) || 1);
+        fokusResepTarget = { tipe: 'signa', idx: i };
+        gambarResep(); perbaruiRingkasKirim();
+      });
+    });
+    w.querySelectorAll('[data-signa]').forEach(inp => {
+      inp.addEventListener('change', () => {
+        const r = daftarResep[+inp.dataset.signa];
+        r.signa = inp.value;
+        r.frekuensi = null; r.dosis = null;   // dihitung ulang dari kalimat baru
+        lengkapiSigna(r);
+        gambarResep(); perbaruiRingkasKirim();
+      });
+      // Enter di kolom Aturan pakai → commit teks, lompat balik ke kotak cari obat
+      // supaya obat berikutnya bisa langsung diketik tanpa menyentuh mouse.
+      inp.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        const r = daftarResep[+inp.dataset.signa];
+        r.signa = inp.value;
+        r.frekuensi = null; r.dosis = null;
+        lengkapiSigna(r);
+        fokusResepTarget = { tipe: 'cari' };
+        gambarResep(); perbaruiRingkasKirim();
+      });
+    });
   }
 
   /* =================================================================== *
