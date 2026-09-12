@@ -905,6 +905,13 @@ const DB = (() => {
     return a;
   }
 
+  /* Kembaran DB.langgananAntrean() di js/db.js. Demo tidak punya Supabase
+     Realtime sungguhan, jadi cukup fungsi tanpa-operasi (unsubscribe yang
+     tidak melakukan apa-apa) — antrian.js tetap memanggilnya lewat try/
+     catch, tapi ini mencegah "di demo ada perilaku beda, di aplikasi
+     tidak" kalau nanti ada yang mengandalkan pemanggilan berhasil. */
+  function langgananAntrean() { return () => {}; }
+
   async function antreanPanggilanHariIni(batas = 20) {
     await tunggu(40);
     return PANGGILAN.slice(0, batas).map(p => ({
@@ -3336,7 +3343,7 @@ const DB = (() => {
            suratBatalkan, suratCatatCetak,
            antreanHariIni, antreanKuota, antreanAmbilLoket, antreanPanggil,
            antreanCheckin, antreanMulaiLayan, antreanLewat, antreanBatal, antreanUbah,
-           antreanPanggilanHariIni,
+           antreanPanggilanHariIni, langgananAntrean,
            poliJadwal, simpanJadwal, hapusJadwal, poliLibur, simpanLibur, hapusLibur,
            antreanPengaturan, simpanAntreanPengaturan, antreanTokenBaru, antreanLayar,
            antrolAkun, antrolAkunSimpan, antrolAkunHapus, antrolLog,

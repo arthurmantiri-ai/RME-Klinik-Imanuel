@@ -1580,6 +1580,25 @@ const DB = (() => {
     if (error) throw error; return data;
   }
 
+  /* Realtime: memberi tahu pemanggil setiap kali ada baris `antrean` yang
+     berubah (nomor baru dari loket/Mobile JKN, dipanggil, check-in,
+     selesai, dst). Sengaja HANYA memberi sinyal "ada perubahan" — bukan
+     mengirim baris yang berubah — supaya pemanggil selalu memuat ulang
+     lewat `v_antrean_hari_ini` (satu sumber kebenaran, sudah lengkap
+     dengan join poli/dokter) alih-alih menyusun ulang baris dari payload
+     realtime yang mentah. Tabel `antrean` harus didaftarkan ke publication
+     `supabase_realtime` di Supabase dulu (lihat catatan migrasi) — kalau
+     belum, fungsi ini tetap terpasang tanpa galat, hanya tidak pernah
+     terpanggil, jadi pemanggil WAJIB tetap punya jalur penyegaran berkala
+     sebagai jaring pengaman (baterai habis, wifi putus sebentar, dsb).
+     Mengembalikan fungsi untuk berhenti berlangganan. */
+  function langgananAntrean(callback) {
+    const ch = sb.channel('antrean-perubahan')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'antrean' }, callback)
+      .subscribe();
+    return () => { sb.removeChannel(ch); };
+  }
+
   /* ---- Jadwal & kuota ---- */
   async function poliJadwal() {
     const { data, error } = await sb.from('poli_jadwal')
@@ -1975,7 +1994,7 @@ const DB = (() => {
     suratBatalkan, suratCatatCetak,
     antreanHariIni, antreanKuota, antreanAmbilLoket, antreanPanggil,
     antreanCheckin, antreanMulaiLayan, antreanLewat, antreanBatal, antreanUbah,
-    antreanPanggilanHariIni,
+    antreanPanggilanHariIni, langgananAntrean,
     poliJadwal, simpanJadwal, hapusJadwal, poliLibur, simpanLibur, hapusLibur,
     antreanPengaturan, simpanAntreanPengaturan, antreanTokenBaru, antreanLayar,
     antrolAkun, antrolAkunSimpan, antrolAkunHapus, antrolLog,

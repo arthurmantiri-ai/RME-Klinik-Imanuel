@@ -11,12 +11,21 @@
      POLI   pasien yang sudah punya kunjungan dan menunggu diperiksa.
             Dokter memanggil dari sini, atau dari halaman pemeriksaan.
 
-   Halaman ini menyegarkan dirinya sendiri tiap 12 detik. Bukan realtime:
-   loket dan poli sering dibuka di perangkat berbeda dengan jaringan yang
-   tidak selalu stabil, dan tabel yang berhenti diperbarui karena satu
-   soket putus jauh lebih membingungkan daripada tabel yang tertinggal
-   sepuluh detik. Layar tunggu (display.html) menyegarkan lebih cepat,
-   karena di sanalah kecepatan benar-benar terasa oleh pasien.
+   Halaman ini berlangganan Supabase Realtime (DB.langgananAntrean) —
+   begitu ADA baris `antrean` yang berubah di mana pun (loket lain,
+   Mobile JKN, dokter memanggil), papan ini menyegarkan diri dalam
+   hitungan detik, tanpa perlu ditekan "Segarkan" manual (11 Sep 2026,
+   permintaan Arthur).
+
+   Penyegaran berkala 12 detik TETAP dipertahankan sebagai jaring
+   pengaman, bukan dihapus: loket dan poli sering dibuka di perangkat
+   berbeda dengan jaringan yang tidak selalu stabil, dan realtime bisa
+   diam-diam terputus (soket mati, tab lama tidak dibuka ulang) tanpa
+   ada tanda apa pun di layar. Realtime membuat papan terasa instan;
+   polling memastikan papan tidak pernah tertinggal LEBIH dari 12 detik
+   walau realtime gagal. Layar tunggu (display.html) menyegarkan lebih
+   cepat lagi lewat jalurnya sendiri, karena di sanalah kecepatan
+   benar-benar terasa oleh pasien.
    ===================================================================== */
 const Antrian = (() => {
 
@@ -24,6 +33,10 @@ const Antrian = (() => {
   let tab = 'LOKET';
   let jamPerbarui = null;
   let sedangMuat = false;
+  // 11 Sep 2026: langganan Supabase Realtime + debounce-nya — lihat
+  // mulaiPenyegaran()/hentikanPenyegaran() dan catatan di kepala berkas.
+  let lepasLangganan = null;
+  let jamDebounce = null;
   // 10 Sep 2026: dokter (umum/gigi) hanya melihat antrean POLI-nya sendiri
   // secara bawaan, supaya tidak salah pencet "Panggil" untuk poli lain —
   // lihat jenisSayaAtauNull()/sesuaiPoliSaya() di bawah. Peran lain
@@ -189,9 +202,27 @@ const Antrian = (() => {
       if (document.hidden) return;             // tab di latar belakang: diam
       segarkan(true);
     }, 12000);
+
+    // Realtime: sinyal datang mentah (tanpa tahu isi barisnya), jadi
+    // cuma dipakai untuk memicu segarkan() lebih awal dari 12 detik.
+    // Debounce 400ms karena satu aksi (mis. check-in via RPC) bisa
+    // memicu beberapa perubahan baris `antrean` sekaligus.
+    try {
+      lepasLangganan = DB.langgananAntrean(() => {
+        if (!document.getElementById('isiAntrean')) { hentikanPenyegaran(); return; }
+        if (jamDebounce) clearTimeout(jamDebounce);
+        jamDebounce = setTimeout(() => segarkan(true), 400);
+      });
+    } catch (e) {
+      // Realtime gagal terpasang (mis. tabel belum masuk publication di
+      // Supabase) — polling 12 detik di atas tetap jalan sebagai jaring
+      // pengaman, jadi diamkan saja tanpa mengganggu pengguna.
+    }
   }
   function hentikanPenyegaran() {
     if (jamPerbarui) { clearInterval(jamPerbarui); jamPerbarui = null; }
+    if (jamDebounce) { clearTimeout(jamDebounce); jamDebounce = null; }
+    if (lepasLangganan) { lepasLangganan(); lepasLangganan = null; }
   }
 
   async function segarkan(diam = false) {
