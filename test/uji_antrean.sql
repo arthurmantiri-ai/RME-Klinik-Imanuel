@@ -300,23 +300,26 @@ begin
 end $$;
 
 
-\echo '--- 15. Kuota online habis menolak, kuota loket tidak ikut habis'
+\echo '--- 15. Kuota online TIDAK LAGI menolak pemesanan (12 Sep 2026, permintaan Arthur)'
 do $$
-declare r jsonb; k record; v_terpakai int;
+declare r jsonb; k record;
 begin
+  -- Sengaja diset serendah mungkin (1, dan sudah terpakai dari uji
+  -- sebelumnya di berkas ini) untuk membuktikan angka ini benar-benar
+  -- tidak lagi ditegakkan di public.antrol_ambil().
   update poli_jadwal set kuota_online = 1, kuota = 50
    where poli_id = 'ccccccc1-0000-0000-0000-0000000000A2';
 
   r := public.antrol_ambil('0006666666666','7371060606069999','902',
                            to_char(public.tgl_klinik(),'YYYY-MM-DD'));
-  assert r#>>'{metadata,code}' = '201', 'kuota online 1 sudah terpakai sebelumnya';
-  assert r#>>'{metadata,message}' ilike '%kuota%penuh%', r#>>'{metadata,message}';
+  assert r#>>'{metadata,code}' in ('200','202'),
+    'pemesanan online harus tetap diterima walau kuota_online sudah "terlampaui": ' || r::text;
 
-  -- Loket tetap boleh mendaftarkan pasien yang berdiri di depannya.
+  -- Loket tetap boleh mendaftarkan pasien yang berdiri di depannya,
+  -- seperti sebelumnya.
   insert into antrean (poli_id, sumber) values ('ccccccc1-0000-0000-0000-0000000000A2','LOKET');
 
   select * into k from v_antrean_kuota where poli_id = 'ccccccc1-0000-0000-0000-0000000000A2';
-  assert k.sisa_kuota_online = 0, 'sisa kuota online salah: ' || k.sisa_kuota_online;
   assert k.sisa_kuota > 0, 'kuota total tidak boleh ikut habis';
 
   update poli_jadwal set kuota_online = 25

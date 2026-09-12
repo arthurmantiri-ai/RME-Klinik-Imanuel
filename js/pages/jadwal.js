@@ -6,7 +6,8 @@
    belum lengkap — bukan sebagai formulir kosong yang tampak beres.
 
    Urutan tabnya sengaja mengikuti urutan pekerjaannya:
-     Jadwal   → kapan poli buka dan berapa kuotanya
+     Jadwal   → kapan poli buka (12 Sep 2026: kuota DIHAPUS — klinik
+                tidak membatasi jumlah pasien, lihat sql/28_antrol_tanpa_kuota.sql)
      Libur    → hari yang harus ditutup
      Layar    → TV ruang tunggu (bisa dipakai hari ini juga)
      Antrol   → yang baru berguna setelah BPJS memberi kredensial
@@ -25,7 +26,7 @@ const Jadwal = (() => {
 
     el.innerHTML = `
       <div class="mb-16"><h1>Antrean &amp; Layar Tunggu</h1>
-        <p class="text-muted mb-0">Jadwal poli, kuota, layar ruang tunggu,
+        <p class="text-muted mb-0">Jadwal poli, layar ruang tunggu,
           dan web service antrean online Mobile JKN.</p></div>
 
       <div id="kesiapan" class="mb-16"></div>
@@ -120,10 +121,8 @@ const Jadwal = (() => {
 
     w.innerHTML = `
       <div class="banner info mb-12"><div>
-        Kuota <b>total</b> membatasi seluruh pasien hari itu; kuota <b>online</b>
-        membatasi berapa di antaranya boleh dipesan lewat Mobile JKN.
-        Sisanya tetap tersedia untuk pasien yang datang langsung — itulah gunanya
-        dua angka, bukan satu.
+        Tidak ada batas jumlah pasien di sini — jam buka/tutup dan jam tutup
+        pendaftaran online saja yang mengatur kapan poli menerima antrean.
       </div></div>
 
       ${aktif.map(p => kartuPoli(p)).join('')}`;
@@ -157,14 +156,14 @@ const Jadwal = (() => {
       <div class="card-body tight"><div class="table-wrap"><table class="tbl">
         <thead><tr>
           <th style="width:110px">Hari</th><th>Sesi</th><th>Jam buka</th>
-          <th>Tutup online</th><th>Kuota</th><th>Kuota online</th><th style="width:1%"></th>
+          <th>Tutup online</th><th style="width:1%"></th>
         </tr></thead>
         <tbody>${AntreanCore.HARI.map((nama, hari) => {
           const sesi = punya.filter(j => j.hari === hari).sort((a,b) => a.sesi - b.sesi);
           if (!sesi.length) {
             return `<tr>
               <td><b>${nama}</b></td>
-              <td colspan="5" class="text-muted">Tutup — tidak menerima antrean</td>
+              <td colspan="3" class="text-muted">Tutup — tidak menerima antrean</td>
               <td class="nowrap">
                 <button class="btn btn-secondary btn-sm" data-aksi="tambah-sesi"
                         data-poli="${p.id}" data-hari="${hari}">Buka</button></td>
@@ -175,12 +174,10 @@ const Jadwal = (() => {
             <td>Sesi ${j.sesi}</td>
             <td class="mono">${AntreanCore.jamPendek(j.jam_buka)}–${AntreanCore.jamPendek(j.jam_tutup)}</td>
             <td class="mono">${AntreanCore.jamPendek(j.jam_tutup_online || j.jam_tutup)}</td>
-            <td>${j.kuota}</td>
-            <td>${j.kuota_online}</td>
             <td class="nowrap">
               <button class="btn btn-secondary btn-sm" data-aksi="ubah-sesi" data-id="${j.id}">Ubah</button>
               ${i === 0 ? `<button class="btn btn-secondary btn-sm" data-aksi="salin-hari"
-                             data-poli="${p.id}" data-hari="${hari}" title="Salin jam & kuota hari ini ke Senin–Sabtu">
+                             data-poli="${p.id}" data-hari="${hari}" title="Salin jam ke Senin–Sabtu">
                              Salin</button>` : ''}
               <button class="btn-icon" data-aksi="hapus-sesi" data-id="${j.id}" title="Hapus sesi">
                 ${UI.ikon('x',15)}</button>
@@ -189,8 +186,8 @@ const Jadwal = (() => {
         }).join('')}</tbody>
       </table></div></div>
       <div class="card-foot">
-        <span class="hint mb-0">Sesi kedua dipakai untuk praktek sore.
-          Kuota dijumlahkan dari seluruh sesi pada hari itu.</span>
+        <span class="hint mb-0">Sesi kedua dipakai untuk praktek sore. Tidak ada batas
+          jumlah pasien — jam buka dan jam tutup pendaftaran online saja yang mengatur.</span>
       </div>
     </div>`;
   }
@@ -235,13 +232,6 @@ const Jadwal = (() => {
             Nomor yang terbit pukul 11.55 untuk poli yang tutup 12.00 hampir pasti
             tidak terlayani, dan nomor hangus lebih merepotkan daripada nomor yang ditolak.</div>
         </div>
-        <div class="form-row">
-          <div class="field"><label>Kuota total</label>
-            <input type="number" name="kuota" min="0" class="w-full" value="${ada?.kuota ?? 40}"></div>
-          <div class="field"><label>Kuota online (Mobile JKN)</label>
-            <input type="number" name="kuota_online" min="0" class="w-full"
-                   value="${ada?.kuota_online ?? 20}"></div>
-        </div>
         <div id="galatSesi"></div>`,
       tombol: [
         { teks: 'Batal', nilai: null },
@@ -252,19 +242,17 @@ const Jadwal = (() => {
               g.innerHTML = `<div class="banner err"><div>Jam tutup harus lebih akhir daripada jam buka.</div></div>`;
               return false;
             }
-            if (Number(d.kuota_online) > Number(d.kuota)) {
-              /* Kuota online yang melebihi kuota total berarti pasien
-                 loket bisa tidak kebagian kursi sama sekali di hari sibuk. */
-              g.innerHTML = `<div class="banner err"><div>Kuota online tidak boleh melebihi kuota total —
-                pasien yang datang langsung tidak akan kebagian nomor.</div></div>`;
-              return false;
-            }
             try {
               return await DB.simpanJadwal({
                 poli_id: pId, hari: h, sesi: Number(d.sesi),
                 jam_buka: d.jam_buka, jam_tutup: d.jam_tutup,
                 jam_tutup_online: d.jam_tutup_online || null,
-                kuota: Number(d.kuota), kuota_online: Number(d.kuota_online),
+                // 12 Sep 2026: klinik tidak membatasi jumlah pasien —
+                // kolom ini tidak lagi ditegakkan di mana pun (lihat
+                // sql/28_antrol_tanpa_kuota.sql), tapi tetap NOT NULL di
+                // skema, jadi diisi angka besar tetap di sini alih-alih
+                // meminta staf mengisi nomor yang sudah tidak berarti.
+                kuota: 999999, kuota_online: 999999,
                 aktif: d.aktif === 'true'
               }, id);
             } catch (e) {
@@ -297,7 +285,7 @@ const Jadwal = (() => {
     if (!sumber.length) return;
 
     if (!await UI.konfirmasi('Salin jadwal',
-      `Jam dan kuota hari ${AntreanCore.HARI[h]} akan disalin ke Senin sampai Sabtu. ` +
+      `Jam hari ${AntreanCore.HARI[h]} akan disalin ke Senin sampai Sabtu. ` +
       `Jadwal yang sudah ada pada hari-hari itu akan ditimpa. Hari Minggu tidak diubah.`,
       'Salin')) return;
 
@@ -309,7 +297,7 @@ const Jadwal = (() => {
           poli_id: poliId, hari: hariTujuan, sesi: s.sesi,
           jam_buka: s.jam_buka, jam_tutup: s.jam_tutup,
           jam_tutup_online: s.jam_tutup_online,
-          kuota: s.kuota, kuota_online: s.kuota_online, aktif: s.aktif
+          kuota: 999999, kuota_online: 999999, aktif: s.aktif
         };
         await DB.simpanJadwal(rec, ada ? ada.id : null);
       }

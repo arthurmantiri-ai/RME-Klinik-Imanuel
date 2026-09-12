@@ -121,13 +121,13 @@ r = A.bolehDaftarOnline(JADWAL, '2026-09-04', '2026-09-05', '09:00');
 cek('tanggal mundur ditolak', !r.boleh && /mundur/.test(r.alasan), r.alasan);
 
 r = A.bolehDaftarOnline({ ...JADWAL, sisa_kuota_online: 0 }, '2026-09-06', '2026-09-05', '09:00');
-cek('kuota online habis ditolak', !r.boleh && /penuh/i.test(r.alasan), r.alasan);
+cek('kuota online TIDAK LAGI membatasi (12 Sep 2026, permintaan Arthur)', r.boleh === true, r.alasan);
 
 r = A.bolehDaftarOnline(null, '2026-09-06', '2026-09-05', '09:00');
 cek('poli tanpa jadwal ditolak', !r.boleh);
 
 r = A.bolehDaftarOnline(JADWAL, '2026-09-05', '2026-09-05', '09:00');
-cek('dalam jam dan berkuota diterima', r.boleh === true, r.alasan);
+cek('dalam jam diterima', r.boleh === true, r.alasan);
 
 /* ===================================================================
    5. Estimasi

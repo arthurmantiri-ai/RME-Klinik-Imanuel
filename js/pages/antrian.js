@@ -262,14 +262,18 @@ const Antrian = (() => {
       const dipanggil = semua.filter(a => a.poli_id === k.poli_id && a.status === 'DIPANGGIL')
                              .map(a => a.nomor).slice(-1)[0];
       const menunggu = semua.filter(a => a.poli_id === k.poli_id && A().masihAktif(a)).length;
-      const penuh = k.buka && k.sisa_kuota <= 0;
+      // 12 Sep 2026: badge "sisa N" / "Kuota penuh" DIHAPUS atas permintaan
+      // Arthur — klinik ini tidak pernah menerapkan batas kuota harian
+      // untuk pasien loket/walk-in maupun online, jadi angka itu cuma
+      // membingungkan (menyiratkan ada batas yang sebenarnya tidak
+      // berlaku). Baris "online X/Y" di footer juga ikut dihapus di
+      // langkah yang sama — kuota_online sendiri sudah tidak lagi
+      // ditegakkan di database (lihat sql/28_antrol_tanpa_kuota.sql),
+      // jadi menampilkannya di sini akan sama menyesatkannya.
       return `<div class="quota-card">
         <div class="quota-card-head">
           <b>${UI.esc(k.nama_poli)}</b>
-          ${k.buka
-            ? `<span class="badge ${penuh ? 'b-batal' : 'b-selesai'}">
-                 ${penuh ? 'Kuota penuh' : `sisa ${k.sisa_kuota}`}</span>`
-            : '<span class="badge b-batal">Tutup hari ini</span>'}
+          ${!k.buka ? '<span class="badge b-batal">Tutup hari ini</span>' : ''}
         </div>
         <div class="quota-figures">
           <div class="quota-figure">
@@ -283,8 +287,7 @@ const Antrian = (() => {
           </div>
         </div>
         <div class="quota-foot">
-          ${k.buka ? `Buka ${A().jamPendek(k.jam_buka)}–${A().jamPendek(k.jam_tutup)} ·
-                      online ${k.terpakai_online}/${k.kuota_online}`
+          ${k.buka ? `Buka ${A().jamPendek(k.jam_buka)}–${A().jamPendek(k.jam_tutup)}`
                    : 'Tidak ada jadwal atau sedang libur'}
         </div>
       </div>`;

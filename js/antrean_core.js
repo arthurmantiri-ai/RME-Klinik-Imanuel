@@ -99,6 +99,10 @@ const AntreanCore = (() => {
     return j >= jamPendek(jadwal.jam_buka) && j <= jamPendek(jadwal.jam_tutup);
   }
 
+  /* 12 Sep 2026: pemeriksaan kuota online DIHAPUS dari sini — cermin dari
+     penghapusan blok yang sama di public.antrol_ambil() (lihat
+     sql/28_antrol_tanpa_kuota.sql). Klinik tidak membatasi jumlah pasien;
+     fungsi ini sekarang hanya menolak berdasarkan jadwal/jam, bukan kuota. */
   function bolehDaftarOnline(jadwal, tanggal, hariIni, jamSekarang) {
     if (!jadwal || !jadwal.jam_buka) return { boleh: false, alasan: 'Poli tidak melayani hari itu' };
     if (tanggal < hariIni) return { boleh: false, alasan: 'Tanggal periksa tidak berlaku mundur' };
@@ -107,8 +111,6 @@ const AntreanCore = (() => {
       if (jamPendek(jamSekarang) > batas)
         return { boleh: false, alasan: `Pendaftaran online hari ini sudah ditutup pukul ${batas}` };
     }
-    if ((jadwal.sisa_kuota_online ?? 1) <= 0)
-      return { boleh: false, alasan: 'Kuota antrean online sudah penuh' };
     return { boleh: true, alasan: null };
   }
 
