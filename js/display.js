@@ -41,7 +41,17 @@
   let gagalBerturut = 0;
   let sudahPernahBerhasil = false;
 
-  const JEDA_MS = 3000;
+  /* 3 detik dipilih awalnya supaya bel panggil pasien tidak terasa telat.
+     Dinaikkan ke 5 detik (14 Sep 2026) setelah RAM instance Supabase
+     (paket Free, ~434 MB) diamati konsisten memakai swap di atas 70% —
+     layar ini menyala terus sepanjang hari dan sebelumnya menghasilkan
+     ~28.800 permintaan/hari sendirian. 5 detik masih terasa responsif
+     untuk papan antrean (bukan aplikasi real-time seperti chat), tapi
+     memangkas beban tetap ini sekitar 40%. Kalau nanti dirasa masih
+     kurang gesit, prioritaskan menambah langganan Realtime di sini
+     (pola sama seperti DB.langgananAntrean di js/db.js) sebelum menaikkan
+     jedanya lagi — itu memberi kecepatan tanpa menambah beban polling. */
+  const JEDA_MS = 5000;
 
   /* ------------------------------- Bunyi ------------------------------- */
 
