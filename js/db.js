@@ -762,6 +762,17 @@ const DB = (() => {
     const { error } = await sb.from('icd10').delete().eq('kode', kode);
     if (error) throw error;
   }
+  /* Impor massal. Baris dicocokkan dengan `kode` — di tabel icd10, kode ITU
+     SENDIRI adalah primary key (beda dari Obat yang punya kode_internal
+     terpisah) — jadi impor yang sama bisa dijalankan berulang untuk
+     memperbarui data atau menambah revisi baru tanpa menggandakannya. */
+  async function imporIcd10(baris) {
+    if (!baris.length) return { jumlah: 0 };
+    const { data, error } = await sb.from('icd10')
+      .upsert(baris, { onConflict: 'kode' }).select('kode');
+    if (error) throw error;
+    return { jumlah: data.length };
+  }
 
   /* --- ICD-9-CM --- */
   async function daftarIcd9(kata = '', kategori = null, batas = 200) {
@@ -1968,7 +1979,7 @@ const DB = (() => {
     alergiKode, setAlergiKode,
     pcarePratinjau, observasiSatuSehat, kesiapanKode, simpanPpk, simpanPemetaanKode,
     daftarObat, simpanObat, imporObat, hapusObat,
-    daftarIcd10, simpanIcd10, hapusIcd10, daftarIcd9, simpanIcd9, hapusIcd9,
+    daftarIcd10, simpanIcd10, hapusIcd10, imporIcd10, daftarIcd9, simpanIcd9, hapusIcd9,
     kesiapanPasien, kesiapanKunjungan, ringkasanKesiapan,
     ambilSemua,
     apotekBatch, apotekStok, apotekTransaksi, apotekMasuk, apotekKeluar,

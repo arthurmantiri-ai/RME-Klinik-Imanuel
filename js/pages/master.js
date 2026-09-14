@@ -472,6 +472,8 @@ const Master = (() => {
           </div>
           <label class="check"><input type="checkbox" id="hanyaFav">
             <span class="nowrap">Hanya yang sering dipakai</span></label>
+          <button class="btn btn-secondary btn-sm" id="btnImporIcd">${UI.ikon('unduh',15)} Impor CSV</button>
+          <button class="btn btn-secondary btn-sm" id="btnEksporIcd">Ekspor CSV</button>
           <button class="btn btn-secondary btn-sm" id="btnHapusSemuaIcd">${UI.ikon('hapus',15)} Hapus semua</button>
           <button class="btn btn-primary btn-sm" id="btnIcdBaru">${UI.ikon('plus',15)} Tambah diagnosa</button>
         </div>
@@ -487,6 +489,10 @@ const Master = (() => {
     };
     w.querySelector('#cariIcd').addEventListener('input', UI.tunda(muat, 250));
     w.querySelector('#hanyaFav').addEventListener('change', muat);
+    w.querySelector('#btnEksporIcd').addEventListener('click', () => eksporIcd10(cache.icd10));
+    w.querySelector('#btnImporIcd').addEventListener('click', async () => {
+      if (await modalImporIcd10()) muat();
+    });
     w.querySelector('#btnIcdBaru').addEventListener('click', async () => {
       if (await modalIcd10()) muat();
     });
@@ -582,6 +588,140 @@ const Master = (() => {
             catch (e) {
               g.innerHTML = `<div class="banner err">${UI.esc(
                 (e.message || '').includes('duplicate') ? 'Kode itu sudah ada.' : e.message)}</div>`;
+              return false;
+            }
+        }}
+      ]
+    });
+  }
+
+  /* --------------------------- CSV (ICD-10) ---------------------------
+     Sama polanya dengan CSV Obat di atas. Bedanya: di tabel icd10, `kode`
+     ITU SENDIRI adalah primary key (tidak ada kode_internal terpisah),
+     jadi kolom pencocokan dan kolom wajibnya adalah `kode`, bukan `nama`. */
+  const KOLOM_ICD10 = ['kode', 'nama_id', 'nama_en', 'kategori', 'sering_dipakai'];
+
+  function eksporIcd10(data) {
+    if (!data.length) { UI.toast('Tidak ada data untuk diekspor.', 'warn'); return; }
+    const bersih = (v) => {
+      const s = (v ?? '').toString().replace(/"/g, '""');
+      return /[",\n;]/.test(s) ? `"${s}"` : s;
+    };
+    const isi = [KOLOM_ICD10.join(';'),
+      ...data.map(d => KOLOM_ICD10.map(k => bersih(d[k])).join(';'))].join('\r\n');
+    const blob = new Blob(['﻿' + isi], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `master-icd10-${UI.hariIni()}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    UI.toast(`${data.length} diagnosa diekspor.`, 'ok');
+  }
+
+  function petakanBarisIcd10(baris) {
+    if (!baris.length) return { data: [], galat: ['Berkas kosong.'] };
+    const judul = baris[0].map(h => h.trim().toLowerCase().replace(/\s+/g, '_'));
+    const iKode = judul.indexOf('kode');
+    if (iKode === -1) return { data: [], galat: ['Kolom "kode" tidak ditemukan pada baris judul.'] };
+
+    const data = []; const galat = []; const terlihat = new Set();
+    baris.slice(1).forEach((b, n) => {
+      const rec = {};
+      judul.forEach((h, i) => {
+        if (!KOLOM_ICD10.includes(h)) return;
+        const v = (b[i] ?? '').trim();
+        if (v === '') return;
+        if (h === 'sering_dipakai') rec[h] = ['1', 'ya', 'true', 'y', 'v'].includes(v.toLowerCase());
+        else if (h === 'kode') rec[h] = v.toUpperCase();
+        else rec[h] = v;
+      });
+      if (!rec.kode) { galat.push(`Baris ${n + 2}: kode kosong, dilewati.`); return; }
+      if (!rec.nama_id) { galat.push(`Baris ${n + 2} (${rec.kode}): nama Indonesia kosong, dilewati.`); return; }
+      if (terlihat.has(rec.kode)) {
+        galat.push(`Baris ${n + 2}: kode ${rec.kode} muncul dua kali di berkas ini, baris pertama dipakai.`);
+        return;
+      }
+      terlihat.add(rec.kode);
+      rec.aktif = true;
+      data.push(rec);
+    });
+    return { data, galat };
+  }
+
+  async function modalImporIcd10() {
+    return await UI.modal({
+      judul: 'Impor daftar diagnosa ICD-10 dari CSV',
+      lebar: true,
+      isi: `
+        <p class="text-sm text-muted">Berkas CSV dengan baris judul. Kolom yang dikenali:</p>
+        <pre style="background:var(--ink-50);border:1px solid var(--ink-200);border-radius:6px;
+                    padding:9px 12px;font-size:11.5px;overflow-x:auto;margin:0 0 14px"
+        >${KOLOM_ICD10.join(';')}</pre>
+        <p class="text-sm text-muted">Kolom <b>kode</b> dan <b>nama_id</b> wajib diisi. Baris
+          dicocokkan dengan <b>kode</b> — kode ICD-10 itu sendiri — jadi impor bisa diulang
+          untuk memperbarui data atau menambah revisi baru tanpa menggandakan baris yang
+          sudah ada. Pemisah titik koma maupun koma sama-sama diterima.</p>
+        <div class="field mt-12">
+          <label>Pilih berkas CSV</label>
+          <input type="file" id="berkasCsvIcd" accept=".csv,text/csv">
+        </div>
+        <div id="pratinjauCsvIcd"></div>`,
+      siap: (badan) => {
+        badan._dataSiap = null;
+        const berkas = badan.querySelector('#berkasCsvIcd');
+        const pratinjau = badan.querySelector('#pratinjauCsvIcd');
+        berkas.addEventListener('change', () => {
+          const f = berkas.files && berkas.files[0];
+          if (!f) return;
+          if (f.size > 3 * 1024 * 1024) {
+            pratinjau.innerHTML = '<div class="banner err mt-12">Berkas terlalu besar. '
+              + 'Batasnya 3 MB — pecah menjadi beberapa berkas.</div>';
+            return;
+          }
+          const pembaca = new FileReader();
+          pembaca.onload = () => {
+            try {
+              const { data, galat } = petakanBarisIcd10(bacaCsv(String(pembaca.result)));
+              badan._dataSiap = data;
+              pratinjau.innerHTML = `
+                <div class="banner ${data.length ? 'ok' : 'err'} mt-12">
+                  <div><b>${data.length} baris siap diimpor.</b>
+                  ${galat.length ? `<br>${galat.length} catatan:<br>`
+                    + galat.slice(0, 5).map(g => UI.esc(g)).join('<br>')
+                    + (galat.length > 5 ? `<br>… dan ${galat.length - 5} lainnya` : '') : ''}</div>
+                </div>
+                ${data.length ? `<div class="table-wrap mt-12" style="max-height:230px;overflow-y:auto">
+                  <table class="tbl"><thead><tr><th>Kode</th><th>Nama Indonesia</th>
+                    <th>Kategori</th></tr></thead>
+                  <tbody>${data.slice(0, 10).map(d => `<tr>
+                    <td class="mono">${UI.esc(d.kode)}</td>
+                    <td>${UI.esc(d.nama_id)}</td>
+                    <td class="muted">${UI.esc(d.kategori || '—')}</td></tr>`).join('')}
+                  </tbody></table>
+                  ${data.length > 10 ? `<div class="text-xs text-muted" style="padding:8px 14px">
+                    Menampilkan 10 dari ${data.length} baris.</div>` : ''}
+                </div>` : ''}`;
+            } catch (e) {
+              badan._dataSiap = null;
+              pratinjau.innerHTML = `<div class="banner err mt-12">Berkas tidak bisa dibaca: ${UI.esc(e.message)}</div>`;
+            }
+          };
+          pembaca.readAsText(f, 'utf-8');
+        });
+      },
+      tombol: [
+        { teks: 'Batal', nilai: null },
+        { teks: 'Impor', kelas: 'btn-primary', aksi: async (b) => {
+            const simpan = b._dataSiap;
+            if (!simpan || !simpan.length) {
+              UI.toast('Pilih berkas CSV yang valid terlebih dahulu.', 'err'); return false;
+            }
+            try {
+              const hasil = await DB.imporIcd10(simpan);
+              UI.toast(`${hasil.jumlah} diagnosa berhasil diimpor.`, 'ok', 4000);
+              return hasil;
+            } catch (e) {
+              b.querySelector('#pratinjauCsvIcd').innerHTML =
+                `<div class="banner err mt-12">${UI.esc(e.message)}</div>`;
               return false;
             }
         }}
@@ -1024,5 +1164,5 @@ const Master = (() => {
     });
   }
 
-  return { render, bacaCsv, petakanBarisObat };
+  return { render, bacaCsv, petakanBarisObat, petakanBarisIcd10 };
 })();
