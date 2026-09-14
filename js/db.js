@@ -92,16 +92,22 @@ const DB = (() => {
               { onConflict: 'kode,peran' });
     if (error) throw error;
   }
+  /* Dicari lewat SATU kolom gabungan `cari_teks` (kode + nama_id + nama_en,
+     diisi otomatis oleh database — lihat sql/30) dan SATU indeks GIN,
+     bukan tiga kolom terpisah yang digabung dengan OR seperti sebelumnya.
+     Ambang 3 huruf (bukan 2) sengaja dinaikkan: pola 2 huruf cocok dengan
+     ribuan baris sekaligus di tabel sebesar ini, jadi hampir tidak
+     menyaring apa-apa tapi tetap memindai indeks — mengetik huruf ketiga
+     biasanya tidak terasa, dan hasilnya jauh lebih relevan. */
   async function cariIcd(kata, batas = 25) {
-    if (!kata || kata.length < 2) {
+    if (!kata || kata.length < 3) {
       const { data, error } = await sb.from('icd10').select('kode,nama_id,nama_en')
         .eq('sering_dipakai', true).eq('aktif', true).order('nama_id').limit(60);
       if (error) throw error; return data;
     }
-    const k = `%${kata}%`;
     const { data, error } = await sb.from('icd10').select('kode,nama_id,nama_en')
       .eq('aktif', true)
-      .or(`kode.ilike.${k},nama_id.ilike.${k},nama_en.ilike.${k}`)
+      .ilike('cari_teks', `%${kata}%`)
       .order('sering_dipakai', { ascending: false }).limit(batas);
     if (error) throw error; return data;
   }
@@ -743,8 +749,7 @@ const DB = (() => {
     let q = sb.from('icd10').select('*').order('kode').limit(batas);
     if (hanyaFavorit) q = q.eq('sering_dipakai', true);
     if (kata && kata.trim().length >= 2) {
-      const k = kata.trim();
-      q = q.or(`kode.ilike.%${k}%,nama_id.ilike.%${k}%,nama_en.ilike.%${k}%`);
+      q = q.ilike('cari_teks', `%${kata.trim()}%`);
     }
     const { data, error } = await q;
     if (error) throw error; return data;
