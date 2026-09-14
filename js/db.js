@@ -92,23 +92,20 @@ const DB = (() => {
               { onConflict: 'kode,peran' });
     if (error) throw error;
   }
-  /* Dicari lewat SATU kolom gabungan `cari_teks` (kode + nama_id + nama_en,
-     diisi otomatis oleh database — lihat sql/30) dan SATU indeks GIN,
-     bukan tiga kolom terpisah yang digabung dengan OR seperti sebelumnya.
-     Ambang 3 huruf (bukan 2) sengaja dinaikkan: pola 2 huruf cocok dengan
-     ribuan baris sekaligus di tabel sebesar ini, jadi hampir tidak
-     menyaring apa-apa tapi tetap memindai indeks — mengetik huruf ketiga
-     biasanya tidak terasa, dan hasilnya jauh lebih relevan. */
+  /* Dicari lewat fungsi cari_icd10 (lihat sql/31) yang mengurutkan hasil
+     berdasarkan similarity() ke kata yang diketik, BUKAN cuma status
+     "sering dipakai" — supaya baris paling relevan naik ke atas duluan
+     sebelum kena batas potong `batas`. Sebelum ini, kata pencarian umum
+     yang cocok ke ratusan baris (wajar sekarang, tabel sudah 10 ribuan
+     baris) bisa membuat baris yang sebenarnya dicari dokter "terpotong"
+     begitu saja walau kodenya ada — persis keluhan Arthur 14 Sep 2026. */
   async function cariIcd(kata, batas = 25) {
     if (!kata || kata.length < 3) {
       const { data, error } = await sb.from('icd10').select('kode,nama_id,nama_en')
         .eq('sering_dipakai', true).eq('aktif', true).order('nama_id').limit(60);
       if (error) throw error; return data;
     }
-    const { data, error } = await sb.from('icd10').select('kode,nama_id,nama_en')
-      .eq('aktif', true)
-      .ilike('cari_teks', `%${kata}%`)
-      .order('sering_dipakai', { ascending: false }).limit(batas);
+    const { data, error } = await sb.rpc('cari_icd10', { p_kata: kata, p_batas: batas });
     if (error) throw error; return data;
   }
   /* `kode_pcare` dan `dpho` WAJIB ikut terpilih. Keduanya yang menentukan
