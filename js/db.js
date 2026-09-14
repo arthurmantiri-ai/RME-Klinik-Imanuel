@@ -765,13 +765,33 @@ const DB = (() => {
   /* Impor massal. Baris dicocokkan dengan `kode` — di tabel icd10, kode ITU
      SENDIRI adalah primary key (beda dari Obat yang punya kode_internal
      terpisah) — jadi impor yang sama bisa dijalankan berulang untuk
-     memperbarui data atau menambah revisi baru tanpa menggandakannya. */
-  async function imporIcd10(baris) {
+     memperbarui data atau menambah revisi baru tanpa menggandakannya.
+
+     Dikirim per kelompok, bukan sekali kirim semuanya: berkas berisi
+     ribuan baris (mis. impor awal ICD-10 lengkap) membuat satu perintah
+     upsert tunggal kena "statement timeout" di Supabase. Kalau satu
+     kelompok gagal, kelompok-kelompok sebelumnya SUDAH tersimpan —
+     mengulang impor dari berkas yang sama aman, baris yang sudah masuk
+     tidak akan dobel. onProgress, kalau diisi, dipanggil setelah tiap
+     kelompok selesai supaya layar bisa menunjukkan kemajuannya. */
+  async function imporIcd10(baris, onProgress = null) {
     if (!baris.length) return { jumlah: 0 };
-    const { data, error } = await sb.from('icd10')
-      .upsert(baris, { onConflict: 'kode' }).select('kode');
-    if (error) throw error;
-    return { jumlah: data.length };
+    const UKURAN_KELOMPOK = 500;
+    let jumlah = 0;
+    for (let i = 0; i < baris.length; i += UKURAN_KELOMPOK) {
+      const kelompok = baris.slice(i, i + UKURAN_KELOMPOK);
+      const { data, error } = await sb.from('icd10')
+        .upsert(kelompok, { onConflict: 'kode' }).select('kode');
+      if (error) {
+        error.message = `Berhenti setelah ${jumlah} dari ${baris.length} baris `
+          + `(gagal pada kelompok baris ${i + 1}\u2013${Math.min(i + UKURAN_KELOMPOK, baris.length)}): `
+          + error.message;
+        throw error;
+      }
+      jumlah += data.length;
+      if (onProgress) onProgress(jumlah, baris.length);
+    }
+    return { jumlah };
   }
 
   /* --- ICD-9-CM --- */

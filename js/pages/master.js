@@ -715,13 +715,21 @@ const Master = (() => {
             if (!simpan || !simpan.length) {
               UI.toast('Pilih berkas CSV yang valid terlebih dahulu.', 'err'); return false;
             }
+            const pratinjau = b.querySelector('#pratinjauCsvIcd');
             try {
-              const hasil = await DB.imporIcd10(simpan);
+              const hasil = await DB.imporIcd10(simpan, (selesai, total) => {
+                if (total > 500) {
+                  pratinjau.innerHTML = `<div class="banner info mt-12">Mengimpor…
+                    ${selesai} dari ${total} baris. Jangan tutup jendela ini.</div>`;
+                }
+              });
               UI.toast(`${hasil.jumlah} diagnosa berhasil diimpor.`, 'ok', 4000);
               return hasil;
             } catch (e) {
-              b.querySelector('#pratinjauCsvIcd').innerHTML =
-                `<div class="banner err mt-12">${UI.esc(e.message)}</div>`;
+              pratinjau.innerHTML =
+                `<div class="banner err mt-12">${UI.esc(e.message)}
+                  Baris yang sempat masuk sebelum galat ini tidak hilang — pilih
+                  berkas yang sama lagi dan impor ulang untuk melanjutkan.</div>`;
               return false;
             }
         }}
